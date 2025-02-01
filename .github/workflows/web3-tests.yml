@@ -16,10 +16,10 @@ jobs:
   test-web3-client:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: 18
 
@@ -38,46 +38,61 @@ jobs:
           NFID_TEST_SECRET: ${{ secrets.NFID_TEST_SECRET }}
 
       - name: Upload Coverage
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4
         with:
           flags: web3-client
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   test-icp-canisters:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Install DFX
+        env:
+          DFX_VERSION: 0.15.1
         run: |
-          wget --output-document install-dfx.sh "https://sdk.dfinity.org/install.sh"
-          bash install-dfx.sh
-          rm install-dfx.sh
-          echo "$HOME/bin" >> $GITHUB_PATH
+          echo "Installing DFX ${DFX_VERSION}..."
+          sh -ci "$(curl -fsSL https://internetcomputer.org/install.sh)"
+          dfx --version
 
-      - name: Start Local IC
-        run: dfx start --background
-
-      - name: Deploy Test Canisters
+      - name: Start DFX
         run: |
-          dfx canister create --all
-          dfx build
-          dfx deploy
+          dfx start --background
+          dfx --version
+
+      - name: Deploy Local Internet Identity
+        run: |
+          dfx deploy internet_identity
+        working-directory: ./canisters
 
       - name: Run Canister Tests
-        run: dfx test
+        run: |
+          dfx canister call internet_identity init
+          dfx deploy
+          dfx canister call auth run_tests
+          dfx canister call storage run_tests
+          dfx canister call billing run_tests
+        working-directory: ./canisters
 
-      - name: Stop IC
+      - name: Stop DFX
         if: always()
         run: dfx stop
+
+      - name: Upload Test Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: canister-test-results
+          path: ./canisters/.dfx/local/canisters/*/*.test.json
 
   integration-tests:
     needs: [test-web3-client, test-icp-canisters]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: 18
 
@@ -97,7 +112,7 @@ jobs:
 
       - name: Upload Test Results
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: integration-test-results
           path: test-results/
