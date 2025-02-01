@@ -1,84 +1,141 @@
 # Web3 Integration Documentation
 
 ## Overview
-RhinoSpider uses Web3 technologies for authentication, storage, and payments:
-- NFID for user authentication
-- Internet Computer (ICP) for decentralized storage
-- ICP cycles for usage tracking and payments
+RhinoSpider uses Internet Computer Protocol (ICP) for Web3 integration, providing secure authentication and identity management through Internet Identity.
 
-## Components
+## Authentication Methods
 
-### 1. NFID Authentication
-- **Status**: In Progress
-- **Location**: `packages/web3-client/src/hooks/useNFID.ts`
-- **Features**:
-  - [x] NFID Integration Setup
-  - [ ] Login/Signup Flow
-  - [ ] Session Management
-  - [ ] Profile Management
+### Internet Identity (Current Implementation)
+- ICP's native identity service
+- Uses cryptographic public/private key pairs
+- Secure and decentralized
+- No email/password required
+- Session management with idle timeout
 
-### 2. ICP Storage
-- **Status**: Not Started
-- **Location**: `canisters/storage/`
-- **Features**:
-  - [ ] Canister Setup
-  - [ ] Data Models
-  - [ ] CRUD Operations
-  - [ ] Access Control
-
-### 3. Payments & Billing
-- **Status**: Not Started
-- **Location**: `canisters/billing/`
-- **Features**:
-  - [ ] Cycles Management
-  - [ ] Usage Tracking
-  - [ ] Payment Processing
-  - [ ] Subscription Management
-
-## Implementation Progress
-
-### Current Sprint: NFID Authentication
-1. Set up NFID client integration
-2. Implement login/signup flow
-3. Handle session management
-4. Add profile management
-
-### Next Steps
-1. Deploy and test authentication
-2. Set up ICP canisters
-3. Implement storage functionality
-
-## Configuration
-
-### NFID Setup
+### Configuration
 ```typescript
-// Required environment variables
-NFID_CLIENT_ID=<your-client-id>
-NFID_REDIRECT_URI=<your-redirect-uri>
+// .env
+VITE_II_URL=https://identity.ic0.app  # Optional, defaults to this URL
 ```
 
-### ICP Setup
-```bash
-# Install DFX
-sh -ci "$(curl -fsSL https://internetcomputer.org/install.sh)"
+### Usage in Components
+```jsx
+import { useAuthContext } from '@rhinospider/web3-client';
 
-# Start local replica
-dfx start --background
+function MyComponent() {
+  const { login, logout, isAuthenticated, identity } = useAuthContext();
+  
+  // Login with Internet Identity
+  const handleLogin = async () => {
+    try {
+      await login();
+    } catch (err) {
+      console.error('Login failed:', err);
+    }
+  };
+
+  // Get user's principal
+  const principal = identity?.getPrincipal();
+}
+```
+
+### Security Features
+1. **Session Management**
+   - 30-minute idle timeout
+   - Automatic logout on timeout
+   - Secure session storage
+
+2. **Identity Management**
+   - Cryptographic identity using ICP principals
+   - No sensitive data stored locally
+   - Secure key management
+
+## Future Integrations (Planned)
+
+### NFID
+- Email/password authentication
+- Google account integration
+- Compatible with Internet Identity
+
+### Plug Wallet
+- Full Web3 wallet integration
+- Asset management (ICP, cycles, tokens)
+- Transaction support
+
+### Cross-Chain Support
+- Sign in with Bitcoin
+- Sign in with Ethereum
+- Sign in with Solana
+
+## Implementation Details
+
+### Authentication Flow
+1. User clicks "Sign in with Internet Identity"
+2. Internet Identity dialog opens
+3. User authenticates with their device
+4. On success:
+   - Identity is stored securely
+   - User session is established
+   - App state updates to reflect authentication
+
+### Security Considerations
+1. **Identity Storage**
+   - No sensitive data in localStorage
+   - Session data encrypted
+   - Keys never leave the secure context
+
+2. **Session Management**
+   - Short-lived sessions (30 minutes)
+   - Secure session renewal
+   - Automatic cleanup on logout
+
+3. **Error Handling**
+   - Graceful error recovery
+   - Clear user feedback
+   - Secure error logging
+
+## Development Setup
+
+1. Install dependencies:
+```bash
+pnpm add @dfinity/agent @dfinity/auth-client @dfinity/identity @dfinity/principal
+```
+
+2. Configure environment:
+```bash
+cp .env.example .env
+```
+
+3. Import and use the AuthProvider:
+```jsx
+import { AuthProvider } from '@rhinospider/web3-client';
+
+function App() {
+  return (
+    <AuthProvider
+      appName="RhinoSpider"
+      logo="/icons/icon128.png"
+      iiUrl={import.meta.env.VITE_II_URL}
+    >
+      {/* Your app components */}
+    </AuthProvider>
+  );
+}
 ```
 
 ## Testing
-- Unit tests: `pnpm test`
-- Integration tests: `pnpm test:integration`
-- E2E tests: `pnpm test:e2e`
+Run the test suite:
+```bash
+pnpm test
+```
 
-## Security Considerations
-1. Secure key management
-2. Session timeout handling
-3. Rate limiting
-4. Error handling
-5. Data encryption
+Key test cases:
+- Authentication flow
+- Session management
+- Error handling
+- Identity persistence
 
 ## Resources
-- [NFID Documentation](https://docs.nfid.one)
-- [Internet Computer SDK](https://internetcomputer.org/docs/current/developer-docs/setup/install)
-- [ICP Dashboard](https://dashboard.internetcomputer.org)
+- [Internet Identity Specification](https://internetcomputer.org/docs/current/references/ii-spec/)
+- [DFINITY SDK Documentation](https://sdk.dfinity.org/docs/index.html)
+- [ICP Integration Guide](https://internetcomputer.org/docs/current/developer-docs/integrations/)

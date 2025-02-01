@@ -1,68 +1,70 @@
-import React from 'react';
-import { useAuth } from '@rhinospider/web3-client';
+import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuthContext } from '@rhinospider/web3-client';
+import { theme } from '../styles/theme';
 
 const Login = () => {
-  const { login, isAuthenticated, error } = useAuth();
   const navigate = useNavigate();
+  const { identity, login, isLoading } = useAuthContext();
 
-  React.useEffect(() => {
-    if (isAuthenticated) {
-      navigate('/dashboard');
+  useEffect(() => {
+    if (isLoading) return;
+
+    // If we have identity, redirect to dashboard
+    if (identity) {
+      navigate('/');
+      return;
     }
-  }, [isAuthenticated, navigate]);
+
+    // Check stored auth state
+    const storedAuth = localStorage.getItem('rhinospider_auth');
+    if (storedAuth) {
+      const { isAuthenticated } = JSON.parse(storedAuth);
+      if (isAuthenticated) {
+        navigate('/');
+      }
+    }
+  }, [identity, isLoading, navigate]);
 
   const handleLogin = async () => {
     try {
       await login();
-    } catch (err) {
-      console.error('Login failed:', err);
+      // Navigation will happen automatically through the auth state change
+    } catch (error) {
+      console.error('Login failed:', error);
+      localStorage.removeItem('rhinospider_auth');
     }
   };
 
+  // Don't render anything while checking auth
+  if (isLoading) return null;
+
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <img
-          className="mx-auto h-12 w-auto"
-          src="/icons/icon128.png"
-          alt="RhinoSpider"
-        />
-        <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-          Sign in to RhinoSpider
-        </h2>
+    <div 
+      className="w-full h-full flex flex-col items-center justify-center p-6"
+      style={{ background: theme.colors.background.gradient }}
+    >
+      <div className="text-center mb-8">
+        <div className="text-white text-4xl font-mono tracking-wider mb-2">
+          {'>^<'}
+        </div>
+        <h1 className="text-white text-2xl font-semibold">RhinoSpider</h1>
+        <p className="text-white/60 mt-2">
+          Connect with Internet Identity to continue
+        </p>
       </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
-          {error && (
-            <div className="mb-4 bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded">
-              {error.message}
-            </div>
-          )}
+      <button
+        onClick={handleLogin}
+        className="px-6 py-3 bg-[#B692F6] text-white rounded-full hover:bg-[#B692F6]/90 transition-colors"
+      >
+        Connect with Internet Identity
+      </button>
 
-          <div>
-            <button
-              onClick={handleLogin}
-              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-            >
-              Sign in with NFID
-            </button>
-          </div>
-
-          <div className="mt-6">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-300" />
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-gray-500">
-                  Powered by Internet Computer
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
+      <div className="mt-8 text-center">
+        <p className="text-white/40 text-sm">
+          By connecting, you agree to our Terms of Service and Privacy Policy
+        </p>
       </div>
     </div>
   );

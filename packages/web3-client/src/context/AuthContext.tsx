@@ -1,6 +1,6 @@
-import React, { createContext, useContext, ReactNode } from 'react';
+import React, { createContext, useContext } from 'react';
 import { Identity } from '@dfinity/agent';
-import { useNFID } from '../hooks/useNFID';
+import { useAuth, AuthConfig } from '../hooks/useAuth';
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -12,27 +12,24 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-interface AuthProviderProps {
-  children: ReactNode;
-  appName: string;
-  logo?: string;
-  host?: string;
+export const useAuthContext = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuthContext must be used within an AuthProvider');
+  }
+  return context;
+};
+
+interface AuthProviderProps extends AuthConfig {
+  children: React.ReactNode;
 }
 
-export function AuthProvider({ children, appName, logo, host }: AuthProviderProps) {
-  const auth = useNFID({ appName, logo, host });
+export const AuthProvider = ({ children, ...config }: AuthProviderProps) => {
+  const auth = useAuth(config);
 
   return (
     <AuthContext.Provider value={auth}>
       {children}
     </AuthContext.Provider>
   );
-}
-
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-}
+};
