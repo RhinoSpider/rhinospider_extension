@@ -1,23 +1,27 @@
 import React from 'react';
-import { MemoryRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from '@rhinospider/web3-client';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Settings from './pages/Settings';
-import { AuthProvider, useAuth } from './context/AuthContext';
 
 const PrivateRoute = ({ children }) => {
   const { isAuthenticated } = useAuth();
   return isAuthenticated ? children : <Navigate to="/login" />;
 };
 
-const App = () => {
+function App() {
   return (
-    <AuthProvider>
-      <Router initialEntries={['/login']}>
+    <AuthProvider
+      appName="RhinoSpider"
+      logo="/icons/icon128.png"
+      host="https://nfid.one"
+    >
+      <Router>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route
-            path="/"
+            path="/dashboard"
             element={
               <PrivateRoute>
                 <Dashboard />
@@ -32,10 +36,11 @@ const App = () => {
               </PrivateRoute>
             }
           />
+          <Route path="/" element={<Navigate to="/dashboard" />} />
         </Routes>
       </Router>
     </AuthProvider>
   );
-};
+}
 
 export default App;
