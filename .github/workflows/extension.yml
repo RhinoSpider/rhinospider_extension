@@ -1,0 +1,86 @@
+name: Extension CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/extension/**'
+      - 'packages/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/extension/**'
+      - 'packages/**'
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Lint
+        run: pnpm --filter extension lint
+
+      - name: Test
+        run: pnpm --filter extension test
+
+      - name: Build
+        run: pnpm --filter extension build
+
+      - name: Package Extension
+        if: github.ref == 'refs/heads/main'
+        run: |
+          cd apps/extension/build
+          zip -r ../extension.zip *
+
+      - name: Upload Build Artifact
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v3
+        with:
+          name: extension-build
+          path: apps/extension/extension.zip
+          retention-days: 5
+
+  create-release:
+    needs: build-and-test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Build
+        uses: actions/download-artifact@v3
+        with:
+          name: extension-build
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: extension.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

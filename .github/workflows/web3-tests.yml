@@ -1,0 +1,104 @@
+name: Web3 Tests
+
+on:
+  push:
+    paths:
+      - 'packages/web3-client/**'
+      - 'canisters/**'
+      - 'smart-contracts/**'
+  pull_request:
+    paths:
+      - 'packages/web3-client/**'
+      - 'canisters/**'
+      - 'smart-contracts/**'
+
+jobs:
+  test-web3-client:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Run Web3 Client Tests
+        run: pnpm --filter web3-client test
+        env:
+          NFID_TEST_CLIENT_ID: ${{ secrets.NFID_TEST_CLIENT_ID }}
+          NFID_TEST_SECRET: ${{ secrets.NFID_TEST_SECRET }}
+
+      - name: Upload Coverage
+        uses: codecov/codecov-action@v3
+        with:
+          flags: web3-client
+
+  test-icp-canisters:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install DFX
+        run: |
+          wget --output-document install-dfx.sh "https://sdk.dfinity.org/install.sh"
+          bash install-dfx.sh
+          rm install-dfx.sh
+          echo "$HOME/bin" >> $GITHUB_PATH
+
+      - name: Start Local IC
+        run: dfx start --background
+
+      - name: Deploy Test Canisters
+        run: |
+          dfx canister create --all
+          dfx build
+          dfx deploy
+
+      - name: Run Canister Tests
+        run: dfx test
+
+      - name: Stop IC
+        if: always()
+        run: dfx stop
+
+  integration-tests:
+    needs: [test-web3-client, test-icp-canisters]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Start Test Environment
+        run: |
+          dfx start --background
+          dfx deploy
+          pnpm test:integration
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: integration-test-results
+          path: test-results/
+          retention-days: 14
