@@ -29,6 +29,9 @@ importers:
 
   apps/extension:
     dependencies:
+      '@rhinospider/web3-client':
+        specifier: workspace:*
+        version: link:../../packages/web3-client
       lucide-react:
         specifier: ^0.292.0
         version: 0.292.0(react@18.3.1)
@@ -67,23 +70,23 @@ importers:
   packages/web3-client:
     dependencies:
       '@dfinity/agent':
-        specifier: ^0.15.6
+        specifier: ^0.15.7
         version: 0.15.7(@dfinity/candid@0.15.7(@types/node@12.20.55)(typescript@5.7.3))(@dfinity/principal@0.15.7(@types/node@12.20.55)(typescript@5.7.3))(@types/node@12.20.55)(typescript@5.7.3)
       '@dfinity/auth-client':
-        specifier: ^0.15.6
+        specifier: ^0.15.7
         version: 0.15.7(@dfinity/agent@0.15.7(@dfinity/candid@0.15.7(@types/node@12.20.55)(typescript@5.7.3))(@dfinity/principal@0.15.7(@types/node@12.20.55)(typescript@5.7.3))(@types/node@12.20.55)(typescript@5.7.3))(@dfinity/identity@0.15.7(@dfinity/agent@0.15.7(@dfinity/candid@0.15.7(@types/node@12.20.55)(typescript@5.7.3))(@dfinity/principal@0.15.7(@types/node@12.20.55)(typescript@5.7.3))(@types/node@12.20.55)(typescript@5.7.3))(@dfinity/principal@0.15.7(@types/node@12.20.55)(typescript@5.7.3))(@peculiar/webcrypto@1.5.0))(@dfinity/principal@0.15.7(@types/node@12.20.55)(typescript@5.7.3))
       '@dfinity/identity':
-        specifier: ^0.15.6
+        specifier: ^0.15.7
         version: 0.15.7(@dfinity/agent@0.15.7(@dfinity/candid@0.15.7(@types/node@12.20.55)(typescript@5.7.3))(@dfinity/principal@0.15.7(@types/node@12.20.55)(typescript@5.7.3))(@types/node@12.20.55)(typescript@5.7.3))(@dfinity/principal@0.15.7(@types/node@12.20.55)(typescript@5.7.3))(@peculiar/webcrypto@1.5.0)
       '@dfinity/principal':
         specifier: ^0.15.6
         version: 0.15.7(@types/node@12.20.55)(typescript@5.7.3)
       react:
-        specifier: ^18.2.0
+        specifier: ^18.3.1
         version: 18.3.1
     devDependencies:
       '@types/react':
-        specifier: ^18.2.0
+        specifier: ^18.3.18
         version: 18.3.18
       tsup:
         specifier: ^7.1.0
