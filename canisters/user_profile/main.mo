@@ -1,211 +1,290 @@
 import Principal "mo:base/Principal";
-import HashMap "mo:base/HashMap";
 import Time "mo:base/Time";
+import HashMap "mo:base/HashMap";
+import Array "mo:base/Array";
+import Iter "mo:base/Iter";
+import Option "mo:base/Option";
 import Result "mo:base/Result";
 import Text "mo:base/Text";
-import Array "mo:base/Array";
+import Nat64 "mo:base/Nat64";
 import Buffer "mo:base/Buffer";
-import Int "mo:base/Int";
-import Float "mo:base/Float";
-import Nat "mo:base/Nat";
-import ICRC1 "mo:icrc1/ICRC1";
-import ICRC2 "mo:icrc2/ICRC2";
-import InternetIdentity "mo:internet-identity/InternetIdentity";
 
-actor UserProfileCanister {
+actor UserProfile {
     // Types
-    type UserId = Principal;
-    
-    type UserProfile = {
+    type Profile = {
         principal: Principal;
-        internetIdentity: Text;
-        created: Time.Time;
-        lastActive: Time.Time;
-        deviceIds: [Text];  // Extension IDs, Desktop IDs, etc.
-        totalTrafficShared: Nat;  // in bytes
-        totalRewardsEarned: Nat;  // in tokens
-        reputationScore: Float;
-        tier: UserTier;
+        devices: [Text];
+        created: Nat64;
+        lastLogin: Nat64;
+        displayName: ?Text;
+        email: ?Text;
+        preferences: {
+            notificationsEnabled: Bool;
+            theme: Text;
+        };
+        stats: {
+            totalScrapes: Nat64;
+            totalDataContributed: Nat64;
+            reputation: Nat64;
+        };
     };
 
-    type UserTier = {
-        #Bronze;
-        #Silver;
-        #Gold;
-        #Platinum;
+    type ProfileUpdate = {
+        displayName: ?Text;
+        email: ?Text;
+        preferences: ?{
+            notificationsEnabled: Bool;
+            theme: Text;
+        };
     };
 
-    type ContributionMetric = {
-        timestamp: Time.Time;
-        trafficBytes: Nat;
-        contentQuality: Float;
-        uniqueVisitors: Nat;
+    type Error = {
+        #NotFound;
+        #AlreadyExists;
+        #NotAuthorized;
+        #InvalidInput: Text;
     };
 
-    type RewardEvent = {
-        timestamp: Time.Time;
-        amount: Nat;
-        reason: Text;
-        contentId: ?Text;
+    type Stats = {
+        totalUsers: Nat64;
+        activeUsers: Nat64;
+        totalDataContributed: Nat64;
     };
 
     // State
-    private stable var profiles = HashMap.HashMap<UserId, UserProfile>(10, Principal.equal, Principal.hash);
-    private stable var contributions = HashMap.HashMap<Text, ContributionMetric>(10, Text.equal, Text.hash);
-    private stable var rewards = HashMap.HashMap<Text, RewardEvent>(10, Text.equal, Text.hash);
-    
-    // Integration with other ICP services
-    private let tokenLedger = ICRC1.Actor("rwlgt-iiaaa-aaaaa-aaaaa-cai"); // Token canister
-    private let internetIdentity = InternetIdentity.Actor("rdmx6-jaaaa-aaaaa-aaadq-cai");
-    private let nnsGovernance = actor "rrkah-fqaaa-aaaaa-aaaaq-cai" : actor {
-        get_pending_proposals : shared () -> async [ProposalInfo];
+    private stable var profiles : [(Principal, Profile)] = [];
+    private var profileMap = HashMap.HashMap<Principal, Profile>(0, Principal.equal, Principal.hash);
+    private stable var adminPrincipal : Principal = Principal.fromText("aaaaa-aa"); // Replace with actual admin principal
+
+    // System functions
+    system func preupgrade() {
+        profiles := Iter.toArray(profileMap.entries());
     };
 
-    // User Management
-    public shared({ caller }) func createProfile(deviceId: Text) : async Result.Result<UserProfile, Text> {
-        switch (profiles.get(caller)) {
-            case (?existing) {
-                // Update existing profile with new device
-                let updatedDevices = Array.append<Text>(existing.deviceIds, [deviceId]);
-                let updated = {
-                    existing with
-                    deviceIds = updatedDevices;
-                    lastActive = Time.now();
-                };
-                profiles.put(caller, updated);
-                #ok(updated);
+    system func postupgrade() {
+        profileMap := HashMap.fromIter<Principal, Profile>(profiles.vals(), profiles.size(), Principal.equal, Principal.hash);
+        profiles := [];
+    };
+
+    // Helper functions
+    private func isAdmin(caller: Principal) : Bool {
+        Principal.equal(caller, adminPrincipal)
+    };
+
+    private func defaultProfile(caller: Principal) : Profile {
+        {
+            principal = caller;
+            devices = [];
+            created = Nat64.fromNat(Int.abs(Time.now()));
+            lastLogin = Nat64.fromNat(Int.abs(Time.now()));
+            displayName = null;
+            email = null;
+            preferences = {
+                notificationsEnabled = true;
+                theme = "light"
             };
+            stats = {
+                totalScrapes = 0;
+                totalDataContributed = 0;
+                reputation = 0;
+            };
+        }
+    };
+
+    // Profile management
+    public shared({ caller }) func createProfile() : async Result.Result<Profile, Error> {
+        if (Principal.isAnonymous(caller)) {
+            return #err(#NotAuthorized);
+        };
+
+        switch (profileMap.get(caller)) {
+            case (?_) { #err(#AlreadyExists) };
             case null {
-                let newProfile : UserProfile = {
-                    principal = caller;
-                    internetIdentity = Principal.toText(caller);
-                    created = Time.now();
-                    lastActive = Time.now();
-                    deviceIds = [deviceId];
-                    totalTrafficShared = 0;
-                    totalRewardsEarned = 0;
-                    reputationScore = 1.0;
-                    tier = #Bronze;
-                };
-                profiles.put(caller, newProfile);
-                #ok(newProfile);
+                let profile = defaultProfile(caller);
+                profileMap.put(caller, profile);
+                #ok(profile)
             };
-        };
+        }
     };
 
-    // Track contributions
-    public shared({ caller }) func recordContribution(contentId: Text, bytes: Nat, quality: Float, visitors: Nat) : async () {
-        let metric : ContributionMetric = {
-            timestamp = Time.now();
-            trafficBytes = bytes;
-            contentQuality = quality;
-            uniqueVisitors = visitors;
+    public shared({ caller }) func getProfile() : async Result.Result<Profile, Error> {
+        if (Principal.isAnonymous(caller)) {
+            return #err(#NotAuthorized);
         };
-        contributions.put(contentId, metric);
-        
-        switch (profiles.get(caller)) {
+
+        switch (profileMap.get(caller)) {
+            case (?profile) { #ok(profile) };
+            case null { #err(#NotFound) };
+        }
+    };
+
+    public shared({ caller }) func updateProfile(update: ProfileUpdate) : async Result.Result<Profile, Error> {
+        if (Principal.isAnonymous(caller)) {
+            return #err(#NotAuthorized);
+        };
+
+        switch (profileMap.get(caller)) {
             case (?profile) {
-                let updated = {
-                    profile with
-                    totalTrafficShared = profile.totalTrafficShared + bytes;
-                    lastActive = Time.now();
+                let updatedProfile = {
+                    principal = profile.principal;
+                    devices = profile.devices;
+                    created = profile.created;
+                    lastLogin = Nat64.fromNat(Int.abs(Time.now()));
+                    displayName = Option.get(update.displayName, profile.displayName);
+                    email = Option.get(update.email, profile.email);
+                    preferences = Option.get(update.preferences, profile.preferences);
+                    stats = profile.stats;
                 };
-                profiles.put(caller, updated);
-                await calculateRewards(caller, contentId, metric);
+                profileMap.put(caller, updatedProfile);
+                #ok(updatedProfile)
             };
-            case null { };
-        };
+            case null { #err(#NotFound) };
+        }
     };
 
-    // Reward calculation
-    private func calculateRewards(user: Principal, contentId: Text, metric: ContributionMetric) : async () {
-        let baseReward = metric.trafficBytes / 1_000_000; // 1 token per MB
-        let qualityMultiplier = metric.contentQuality;
-        let visitorBonus = Float.fromInt(metric.uniqueVisitors) * 0.1;
-        
-        let totalReward = Float.toInt(
-            Float.fromInt(baseReward) * 
-            qualityMultiplier * 
-            (1.0 + visitorBonus)
-        );
-
-        if (totalReward > 0) {
-            let event : RewardEvent = {
-                timestamp = Time.now();
-                amount = Int.abs(totalReward);
-                reason = "Content sharing reward";
-                contentId = ?contentId;
-            };
-            rewards.put(contentId, event);
-            
-            // Update user profile
-            switch (profiles.get(user)) {
-                case (?profile) {
-                    let updated = {
-                        profile with
-                        totalRewardsEarned = profile.totalRewardsEarned + Int.abs(totalReward);
-                    };
-                    profiles.put(user, updated);
-                    
-                    // Transfer tokens using ICRC1 ledger
-                    ignore await tokenLedger.transfer({
-                        to = { owner = user; subaccount = null };
-                        amount = Int.abs(totalReward);
-                        fee = null;
-                        memo = null;
-                        created_at_time = null;
-                    });
-                };
-                case null { };
-            };
+    public shared({ caller }) func deleteProfile() : async Result.Result<Profile, Error> {
+        if (Principal.isAnonymous(caller)) {
+            return #err(#NotAuthorized);
         };
-    };
 
-    // Analytics and Reporting
-    public query func getUserStats(user: Principal) : async ?{
-        profile: UserProfile;
-        recentContributions: [ContributionMetric];
-        recentRewards: [RewardEvent];
-    } {
-        switch (profiles.get(user)) {
+        switch (profileMap.get(caller)) {
             case (?profile) {
-                let contributionBuffer = Buffer.Buffer<ContributionMetric>(0);
-                let rewardBuffer = Buffer.Buffer<RewardEvent>(0);
-                
-                for ((_, contribution) in contributions.entries()) {
-                    contributionBuffer.add(contribution);
-                };
-                
-                for ((_, reward) in rewards.entries()) {
-                    rewardBuffer.add(reward);
-                };
-                
-                ?{
-                    profile = profile;
-                    recentContributions = Buffer.toArray(contributionBuffer);
-                    recentRewards = Buffer.toArray(rewardBuffer);
-                };
+                profileMap.delete(caller);
+                #ok(profile)
             };
-            case null null;
-        };
+            case null { #err(#NotFound) };
+        }
     };
 
-    // Cross-platform authentication
-    public shared({ caller }) func linkDevice(deviceId: Text) : async Result.Result<(), Text> {
-        switch (profiles.get(caller)) {
+    // Device management
+    public shared({ caller }) func addDevice(deviceId: Text) : async Result.Result<Profile, Error> {
+        if (Principal.isAnonymous(caller)) {
+            return #err(#NotAuthorized);
+        };
+
+        switch (profileMap.get(caller)) {
             case (?profile) {
-                if (Array.find<Text>(profile.deviceIds, func(id) { id == deviceId }) != null) {
-                    #err("Device already linked");
-                } else {
-                    let updated = {
-                        profile with
-                        deviceIds = Array.append<Text>(profile.deviceIds, [deviceId]);
-                    };
-                    profiles.put(caller, updated);
-                    #ok();
+                if (Array.find<Text>(profile.devices, func(d) { d == deviceId }) != null) {
+                    return #err(#AlreadyExists);
                 };
+
+                let updatedProfile = {
+                    principal = profile.principal;
+                    devices = Array.append<Text>(profile.devices, [deviceId]);
+                    created = profile.created;
+                    lastLogin = Nat64.fromNat(Int.abs(Time.now()));
+                    displayName = profile.displayName;
+                    email = profile.email;
+                    preferences = profile.preferences;
+                    stats = profile.stats;
+                };
+                profileMap.put(caller, updatedProfile);
+                #ok(updatedProfile)
             };
-            case null #err("Profile not found");
+            case null { #err(#NotFound) };
+        }
+    };
+
+    public shared({ caller }) func removeDevice(deviceId: Text) : async Result.Result<Profile, Error> {
+        if (Principal.isAnonymous(caller)) {
+            return #err(#NotAuthorized);
+        };
+
+        switch (profileMap.get(caller)) {
+            case (?profile) {
+                let updatedDevices = Array.filter<Text>(profile.devices, func(d) { d != deviceId });
+                if (updatedDevices.size() == profile.devices.size()) {
+                    return #err(#NotFound);
+                };
+
+                let updatedProfile = {
+                    principal = profile.principal;
+                    devices = updatedDevices;
+                    created = profile.created;
+                    lastLogin = Nat64.fromNat(Int.abs(Time.now()));
+                    displayName = profile.displayName;
+                    email = profile.email;
+                    preferences = profile.preferences;
+                    stats = profile.stats;
+                };
+                profileMap.put(caller, updatedProfile);
+                #ok(updatedProfile)
+            };
+            case null { #err(#NotFound) };
+        }
+    };
+
+    public query({ caller }) func listDevices() : async [Text] {
+        switch (profileMap.get(caller)) {
+            case (?profile) { profile.devices };
+            case null { [] };
+        }
+    };
+
+    // Stats
+    public query func getStats() : async Stats {
+        let profiles = Iter.toArray(profileMap.vals());
+        let now = Nat64.fromNat(Int.abs(Time.now()));
+        let dayInNanos : Nat64 = 86_400_000_000_000;
+
+        let activeUsers = Array.filter<Profile>(profiles, func(p) { (now - p.lastLogin) < dayInNanos }).size();
+        let totalDataContributed = Array.foldLeft<Profile, Nat64>(profiles, 0, func(acc, p) { acc + p.stats.totalDataContributed });
+
+        {
+            totalUsers = Nat64.fromNat(profiles.size());
+            activeUsers = Nat64.fromNat(activeUsers);
+            totalDataContributed = totalDataContributed;
+        }
+    };
+
+    public shared({ caller }) func updateStats(update: { dataContributed: Nat64 }) : async Result.Result<Profile, Error> {
+        if (Principal.isAnonymous(caller)) {
+            return #err(#NotAuthorized);
+        };
+
+        switch (profileMap.get(caller)) {
+            case (?profile) {
+                let updatedStats = {
+                    totalScrapes = profile.stats.totalScrapes + 1;
+                    totalDataContributed = profile.stats.totalDataContributed + update.dataContributed;
+                    reputation = profile.stats.reputation + 1;
+                };
+
+                let updatedProfile = {
+                    principal = profile.principal;
+                    devices = profile.devices;
+                    created = profile.created;
+                    lastLogin = Nat64.fromNat(Int.abs(Time.now()));
+                    displayName = profile.displayName;
+                    email = profile.email;
+                    preferences = profile.preferences;
+                    stats = updatedStats;
+                };
+                profileMap.put(caller, updatedProfile);
+                #ok(updatedProfile)
+            };
+            case null { #err(#NotFound) };
+        }
+    };
+
+    // Admin functions
+    public shared({ caller }) func getUsers() : async [Profile] {
+        if (not isAdmin(caller)) {
+            return [];
+        };
+        Iter.toArray(profileMap.vals())
+    };
+
+    public shared({ caller }) func clearInactiveUsers(threshold: Nat64) : async () {
+        if (not isAdmin(caller)) {
+            return;
+        };
+
+        let now = Nat64.fromNat(Int.abs(Time.now()));
+        for ((principal, profile) in profileMap.entries()) {
+            if ((now - profile.lastLogin) > threshold) {
+                profileMap.delete(principal);
+            };
         };
     };
 };

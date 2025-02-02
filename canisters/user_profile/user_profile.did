@@ -1,0 +1,65 @@
+type Profile = record {
+    principal: principal;
+    devices: vec text;
+    created: nat64;
+    lastLogin: nat64;
+    displayName: opt text;
+    email: opt text;
+    preferences: record {
+        notificationsEnabled: bool;
+        theme: text;
+    };
+    stats: record {
+        totalScrapes: nat64;
+        totalDataContributed: nat64;
+        reputation: nat64;
+    };
+};
+
+type ProfileUpdate = record {
+    displayName: opt text;
+    email: opt text;
+    preferences: opt record {
+        notificationsEnabled: bool;
+        theme: text;
+    };
+};
+
+type Error = variant {
+    NotFound;
+    AlreadyExists;
+    NotAuthorized;
+    InvalidInput: text;
+};
+
+type Result = variant {
+    Ok: Profile;
+    Err: Error;
+};
+
+type Stats = record {
+    totalUsers: nat64;
+    activeUsers: nat64;
+    totalDataContributed: nat64;
+};
+
+service : {
+    // Profile management
+    createProfile: () -> (Result);
+    getProfile: () -> (Result) query;
+    updateProfile: (ProfileUpdate) -> (Result);
+    deleteProfile: () -> (Result);
+
+    // Device management
+    addDevice: (text) -> (Result);
+    removeDevice: (text) -> (Result);
+    listDevices: () -> (vec text) query;
+
+    // Stats
+    getStats: () -> (Stats) query;
+    updateStats: (record { dataContributed: nat64 }) -> (Result);
+
+    // Admin functions
+    getUsers: () -> (vec Profile) query;
+    clearInactiveUsers: (nat64) -> ();
+};
