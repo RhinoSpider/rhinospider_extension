@@ -1,0 +1,35 @@
+type Task = record {
+    id: text;
+    url: text;
+    topic: text;
+    priority: nat;
+    createdAt: int;
+    assignedTo: opt principal;
+    status: text;
+};
+
+type TaskConfig = record {
+    topics: vec text;
+    targetSites: vec text;
+    scanInterval: nat;
+    maxBandwidthPerDay: nat;
+};
+
+type Result = variant {
+    ok: nat;
+    err: text;
+};
+
+type Result_1 = variant {
+    ok;
+    err: text;
+};
+
+service : {
+    init: () -> ();
+    getTasks: (nat) -> (vec Task);
+    addTasks: (vec Task) -> (Result);
+    updateTaskStatus: (text, text) -> (Result_1);
+    getConfig: () -> (TaskConfig) query;
+    updateConfig: (TaskConfig) -> (Result_1);
+}

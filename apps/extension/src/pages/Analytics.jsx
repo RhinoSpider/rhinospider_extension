@@ -5,10 +5,12 @@ import {
   Download, 
   Clock, 
   Activity,
-  ArrowLeft
+  ArrowLeft,
+  Settings
 } from 'lucide-react';
 import { useAuthContext } from '@rhinospider/web3-client';
 import { theme } from '../styles/theme';
+import { getTodayStats, getConfig, updateConfig } from '../services/scraping';
 
 const Logo = () => (
   <div className="text-white text-2xl font-mono tracking-wider">
@@ -44,165 +46,124 @@ const StatCard = ({ icon: Icon, label, value, subValue }) => (
 const Analytics = () => {
   const navigate = useNavigate();
   const { identity } = useAuthContext();
-  const [bandwidthStats, setBandwidthStats] = useState({
-    currentSession: {
-      bytesDownloaded: 0,
-      bytesUploaded: 0,
-      startTime: null
-    },
-    total: {
-      bytesDownloaded: 0,
-      bytesUploaded: 0,
-      sessions: 0
-    }
-  });
-  const [currentSpeeds, setCurrentSpeeds] = useState({
-    download: 0,
-    upload: 0
-  });
-  const [internetSpeed, setInternetSpeed] = useState('Checking...');
-  const [uptime, setUptime] = useState('0 mins');
-
-  const isExtension = typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id;
+  const [stats, setStats] = useState(null);
+  const [config, setConfig] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (!identity) {
-      navigate('/login');
-      return;
+    const loadData = async () => {
+      try {
+        const [todayStats, currentConfig] = await Promise.all([
+          getTodayStats(),
+          getConfig()
+        ]);
+        setStats(todayStats);
+        setConfig(currentConfig);
+      } catch (error) {
+        console.error('Error loading stats:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadData();
+    // Refresh every minute
+    const interval = setInterval(loadData, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleToggleScraping = async () => {
+    if (config) {
+      const newConfig = { ...config, enabled: !config.enabled };
+      await updateConfig(newConfig);
+      setConfig(newConfig);
+      chrome.runtime.sendMessage({ type: 'UPDATE_CONFIG' });
     }
+  };
 
-    // Only set up message listeners in extension mode
-    if (isExtension) {
-      const bandwidthListener = (message) => {
-        if (message.type === 'BANDWIDTH_UPDATE') {
-          setBandwidthStats(message.stats);
-          setCurrentSpeeds(message.currentSpeeds || { download: 0, upload: 0 });
-        }
-      };
-
-      chrome.runtime.onMessage.addListener(bandwidthListener);
-      return () => {
-        chrome.runtime.onMessage.removeListener(bandwidthListener);
-      };
-    } else {
-      // In development mode, simulate some data updates
-      const interval = setInterval(() => {
-        setBandwidthStats(prev => ({
-          currentSession: {
-            bytesDownloaded: prev.currentSession.bytesDownloaded + 1024 * 100,
-            bytesUploaded: prev.currentSession.bytesUploaded + 1024 * 50,
-            startTime: prev.currentSession.startTime || Date.now()
-          },
-          total: {
-            bytesDownloaded: prev.total.bytesDownloaded + 1024 * 100,
-            bytesUploaded: prev.total.bytesUploaded + 1024 * 50,
-            sessions: 1
-          }
-        }));
-        setCurrentSpeeds({
-          download: 1024 * 1024 * 2, // 2 MB/s
-          upload: 1024 * 1024 // 1 MB/s
-        });
-        setInternetSpeed('100 Mbps');
-      }, 1000);
-
-      return () => clearInterval(interval);
-    }
-  }, [identity, navigate]);
-
-  // Update uptime
-  useEffect(() => {
-    const startTime = bandwidthStats.currentSession.startTime;
-    if (startTime) {
-      const updateUptime = () => {
-        const diff = Date.now() - startTime;
-        const minutes = Math.floor(diff / (1000 * 60));
-        const hours = Math.floor(minutes / 60);
-        if (hours > 0) {
-          setUptime(`${hours}h ${minutes % 60}m`);
-        } else {
-          setUptime(`${minutes}m`);
-        }
-      };
-
-      updateUptime();
-      const interval = setInterval(updateUptime, 60000); // Update every minute
-      return () => clearInterval(interval);
-    }
-  }, [bandwidthStats.currentSession.startTime]);
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[#0F0E13] to-[#1B1B1F] p-6">
+        <div className="flex justify-center items-center h-full">
+          <div className="text-white">Loading...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div 
-      className="w-[400px] h-[600px] overflow-auto"
-      style={{ background: theme.colors.background.gradient }}
-    >
+    <div className="min-h-screen bg-gradient-to-br from-[#0F0E13] to-[#1B1B1F] p-6">
       {/* Header */}
-      <div className="p-4 flex justify-between items-center sticky top-0 z-10 backdrop-blur-sm bg-[#131217]/40">
-        <div className="flex items-center gap-2">
-          <button 
-            onClick={() => navigate('/')}
-            className="p-1 hover:bg-white/10 rounded-full"
-          >
-            <ArrowLeft className="w-5 h-5 text-white" />
-          </button>
-          <Logo />
-          <span className="text-white text-lg">Analytics</span>
+      <div className="flex items-center justify-between mb-8">
+        <button
+          onClick={() => navigate('/dashboard')}
+          className="text-white/60 hover:text-white flex items-center gap-2"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back
+        </button>
+        <Logo />
+        <button
+          onClick={handleToggleScraping}
+          className={`px-3 py-1 rounded-full text-sm flex items-center gap-2 ${
+            config?.enabled 
+              ? 'bg-green-500/20 text-green-500' 
+              : 'bg-red-500/20 text-red-500'
+          }`}
+        >
+          <Settings className="w-4 h-4" />
+          {config?.enabled ? 'Active' : 'Paused'}
+        </button>
+      </div>
+
+      {/* Stats Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <StatCard
+          icon={Download}
+          label="Downloaded"
+          value={formatBytes(stats?.bytesDownloaded || 0)}
+          subValue={`${stats?.requestsMade || 0} requests made`}
+        />
+        <StatCard
+          icon={Upload}
+          label="Uploaded"
+          value={formatBytes(stats?.bytesUploaded || 0)}
+        />
+      </div>
+
+      {/* Topics */}
+      <div className="bg-[#131217]/40 backdrop-blur-sm rounded-lg p-4 mb-6">
+        <h3 className="text-white/60 text-sm mb-3">Active Topics</h3>
+        <div className="flex flex-wrap gap-2">
+          {config?.topics.map((topic) => (
+            <span
+              key={topic}
+              className="px-3 py-1 rounded-full bg-[#B692F6]/20 text-[#B692F6] text-sm"
+            >
+              {topic}
+            </span>
+          ))}
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="p-4 space-y-4">
-        {/* Current Session */}
-        <div className="space-y-4">
-          <h2 className="text-white text-lg">Current Session</h2>
-          <div className="grid grid-cols-2 gap-3">
-            <StatCard
-              icon={Upload}
-              label="Upload"
-              value={formatBytes(bandwidthStats.currentSession.bytesUploaded)}
-              subValue={formatSpeed(currentSpeeds.upload)}
-            />
-            <StatCard
-              icon={Download}
-              label="Download"
-              value={formatBytes(bandwidthStats.currentSession.bytesDownloaded)}
-              subValue={formatSpeed(currentSpeeds.download)}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <StatCard
-              icon={Clock}
-              label="Uptime"
-              value={uptime}
-            />
-            <StatCard
-              icon={Activity}
-              label="Speed"
-              value={internetSpeed}
-            />
-          </div>
-        </div>
-
-        {/* Total Stats */}
-        <div className="space-y-4 mt-6">
-          <h2 className="text-white text-lg">Total Statistics</h2>
-          <div className="grid grid-cols-2 gap-3">
-            <StatCard
-              icon={Upload}
-              label="Total Upload"
-              value={formatBytes(bandwidthStats.total.bytesUploaded)}
-            />
-            <StatCard
-              icon={Download}
-              label="Total Download"
-              value={formatBytes(bandwidthStats.total.bytesDownloaded)}
-            />
-          </div>
-          <StatCard
-            icon={Clock}
-            label="Total Sessions"
-            value={bandwidthStats.total.sessions}
+      {/* Bandwidth Limit */}
+      <div className="bg-[#131217]/40 backdrop-blur-sm rounded-lg p-4">
+        <h3 className="text-white/60 text-sm mb-3">Bandwidth Usage</h3>
+        <div className="w-full bg-white/10 rounded-full h-2 mb-2">
+          <div
+            className="bg-[#B692F6] h-full rounded-full"
+            style={{
+              width: `${(stats?.bytesDownloaded / config?.maxBandwidthPerDay) * 100}%`
+            }}
           />
+        </div>
+        <div className="flex justify-between text-sm">
+          <span className="text-white/60">
+            {formatBytes(stats?.bytesDownloaded || 0)}
+          </span>
+          <span className="text-white/60">
+            {formatBytes(config?.maxBandwidthPerDay || 0)}
+          </span>
         </div>
       </div>
     </div>

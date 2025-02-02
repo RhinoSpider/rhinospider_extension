@@ -1,0 +1,45 @@
+type Client = record {
+    id: text;
+    principal: principal;
+    registeredAt: int;
+    lastActive: int;
+    isActive: bool;
+    bandwidthLimit: nat;
+};
+
+type ClientStats = record {
+    bytesUploaded: nat;
+    bytesDownloaded: nat;
+    lastUpdate: int;
+};
+
+type Result = variant {
+    ok: Client;
+    err: text;
+};
+
+type Result_1 = variant {
+    ok;
+    err: text;
+};
+
+type Result_2 = variant {
+    ok: ClientStats;
+    err: text;
+};
+
+type Result_3 = variant {
+    ok: vec Client;
+    err: text;
+};
+
+service : {
+    init: () -> ();
+    registerClient: (nat) -> (Result);
+    updateStats: (nat, nat) -> (Result_1);
+    isAuthorized: (principal) -> (bool) query;
+    deactivateClient: (principal) -> (Result_1);
+    updateBandwidthLimit: (principal, nat) -> (Result_1);
+    getClientStats: () -> (Result_2) query;
+    getAllClients: () -> (Result_3) query;
+}

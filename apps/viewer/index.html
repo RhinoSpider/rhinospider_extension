@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RhinoSpider Data Viewer</title>
+    <script src="https://unpkg.com/@dfinity/agent/dist/index.js"></script>
+    <script src="https://unpkg.com/@dfinity/principal/dist/index.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-3xl font-bold mb-8">RhinoSpider Data Viewer</h1>
+        
+        <div class="mb-6">
+            <h2 class="text-xl font-semibold mb-4">Storage Stats</h2>
+            <div id="stats" class="bg-white rounded-lg shadow p-4">
+                Loading stats...
+            </div>
+        </div>
+
+        <div class="mb-6">
+            <h2 class="text-xl font-semibold mb-4">Search Data</h2>
+            <div class="flex gap-4 mb-4">
+                <input type="text" id="searchTopic" placeholder="Enter topic" 
+                       class="flex-1 p-2 border rounded">
+                <button onclick="searchByTopic()" 
+                        class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                    Search
+                </button>
+            </div>
+        </div>
+
+        <div class="mb-6">
+            <h2 class="text-xl font-semibold mb-4">Results</h2>
+            <div id="results" class="bg-white rounded-lg shadow p-4">
+                No results yet...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Replace with your canister ID after deployment
+        const STORAGE_CANISTER_ID = 'YOUR_STORAGE_CANISTER_ID';
+        
+        // Initialize agent
+        const agent = new window.ic.HttpAgent({
+            host: 'http://localhost:8000'
+        });
+
+        // Create actor
+        const storageActor = window.ic.Actor.createActor({
+            // This is the interface from storage.did
+            getStats: () => {},
+            getByTopic: (topic) => {},
+            getBySource: (source) => {},
+        }, {
+            agent,
+            canisterId: STORAGE_CANISTER_ID
+        });
+
+        // Load stats on page load
+        async function loadStats() {
+            try {
+                const stats = await storageActor.getStats();
+                document.getElementById('stats').innerHTML = `
+                    <div class="grid grid-cols-3 gap-4">
+                        <div>
+                            <p class="text-gray-600">Total Items</p>
+                            <p class="text-2xl font-bold">${stats.totalItems}</p>
+                        </div>
+                        <div>
+                            <p class="text-gray-600">Total Bytes</p>
+                            <p class="text-2xl font-bold">${(stats.totalBytes / 1024 / 1024).toFixed(2)} MB</p>
+                        </div>
+                        <div>
+                            <p class="text-gray-600">Last Update</p>
+                            <p class="text-2xl font-bold">${new Date(Number(stats.lastUpdate) / 1000000).toLocaleString()}</p>
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                document.getElementById('stats').innerHTML = `Error loading stats: ${error.message}`;
+            }
+        }
+
+        // Search by topic
+        async function searchByTopic() {
+            const topic = document.getElementById('searchTopic').value;
+            if (!topic) return;
+
+            try {
+                const results = await storageActor.getByTopic(topic);
+                const resultsHtml = results.map(item => `
+                    <div class="border-b py-4">
+                        <p class="font-semibold">${item.url}</p>
+                        <p class="text-gray-600">Topic: ${item.topic}</p>
+                        <p class="text-gray-600">Source: ${item.source}</p>
+                        <p class="text-gray-600">Time: ${new Date(Number(item.timestamp) / 1000000).toLocaleString()}</p>
+                        <p class="mt-2">${item.content.substring(0, 200)}...</p>
+                    </div>
+                `).join('') || 'No results found';
+                
+                document.getElementById('results').innerHTML = resultsHtml;
+            } catch (error) {
+                document.getElementById('results').innerHTML = `Error searching: ${error.message}`;
+            }
+        }
+
+        // Load stats on page load
+        loadStats();
+    </script>
+</body>
+</html>
