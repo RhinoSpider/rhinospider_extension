@@ -17,10 +17,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: 18
 
@@ -35,7 +35,7 @@ jobs:
           echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
 
       - name: Setup pnpm cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ${{ env.STORE_PATH }}
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
@@ -45,16 +45,25 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+      - name: Create env file
+        run: |
+          echo "VITE_II_URL=https://identity.ic0.app" > apps/extension/.env
+
       - name: Lint
         run: pnpm --filter extension lint
 
       - name: Test
         run: pnpm --filter extension test
+        env:
+          NODE_ENV: test
+          CI: true
 
       - name: Build
         run: pnpm --filter extension build
+        env:
+          NODE_ENV: production
 
-      - name: Package Extension
+      - name: Create extension zip
         if: github.ref == 'refs/heads/main'
         run: |
           cd apps/extension/build
@@ -66,11 +75,10 @@ jobs:
         with:
           name: extension-build
           path: apps/extension/extension.zip
-          retention-days: 5
 
-  create-release:
+  publish:
     needs: build-and-test
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Download Build
@@ -78,9 +86,7 @@ jobs:
         with:
           name: extension-build
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: extension.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload to Chrome Web Store
+        if: false # Disabled until we have the Chrome Web Store credentials
+        run: |
+          echo "Chrome Web Store upload will be implemented here"
