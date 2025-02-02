@@ -31,9 +31,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+      - name: Create env file
+        run: |
+          echo "VITE_II_URL=https://identity.ic0.app" > packages/web3-client/.env
+
       - name: Run Web3 Client Tests
         run: pnpm --filter web3-client test
         env:
+          NODE_ENV: test
+          CI: true
           NFID_TEST_CLIENT_ID: ${{ secrets.NFID_TEST_CLIENT_ID }}
           NFID_TEST_SECRET: ${{ secrets.NFID_TEST_SECRET }}
 
@@ -48,28 +54,43 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install DFX
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Setup DFX
         env:
           DFX_VERSION: 0.15.1
         run: |
           echo "Installing DFX ${DFX_VERSION}..."
-          sh -ci "$(curl -fsSL https://internetcomputer.org/install.sh)"
+          DFX_VERSION=$DFX_VERSION bash -ci "$(curl -fsSL https://internetcomputer.org/install.sh)"
+          echo "$HOME/bin" >> $GITHUB_PATH
           dfx --version
 
       - name: Start DFX
         run: |
-          dfx start --background
+          dfx start --background --clean
+          sleep 5
           dfx --version
 
-      - name: Deploy Local Internet Identity
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build and Deploy Canisters
         run: |
-          dfx deploy internet_identity
+          dfx canister create --all
+          dfx build
+          dfx canister install --all --mode=reinstall
         working-directory: ./canisters
 
       - name: Run Canister Tests
         run: |
-          dfx canister call internet_identity init
-          dfx deploy
           dfx canister call auth run_tests
           dfx canister call storage run_tests
           dfx canister call billing run_tests
@@ -104,11 +125,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      - name: Start Test Environment
-        run: |
-          dfx start --background
-          dfx deploy
-          pnpm test:integration
+      - name: Run Integration Tests
+        run: pnpm test:integration
+        env:
+          NODE_ENV: test
+          CI: true
 
       - name: Upload Test Results
         if: always()
@@ -116,4 +137,3 @@ jobs:
         with:
           name: integration-test-results
           path: test-results/
-          retention-days: 14
