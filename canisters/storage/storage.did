@@ -1,0 +1,34 @@
+type ScrapedData = record {
+    id: text;
+    url: text;
+    topic: text;
+    source: text;
+    content: text;
+    timestamp: int;
+    clientId: principal;
+};
+
+type DataBatch = record {
+    items: vec ScrapedData;
+    clientId: principal;
+    batchId: text;
+};
+
+type StorageStats = record {
+    totalItems: nat;
+    totalBytes: nat;
+    lastUpdate: int;
+};
+
+type Result = variant {
+    ok: nat;
+    err: text;
+};
+
+service : {
+    storeBatch: (DataBatch) -> (Result);
+    getByTopic: (text) -> (vec ScrapedData) query;
+    getBySource: (text) -> (vec ScrapedData) query;
+    getStats: () -> (StorageStats) query;
+    getCycles: () -> (nat) query;
+}
