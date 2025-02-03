@@ -1,15 +1,18 @@
 {
     "manifest_version": 3,
     "name": "RhinoSpider",
-    "version": "1.0.0",
-    "description": "AI-powered content aggregator for developers",
+    "version": "1.2.8",
+    "description": "RhinoSpider Extension",
     "permissions": [
-        "activeTab",
-        "storage"
+        "storage",
+        "tabs"
     ],
     "host_permissions": [
-        "http://localhost:3001/*"
+        "https://identity.ic0.app/*"
     ],
+    "content_security_policy": {
+        "extension_pages": "script-src 'self'; object-src 'self'; frame-src 'self' https://identity.ic0.app;"
+    },
     "action": {
         "default_popup": "popup.html",
         "default_icon": {
@@ -18,9 +21,21 @@
             "128": "icons/icon128.png"
         }
     },
+    "background": {
+        "service_worker": "background.js",
+        "type": "module"
+    },
     "icons": {
         "16": "icons/icon16.png",
         "48": "icons/icon48.png",
         "128": "icons/icon128.png"
-    }
+    },
+    "web_accessible_resources": [{
+        "resources": [
+            "index.html",
+            "icons/*",
+            "assets/*"
+        ],
+        "matches": ["<all_urls>"]
+    }]
 }
