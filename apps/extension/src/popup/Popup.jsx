@@ -1,8 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { AuthClient } from '@rhinospider/web3-client';
+import { AuthClient, AuthProvider } from '@rhinospider/web3-client';
+import { Routes, Route, useNavigate } from 'react-router-dom';
+import Settings from '../pages/Settings';
+import Profile from '../pages/Profile';
+import Referrals from '../pages/Referrals';
+import Home from './Home';
 import './Popup.css';
 
 const Popup = () => {
+  const navigate = useNavigate();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoginPending, setIsLoginPending] = useState(false);
@@ -12,6 +18,8 @@ const Popup = () => {
   const [uptime, setUptime] = useState('2 hrs 45 mins');
   const [isPluginActive, setIsPluginActive] = useState(true);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [bandwidthSpeed, setBandwidthSpeed] = useState('medium'); // Can be 'low', 'medium', 'high'
+  const [currentSpeed, setCurrentSpeed] = useState('2.5 MB/s');
   const userMenuRef = useRef(null);
 
   useEffect(() => {
@@ -52,37 +60,35 @@ const Popup = () => {
     };
 
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  useEffect(() => {
+    // Simulating bandwidth speed updates
+    const updateSpeed = () => {
+      // This would be replaced with actual speed measurement
+      const speeds = ['low', 'medium', 'high'];
+      const speedValues = ['1.2 MB/s', '2.5 MB/s', '5.0 MB/s'];
+      const randomIndex = Math.floor(Math.random() * speeds.length);
+      setBandwidthSpeed(speeds[randomIndex]);
+      setCurrentSpeed(speedValues[randomIndex]);
+    };
+
+    const interval = setInterval(updateSpeed, 5000); // Update every 5 seconds
+    return () => clearInterval(interval);
   }, []);
 
   const handleLogin = async () => {
     try {
       setIsLoginPending(true);
-      setError(null);
-      
       const authClient = AuthClient.getInstance();
       await authClient.login();
-      
-      const state = authClient.getState();
-      console.log('Auth state after login:', state);
-      
-      if (state.isAuthenticated && state.identity) {
-        setIsAuthenticated(true);
-        try {
-          const userData = await authClient.getUserData();
-          if (userData?.avatar) {
-            setAvatar(userData.avatar);
-          }
-        } catch (err) {
-          console.error('Failed to fetch user data:', err);
-        }
-      } else {
-        throw new Error('Authentication failed');
-      }
-    } catch (err) {
-      console.error('Login failed:', err);
-      setError('Login failed. Please try again.');
-      setIsAuthenticated(false);
+      setIsAuthenticated(true);
+    } catch (error) {
+      console.error('Login failed:', error);
+      setError('Failed to login');
     } finally {
       setIsLoginPending(false);
     }
@@ -97,6 +103,7 @@ const Popup = () => {
       setIsUserMenuOpen(false);
     } catch (error) {
       console.error('Logout failed:', error);
+      setError('Failed to logout');
     }
   };
 
@@ -105,8 +112,8 @@ const Popup = () => {
   };
 
   const navigateToPage = (page) => {
-    const url = chrome.runtime.getURL(`pages/${page}.html`);
-    chrome.tabs.create({ url });
+    navigate(`/${page}`);
+    setIsUserMenuOpen(false);
   };
 
   if (isLoading) {
@@ -165,135 +172,95 @@ const Popup = () => {
   }
 
   return (
-    <div className="flex flex-col w-[360px] h-[600px] bg-gradient-to-b from-[#131217] via-[#360D68] to-[#131217] text-white overflow-hidden">
-      <header className="flex items-center justify-between p-4">
-        <div className="flex items-center space-x-3">
-          <span className="text-xl font-mono">{'>^<'}</span>
-          <span className="text-xl font-semibold">RhinoSpider</span>
-        </div>
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={() => navigateToPage('analytics')}
-            className="p-2 hover:bg-white/10 rounded-lg"
-            title="Analytics"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M3 3v18h18" />
-              <path d="M18 9l-6 6-3-3-5 5" />
-            </svg>
-          </button>
-          <button
-            onClick={() => navigateToPage('settings')}
-            className="p-2 hover:bg-white/10 rounded-lg"
-            title="Settings"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M12 15a3 3 0 100-6 3 3 0 000 6z" />
-              <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" />
-            </svg>
-          </button>
-          <div className="relative" ref={userMenuRef}>
+    <AuthProvider>
+      <div className="w-[400px] min-h-[600px] bg-gradient-to-br from-[#131217] via-[#360D68] to-[#B692F6] text-white">
+        <div className="flex items-center justify-between p-4 border-b border-white/10">
+          <div className="flex items-center space-x-2">
+            <span className="font-mono text-lg">{">^<"}</span>
+            <span className="font-semibold text-white">RhinoSpider</span>
+          </div>
+          <div className="flex items-center space-x-2">
             <button
-              onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-              className="w-8 h-8 rounded-full flex items-center justify-center bg-white/20 hover:bg-white/30 transition-colors"
+              onClick={() => navigateToPage('settings')}
+              className="p-2 hover:bg-white/10 rounded-lg"
+              title="Settings"
             >
-              {avatar ? (
-                <img src={avatar} alt="User" className="w-8 h-8 rounded-full" />
-              ) : (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                  <circle cx="12" cy="7" r="4" />
-                </svg>
-              )}
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" />
+              </svg>
             </button>
-            
-            {isUserMenuOpen && (
-              <div className="absolute right-0 mt-2 w-48 rounded-lg bg-[#1A1A1F] border border-white/10 shadow-lg py-1 z-10">
-                <div className="px-4 py-2 text-sm text-gray-300 border-b border-white/10">
-                  <div className="font-medium">Your Account</div>
-                  <div className="text-xs text-gray-400 truncate">Principal ID: {AuthClient.getInstance().getState()?.identity?.getPrincipal()}</div>
+            <div className="relative" ref={userMenuRef}>
+              <button
+                onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                className="flex items-center space-x-2 p-2 hover:bg-white/10 rounded-lg"
+              >
+                {avatar ? (
+                  <img src={avatar} alt="User" className="w-6 h-6 rounded-full" />
+                ) : (
+                  <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                      <circle cx="12" cy="7" r="4" />
+                    </svg>
+                  </div>
+                )}
+              </button>
+              {isUserMenuOpen && (
+                <div className="absolute right-0 mt-2 w-48 bg-[#1B1B1F] rounded-lg shadow-xl border border-white/10 py-1 z-50">
+                  <div className="px-4 py-2 text-sm text-gray-300 border-b border-white/10">
+                    <div className="font-medium">Your Account</div>
+                    <div className="text-xs text-gray-400 truncate">
+                      {AuthClient.getInstance().getState()?.identity?.getPrincipal()}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => navigateToPage('profile')}
+                    className="w-full text-left px-4 py-2 text-sm text-white hover:bg-white/10"
+                  >
+                    Profile
+                  </button>
+                  <button
+                    onClick={() => window.open(chrome.runtime.getURL('pages/analytics.html'), '_blank')}
+                    className="w-full text-left px-4 py-2 text-sm text-white hover:bg-white/10"
+                  >
+                    Analytics
+                  </button>
+                  <button
+                    onClick={() => navigateToPage('referrals')}
+                    className="w-full text-left px-4 py-2 text-sm text-white hover:bg-white/10"
+                  >
+                    Referrals
+                  </button>
+                  <button
+                    onClick={handleLogout}
+                    className="w-full text-left px-4 py-2 text-sm text-white hover:bg-white/10 border-t border-white/10"
+                  >
+                    Sign Out
+                  </button>
                 </div>
-                <button
-                  onClick={() => navigateToPage('profile')}
-                  className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-white/10"
-                >
-                  Profile Settings
-                </button>
-                <button
-                  onClick={() => navigateToPage('referrals')}
-                  className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-white/10"
-                >
-                  My Referrals
-                </button>
-                <button
-                  onClick={handleLogout}
-                  className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-white/10"
-                >
-                  Sign Out
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </header>
-
-      <main className="flex-1 p-4 flex flex-col">
-        <div className="text-center mb-6">
-          <h2 className="text-lg text-gray-200 mb-2">Current Earnings</h2>
-          <div className="text-4xl font-bold mb-4 text-white">{points.toLocaleString()} Points</div>
-        </div>
-
-        <button
-          onClick={togglePlugin}
-          className={`w-24 h-24 rounded-full mx-auto mb-6 flex items-center justify-center transition-all ${
-            isPluginActive ? 'bg-white/20 hover:bg-white/30' : 'bg-white/10 hover:bg-white/20'
-          }`}
-        >
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M18.36 6.64a9 9 0 1 1-12.73 0" />
-            <line x1="12" y1="2" x2="12" y2="12" />
-          </svg>
-        </button>
-
-        <div className="text-center mb-6">
-          <div className={`text-sm font-medium ${isPluginActive ? 'text-green-400' : 'text-red-400'}`}>
-            {isPluginActive ? 'Your plugin is active. No action required.' : 'Plugin is disconnected. Click to connect!'}
-          </div>
-          <div className="text-sm text-gray-200 mt-2">
-            <span className="font-medium">Uptime:</span> {uptime}
-          </div>
-          <div className="text-sm text-gray-300 mt-1">
-            Great job! Keep contributing to secure your next milestone reward.
+              )}
+            </div>
           </div>
         </div>
 
-        <div className="mt-auto space-y-3 pb-4">
-          <button
-            onClick={() => navigator.clipboard.writeText('your-referral-link')}
-            className="w-full bg-white/20 hover:bg-white/30 text-white py-3 rounded-lg transition-colors"
-          >
-            Copy Your Referral Link
-          </button>
-          <button
-            onClick={() => navigateToPage('referrals')}
-            className="w-full bg-white/20 hover:bg-white/30 text-white py-3 rounded-lg transition-colors"
-          >
-            View My Referrals
-          </button>
-          <button
-            onClick={() => navigateToPage('analytics')}
-            className="w-full bg-white/20 hover:bg-white/30 text-white py-3 rounded-lg transition-colors flex items-center justify-center space-x-2"
-          >
-            <span>Desktop Dashboard</span>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-              <polyline points="15 3 21 3 21 9" />
-              <line x1="10" y1="14" x2="21" y2="3" />
-            </svg>
-          </button>
-        </div>
-      </main>
-    </div>
+        <Routes>
+          <Route path="/" element={
+            <Home 
+              points={points} 
+              uptime={uptime} 
+              isPluginActive={isPluginActive} 
+              togglePlugin={togglePlugin}
+              bandwidthSpeed={bandwidthSpeed}
+              currentSpeed={currentSpeed}
+            />
+          } />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/referrals" element={<Referrals />} />
+        </Routes>
+      </div>
+    </AuthProvider>
   );
 };
 

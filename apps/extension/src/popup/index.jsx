@@ -1,5 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
+import { HashRouter } from 'react-router-dom';
 import Popup from './Popup';
 import '../index.css';
 import './Popup.css';
@@ -56,7 +57,9 @@ const root = createRoot(container);
 root.render(
   <React.StrictMode>
     <ErrorBoundary>
-      <Popup />
+      <HashRouter>
+        <Popup />
+      </HashRouter>
     </ErrorBoundary>
   </React.StrictMode>
 );

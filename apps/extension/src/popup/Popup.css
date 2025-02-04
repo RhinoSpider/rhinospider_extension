@@ -229,6 +229,7 @@
   flex-direction: column;
   gap: 24px;
   overflow-y: auto;
+  background: #1B1B1F;
 }
 
 h2 {
@@ -285,9 +286,9 @@ h2 {
 
 .stat {
   flex: 1;
-  background: rgba(255, 255, 255, 0.1);
-  padding: 12px;
-  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 1rem;
+  border-radius: 0.5rem;
 }
 
 .stat label {
@@ -325,4 +326,31 @@ h2 {
 
 .action-buttons button:hover {
   background: rgba(255, 255, 255, 0.2);
+}
+
+.popup-container {
+  width: 100%;
+  min-height: 600px;
+  background: #1B1B1F;
+  color: white;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 600px;
+  overflow: hidden;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+}
+
+.popup-container * {
+  box-sizing: border-box;
 }

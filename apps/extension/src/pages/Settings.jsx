@@ -33,100 +33,76 @@ const Settings = () => {
   const handleLogout = async () => {
     try {
       await logout();
-      navigate('/login');
+      navigate('/');
     } catch (error) {
       console.error('Error logging out:', error);
-      setError(error.message);
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="w-80 min-h-96 bg-gradient-to-b from-gray-900 to-purple-900 p-6 text-white">
-        <div className="flex justify-center items-center h-64">
-          <div className="text-white">Loading...</div>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="w-80 min-h-96 bg-gradient-to-b from-gray-900 to-purple-900 p-6 text-white">
-        <div className="flex justify-center items-center h-64">
-          <div className="text-red-500">Error: {error}</div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="w-80 min-h-96 bg-gradient-to-b from-gray-900 to-purple-900 p-6 text-white">
-      <div className="flex items-center justify-between mb-8">
-        <div className="flex items-center space-x-4">
-          <button
-            onClick={() => navigate('/')}
-            className="text-white/60 hover:text-white"
-          >
-            <ArrowLeft className="w-6 h-6" />
-          </button>
-          <div className="flex items-center space-x-2">
-            <span className="text-xl font-mono text-white">{">^<"}</span>
-            <span className="text-xl font-semibold">RhinoSpider</span>
-          </div>
-        </div>
+    <div className="p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() => navigate('/')}
+          className="flex items-center text-gray-400 hover:text-white transition-colors"
+        >
+          <ArrowLeft className="w-5 h-5 mr-2" />
+          <span className="text-sm">Back</span>
+        </button>
+        <button
+          onClick={handleLogout}
+          className="flex items-center text-gray-400 hover:text-white transition-colors"
+        >
+          <LogOut className="w-5 h-5 mr-2" />
+          <span className="text-sm">Logout</span>
+        </button>
       </div>
 
       <div className="space-y-6">
-        <div>
-          <h2 className="text-gray-400 mb-2">Account</h2>
-          <div className="space-y-2">
-            <div className="px-4 py-2 bg-gray-800/50 rounded-lg">
-              <div className="text-sm text-gray-400">Username</div>
-              <div>{user?.email?.split('@')[0] || 'Not available'}</div>
+        <h1 className="text-xl font-bold text-white">Settings</h1>
+
+        {isLoading ? (
+          <div className="text-sm text-gray-400">Loading settings...</div>
+        ) : error ? (
+          <div className="text-sm text-red-500">{error}</div>
+        ) : (
+          <div className="space-y-4">
+            <div className="bg-white/5 rounded-lg p-4">
+              <h2 className="text-base font-semibold text-white mb-2">User Profile</h2>
+              <div className="text-sm text-gray-400">
+                <p>Principal ID: {user?.principal?.toString()}</p>
+              </div>
             </div>
-            <div className="px-4 py-2 bg-gray-800/50 rounded-lg">
-              <div className="text-sm text-gray-400">Email</div>
-              <div>{user?.email || 'Not available'}</div>
-            </div>
+
+            {config && (
+              <div className="bg-white/5 rounded-lg p-4">
+                <h2 className="text-base font-semibold text-white mb-2">Scraping Settings</h2>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 mb-1">
+                      Status
+                    </label>
+                    <div className="text-sm text-white">{config.enabled ? 'Active' : 'Inactive'}</div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 mb-1">
+                      Max Requests/Day
+                    </label>
+                    <div className="text-sm text-white">{config.maxRequestsPerDay || 'Not set'}</div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 mb-1">
+                      Max Bandwidth/Day
+                    </label>
+                    <div className="text-sm text-white">
+                      {config.maxBandwidthPerDay ? `${(config.maxBandwidthPerDay / (1024 * 1024)).toFixed(2)} MB` : 'Not set'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-
-        <div>
-          <h2 className="text-gray-400 mb-2">Scraping Settings</h2>
-          <div className="space-y-2">
-            <div className="px-4 py-2 bg-gray-800/50 rounded-lg">
-              <div className="text-sm text-gray-400">Status</div>
-              <div>{config?.enabled ? 'Active' : 'Inactive'}</div>
-            </div>
-            <div className="px-4 py-2 bg-gray-800/50 rounded-lg">
-              <div className="text-sm text-gray-400">Max Requests/Day</div>
-              <div>{config?.maxRequestsPerDay || 'Not set'}</div>
-            </div>
-            <div className="px-4 py-2 bg-gray-800/50 rounded-lg">
-              <div className="text-sm text-gray-400">Max Bandwidth/Day</div>
-              <div>{config?.maxBandwidthPerDay ? `${(config.maxBandwidthPerDay / (1024 * 1024)).toFixed(2)} MB` : 'Not set'}</div>
-            </div>
-          </div>
-        </div>
-
-        <button
-          onClick={handleLogout}
-          className="w-full flex items-center justify-between px-4 py-2 bg-red-500/20 hover:bg-red-500/30 rounded-lg text-red-400 transition-colors"
-        >
-          <span>Logout</span>
-          <LogOut size={16} />
-        </button>
-
-        <a
-          href="https://rhinospider.com/dashboard"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="w-full bg-purple-500/20 hover:bg-purple-500/30 rounded-lg p-2 text-sm flex items-center justify-center gap-2 transition-colors"
-        >
-          Open Web Dashboard
-          <ChevronDown size={16} />
-        </a>
+        )}
       </div>
     </div>
   );
