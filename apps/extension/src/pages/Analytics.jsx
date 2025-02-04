@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Settings } from 'lucide-react';
+import { useAuth } from '@rhinospider/web3-client';
 import { getTodayStats, getScrapingConfig, updateScrapingConfig } from '../services/api';
 
 export default function Analytics() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [stats, setStats] = useState(null);
   const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(true);

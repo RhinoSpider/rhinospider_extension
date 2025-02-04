@@ -15,11 +15,6 @@ export default function Referrals() {
   useEffect(() => {
     const init = async () => {
       try {
-        if (!user?.isAuthenticated) {
-          setError('Please login to view referrals');
-          return;
-        }
-
         // Generate a referral code based on user's email
         const baseCode = user?.email?.split('@')[0]?.substring(0, 4)?.toUpperCase() || 'RS';
         setReferralCode(baseCode + '-' + Math.random().toString(36).substring(2, 6).toUpperCase());
