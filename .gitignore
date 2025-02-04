@@ -44,3 +44,4 @@ coverage/
 .rollup.cache/
 tsconfig.tsbuildinfo
 node_modules
+.aider*

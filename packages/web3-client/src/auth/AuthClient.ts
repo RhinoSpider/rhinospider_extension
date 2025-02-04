@@ -1,8 +1,22 @@
 import { AuthClient as IcAuthClient } from '@dfinity/auth-client';
 import type { Identity } from '@dfinity/agent';
-import { AuthConfig, AuthState } from './types';
+import { AuthState } from './types';
 
-const II_URL = 'https://identity.ic0.app';
+const II_URL = import.meta.env.VITE_II_URL;
+const STORAGE_CANISTER_ID = import.meta.env.VITE_STORAGE_CANISTER_ID;
+const USER_PROFILE_CANISTER_ID = import.meta.env.VITE_USER_PROFILE_CANISTER_ID;
+
+if (!II_URL) {
+  throw new Error('VITE_II_URL environment variable is not set');
+}
+
+if (!STORAGE_CANISTER_ID) {
+  throw new Error('VITE_STORAGE_CANISTER_ID environment variable is not set');
+}
+
+if (!USER_PROFILE_CANISTER_ID) {
+  throw new Error('VITE_USER_PROFILE_CANISTER_ID environment variable is not set');
+}
 
 export class AuthClient {
   private static instance: AuthClient;
@@ -10,7 +24,7 @@ export class AuthClient {
   private state: AuthState = {
     isAuthenticated: false,
     identity: null,
-    isInitialized: false,
+    isInitialized: true,
     error: null
   };
 
@@ -23,94 +37,217 @@ export class AuthClient {
     return AuthClient.instance;
   }
 
-  async initialize(): Promise<AuthState> {
-    try {
-      this.authClient = await IcAuthClient.create();
-      const isAuthenticated = await this.authClient.isAuthenticated();
+  private async ensureAuthClient() {
+    if (!this.authClient) {
+      this.authClient = await IcAuthClient.create({
+        idleOptions: {
+          disableDefaultIdleCallback: true,
+          disableIdle: true
+        }
+      });
       
+      // Check if we're already authenticated
+      const isAuthenticated = await this.authClient.isAuthenticated();
       if (isAuthenticated) {
+        const identity = this.authClient.getIdentity();
         this.state = {
           isAuthenticated: true,
-          identity: this.authClient.getIdentity(),
+          identity: {
+            getPrincipal: () => identity.getPrincipal().toString()
+          },
           isInitialized: true,
           error: null
         };
-      } else {
-        this.state = {
-          isAuthenticated: false,
-          identity: null,
-          isInitialized: true,
-          error: null
-        };
+        // Store auth state in chrome.storage for persistence
+        await chrome.storage.local.set({ 
+          authState: {
+            isAuthenticated: true,
+            isInitialized: true,
+            error: null,
+            principalId: identity.getPrincipal().toString()
+          },
+          canisterIds: {
+            storage: STORAGE_CANISTER_ID,
+            userProfile: USER_PROFILE_CANISTER_ID
+          }
+        });
       }
-    } catch (error) {
+    }
+    return this.authClient;
+  }
+
+  async initialize(): Promise<AuthState> {
+    try {
+      const authClient = await this.ensureAuthClient();
+      
+      // Check if we're already authenticated with Internet Identity
+      const isAuthenticated = await authClient.isAuthenticated();
+      
+      if (isAuthenticated) {
+        const identity = authClient.getIdentity();
+        const serializedIdentity = {
+          getPrincipal: () => identity.getPrincipal().toString()
+        };
+        
+        this.state = {
+          isAuthenticated: true,
+          identity: serializedIdentity,
+          isInitialized: true,
+          error: null
+        };
+
+        // Store auth state in chrome.storage
+        await chrome.storage.local.set({ 
+          authState: {
+            isAuthenticated: true,
+            isInitialized: true,
+            error: null,
+            principalId: identity.getPrincipal().toString()
+          },
+          canisterIds: {
+            storage: STORAGE_CANISTER_ID,
+            userProfile: USER_PROFILE_CANISTER_ID
+          }
+        });
+
+        return this.state;
+      }
+
+      // Not authenticated
       this.state = {
         isAuthenticated: false,
         identity: null,
         isInitialized: true,
-        error: error instanceof Error ? error : new Error('Failed to initialize auth client')
+        error: null
       };
+      
+      // Clear any stale state
+      await chrome.storage.local.remove(['authState', 'canisterIds']);
+      
+      return this.state;
+    } catch (error: any) {
+      this.state = {
+        isAuthenticated: false,
+        identity: null,
+        isInitialized: true,
+        error: new Error(error?.message || 'Failed to initialize auth')
+      };
+      return this.state;
     }
-
-    return this.state;
   }
 
-  async login(config?: AuthConfig): Promise<AuthState> {
-    if (!this.authClient) {
-      throw new Error('AuthClient not initialized');
-    }
+  async login(): Promise<void> {
+    try {
+      const authClient = await this.ensureAuthClient();
+      
+      return new Promise((resolve, reject) => {
+        authClient.login({
+          identityProvider: II_URL,
+          onSuccess: async () => {
+            try {
+              const identity = authClient.getIdentity();
+              // Convert identity to a serializable format
+              const serializedIdentity = {
+                getPrincipal: () => identity.getPrincipal().toString()
+              };
+              
+              this.state = {
+                isAuthenticated: true,
+                identity: serializedIdentity,
+                isInitialized: true,
+                error: null
+              };
 
-    return new Promise((resolve) => {
-      this.authClient?.login({
-        identityProvider: config?.identityProvider || II_URL,
-        maxTimeToLive: config?.maxTimeToLive || BigInt(7 * 24 * 60 * 60 * 1000 * 1000 * 1000),
-        windowOpenerFeatures: config?.windowOpenerFeatures,
-        onSuccess: () => {
-          if (!this.authClient) return;
-          this.state = {
-            isAuthenticated: true,
-            identity: this.authClient.getIdentity(),
-            isInitialized: true,
-            error: null
-          };
-          config?.onSuccess?.();
-          resolve(this.state);
-        },
-        onError: (error?: string) => {
-          this.state = {
-            isAuthenticated: false,
-            identity: null,
-            isInitialized: true,
-            error: error ? new Error(error) : new Error('Login failed')
-          };
-          if (this.state.error && config?.onError) {
-            config.onError(this.state.error);
-          }
-          resolve(this.state);
-        }
+              // Store auth state in chrome.storage
+              await chrome.storage.local.set({ 
+                authState: {
+                  isAuthenticated: true,
+                  isInitialized: true,
+                  error: null,
+                  principalId: identity.getPrincipal().toString()
+                },
+                canisterIds: {
+                  storage: STORAGE_CANISTER_ID,
+                  userProfile: USER_PROFILE_CANISTER_ID
+                }
+              });
+              
+              resolve();
+            } catch (error) {
+              reject(error);
+            }
+          },
+          onError: (error) => {
+            reject(error);
+          },
+          // Open in a new window instead of a popup for better compatibility with Chrome extension
+          windowOpenerFeatures: `toolbar=0,location=0,menubar=0,width=500,height=600,left=${screen.width/2-250},top=${screen.height/2-300}`,
+          maxTimeToLive: BigInt(7 * 24 * 60 * 60 * 1000 * 1000 * 1000), // 7 days in nanoseconds
+        });
       });
-    });
+    } catch (error: any) {
+      this.state = {
+        ...this.state,
+        error: new Error(error?.message || 'Login failed')
+      };
+      throw error;
+    }
   }
 
   async logout(): Promise<void> {
-    if (!this.authClient) {
-      throw new Error('AuthClient not initialized');
+    try {
+      const authClient = await this.ensureAuthClient();
+      await authClient.logout();
+      
+      this.state = {
+        isAuthenticated: false,
+        identity: null,
+        isInitialized: true,
+        error: null
+      };
+      
+      await chrome.storage.local.remove(['authState', 'canisterIds']);
+    } catch (error: any) {
+      console.error('Logout failed:', error);
+      throw error;
     }
-
-    await this.authClient.logout();
-    this.state = {
-      isAuthenticated: false,
-      identity: null,
-      isInitialized: true,
-      error: null
-    };
   }
 
   getState(): AuthState {
-    return { ...this.state };
+    return {
+      ...this.state,
+      // Ensure we return a clean state object without non-serializable values
+      identity: this.state.identity ? {
+        getPrincipal: () => this.state.identity.getPrincipal().toString()
+      } : null
+    };
   }
 
   getIdentity(): Identity | null {
-    return this.state.identity;
+    return this.state.identity ? {
+      getPrincipal: () => this.state.identity.getPrincipal()
+    } : null;
+  }
+
+  private async setAuthState(newState: Partial<AuthState>) {
+    this.state = {
+      ...this.state,
+      ...newState
+    };
+    await chrome.storage.local.set({ authState: this.state });
+  }
+
+  async getUserData() {
+    if (!this.state.isAuthenticated || !this.state.identity) {
+      throw new Error('Not authenticated');
+    }
+
+    // Get user data from the user profile canister
+    // This is a placeholder - implement actual canister call
+    return {
+      username: 'johndoe',
+      email: 'johndoe@gmail.com',
+      avatar: null
+    };
   }
 }

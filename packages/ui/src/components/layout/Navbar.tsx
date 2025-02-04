@@ -8,7 +8,7 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ onLogout }) => {
-  const auth = useAuth({ appName: 'RhinoSpider' });
+  const auth = useAuth();
   const [loading, setLoading] = React.useState(false);
 
   const handleLogout = async () => {
@@ -28,22 +28,35 @@ export const Navbar: React.FC<NavbarProps> = ({ onLogout }) => {
   }
 
   return (
-    <nav className="bg-white shadow">
+    <nav className="bg-gradient-to-r from-[#131217] via-[#360D68] to-[#B692F6] shadow-lg">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
-          <div className="flex">
-            <div className="flex-shrink-0 flex items-center">
-              <Logo className="h-8 w-auto" />
-            </div>
-          </div>
           <div className="flex items-center">
+            <Logo className="h-8 w-8" />
+            <span className="ml-2 text-xl font-semibold text-white">RhinoSpider</span>
+          </div>
+
+          <div className="flex items-center">
+            {auth.user?.avatar && (
+              <img
+                src={auth.user.avatar}
+                alt="User avatar"
+                className="h-8 w-8 rounded-full mr-4"
+              />
+            )}
             <button
               onClick={handleLogout}
               disabled={loading}
-              className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-gray-500 bg-white hover:text-gray-700 focus:outline-none transition ease-in-out duration-150"
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-white/20 hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 transition-colors"
             >
-              <LogOut className="h-4 w-4 mr-2" />
-              {loading ? 'Signing out...' : 'Sign out'}
+              {loading ? (
+                'Logging out...'
+              ) : (
+                <>
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Logout
+                </>
+              )}
             </button>
           </div>
         </div>

@@ -1,5 +1,9 @@
 import type { Identity } from '@dfinity/agent';
 
+export interface SerializableIdentity {
+  getPrincipal: () => string;
+}
+
 export interface AuthConfig {
   identityProvider?: string;
   maxTimeToLive?: bigint;
@@ -10,7 +14,7 @@ export interface AuthConfig {
 
 export interface AuthState {
   isAuthenticated: boolean;
-  identity: Identity | null;
+  identity: SerializableIdentity | null;
   isInitialized: boolean;
   error: Error | null;
 }

@@ -8,7 +8,7 @@ interface LoginProps {
 }
 
 export const Login: React.FC<LoginProps> = ({ onSuccess, onError }) => {
-  const auth = useAuth({ appName: 'RhinoSpider' });
+  const auth = useAuth();
   const [loading, setLoading] = React.useState(false);
 
   const handleLogin = async () => {
@@ -28,23 +28,23 @@ export const Login: React.FC<LoginProps> = ({ onSuccess, onError }) => {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <Logo className="mx-auto h-12 w-auto" />
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            Sign in to your account
-          </h2>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-[#131217] via-[#360D68] to-[#B692F6] p-4">
+      <div className="w-full max-w-md space-y-8">
+        <div className="flex flex-col items-center">
+          <Logo className="h-12 w-12 mb-4" />
+          <h2 className="text-3xl font-bold text-white">Welcome back</h2>
+          <p className="mt-2 text-sm text-gray-300">
+            Please sign in to continue to RhinoSpider
+          </p>
         </div>
-        <div>
-          <button
-            onClick={handleLogin}
-            disabled={loading}
-            className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-          >
-            {loading ? 'Signing in...' : 'Sign in with Internet Identity'}
-          </button>
-        </div>
+
+        <button
+          onClick={handleLogin}
+          disabled={loading}
+          className="w-full flex items-center justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-white/20 hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {loading ? 'Signing in...' : 'Sign in with Internet Identity'}
+        </button>
       </div>
     </div>
   );

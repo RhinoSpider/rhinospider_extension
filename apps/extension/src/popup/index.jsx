@@ -1,7 +1,8 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { AuthProvider } from '@rhinospider/web3-client';
 import Popup from './Popup';
+import '../index.css';
+import './Popup.css';
 
 // Get environment variables
 const II_URL = import.meta.env.VITE_II_URL || 'https://identity.ic0.app';
@@ -9,14 +10,9 @@ console.log('Identity Provider URL:', II_URL);
 
 // Auth configuration
 const authConfig = {
-  identityProvider: II_URL,
-  debug: true, // Enable debug logging
-  windowOptions: {
-    width: 500,
-    height: 600,
-    left: window.screen.width / 2 - 250, // Center the popup
-    top: window.screen.height / 2 - 300,
-  },
+  appName: 'RhinoSpider',
+  iiUrl: II_URL,
+  debug: true,
 };
 
 console.log('Auth Config:', authConfig);
@@ -60,9 +56,7 @@ const root = createRoot(container);
 root.render(
   <React.StrictMode>
     <ErrorBoundary>
-      <AuthProvider config={authConfig}>
-        <Popup />
-      </AuthProvider>
+      <Popup />
     </ErrorBoundary>
   </React.StrictMode>
 );

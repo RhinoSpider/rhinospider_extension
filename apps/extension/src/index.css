@@ -2,31 +2,82 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --gradient-start: #131217;
+  --gradient-middle: #360D68;
+  --gradient-end: #B692F6;
+}
+
 body {
   margin: 0;
-  padding: 0;
-  width: 320px;
-  height: 400px;
-  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-middle) 50%, var(--gradient-end) 100%);
+  color: #fff;
+  min-height: 100vh;
 }
 
 #root {
-  width: 100%;
-  height: 100%;
+  min-height: 100vh;
 }
 
-@keyframes glow {
+/* Buttons */
+.btn {
+  @apply px-4 py-2 rounded-lg font-medium transition-all duration-200;
+  background: linear-gradient(135deg, var(--gradient-middle) 0%, var(--gradient-end) 100%);
+}
+
+.btn:hover {
+  opacity: 0.9;
+}
+
+/* Cards */
+.card {
+  @apply rounded-lg p-4;
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Inputs */
+input {
+  @apply px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-white outline-none transition-all duration-200;
+}
+
+input:focus {
+  border-color: var(--gradient-end);
+}
+
+/* Status indicators */
+.status-dot {
+  @apply w-2 h-2 rounded-full;
+}
+
+.status-dot.active {
+  @apply bg-green-400;
+}
+
+.status-dot.inactive {
+  @apply bg-red-400;
+}
+
+/* Animations */
+@keyframes pulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(168, 85, 247, 0.4);
+    transform: scale(1);
+    opacity: 1;
   }
-  70% {
-    box-shadow: 0 0 0 15px rgba(168, 85, 247, 0);
+  50% {
+    transform: scale(1.05);
+    opacity: 0.8;
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(168, 85, 247, 0);
+    transform: scale(1);
+    opacity: 1;
   }
 }
 
-.glow-effect {
-  animation: glow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+.pulse {
+  animation: pulse 2s infinite;
 }
