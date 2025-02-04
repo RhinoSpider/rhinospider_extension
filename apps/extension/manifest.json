@@ -2,16 +2,18 @@
     "manifest_version": 3,
     "name": "RhinoSpider",
     "version": "1.2.8",
-    "description": "RhinoSpider Extension",
+    "description": "RhinoSpider Chrome Extension",
     "permissions": [
         "storage",
-        "tabs"
+        "tabs",
+        "identity"
     ],
     "host_permissions": [
-        "https://identity.ic0.app/*"
+        "https://identity.ic0.app/*",
+        "https://*.ic0.app/*"
     ],
     "content_security_policy": {
-        "extension_pages": "script-src 'self'; object-src 'self'; frame-src 'self' https://identity.ic0.app;"
+        "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
     },
     "action": {
         "default_popup": "popup.html",
@@ -32,9 +34,9 @@
     },
     "web_accessible_resources": [{
         "resources": [
-            "index.html",
-            "icons/*",
-            "assets/*"
+            "pages/*.html",
+            "assets/*",
+            "icons/*"
         ],
         "matches": ["<all_urls>"]
     }]
