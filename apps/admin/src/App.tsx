@@ -1,33 +1,21 @@
 import React from 'react';
 import { useAuth } from './hooks/useAuth';
 import { Login } from './components/Login';
+import { Dashboard } from './components/Dashboard';
 
 export const App: React.FC = () => {
-  const { isAuthenticated, login, logout } = useAuth();
+  const { isAuthenticated, isInitialized } = useAuth();
 
-  return (
-    <div className="min-h-screen">
-      {!isAuthenticated ? (
-        <Login onSuccess={login} />
-      ) : (
-        <div className="min-h-screen bg-gray-100">
-          <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-            <div className="px-4 py-6 sm:px-0">
-              <div className="bg-white overflow-hidden shadow rounded-lg">
-                <div className="px-4 py-5 sm:p-6">
-                  <h1 className="text-2xl font-semibold text-gray-900">Admin Panel</h1>
-                  <button
-                    onClick={logout}
-                    className="mt-4 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-black bg-[#FFD8B4] hover:bg-[#FFC090]"
-                  >
-                    Logout
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
+  if (!isInitialized) {
+    return (
+      <div className="min-h-screen bg-[#131217] flex items-center justify-center">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#B692F6]"></div>
+          <p className="text-[#B692F6]">Loading...</p>
         </div>
-      )}
-    </div>
-  );
+      </div>
+    );
+  }
+
+  return isAuthenticated ? <Dashboard /> : <Login />;
 };

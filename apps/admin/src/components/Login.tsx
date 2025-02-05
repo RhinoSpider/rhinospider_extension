@@ -1,10 +1,12 @@
 import React from 'react';
+import { useAuth } from '../hooks/useAuth';
 
 interface LoginProps {
-  onSuccess: () => void;
 }
 
-export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
+export const Login: React.FC<LoginProps> = () => {
+  const { login } = useAuth();
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#131217] via-[#360D68] to-[#131217]">
       {/* Header */}
@@ -33,7 +35,7 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
 
           <div className="space-y-5">
             <button
-              onClick={onSuccess}
+              onClick={login}
               className="w-full bg-gradient-to-r from-[#360D68] to-[#B692F6] text-white py-3.5 rounded-lg hover:opacity-90 transition-opacity font-medium text-sm"
             >
               Login with Internet Identity

@@ -38,17 +38,40 @@ actor {
         maxBandwidthPerDay: Nat;
     };
 
+    type CostLimits = {
+        dailyUSD: Nat;
+        monthlyUSD: Nat;
+        maxConcurrent: Nat;
+    };
+
+    type AIConfig = {
+        apiKey: Text;
+        model: Text;
+        costLimits: CostLimits;
+    };
+
     private var tasks = HashMap.HashMap<Text, Task>(0, Text.equal, Text.hash);
     private var config = HashMap.HashMap<Text, TaskConfig>(1, Text.equal, Text.hash);
     private var admins = HashMap.HashMap<Principal, Bool>(0, Principal.equal, Principal.hash);
     private var users = HashMap.HashMap<Principal, User>(10, Principal.equal, Principal.hash);
+    private var aiConfig = HashMap.HashMap<Text, AIConfig>(1, Text.equal, Text.hash);
 
     private stable let INITIAL_ADMIN = "ynyv4-or367-gln75-f3usn-xabzu-a4s2g-awpw2-mwyu3-f46dm-gd7jt-aqe";
     private let DEFAULT_CONFIG : TaskConfig = {
-        topics = ["AI", "Web3", "Blockchain"];
+        topics = [];
         targetSites = ["github.com", "dev.to", "medium.com"];
         scanInterval = 1800000;
         maxBandwidthPerDay = 104857600;
+    };
+
+    private let DEFAULT_AI_CONFIG : AIConfig = {
+        apiKey = "";
+        model = "gpt-3.5-turbo";
+        costLimits = {
+            dailyUSD = 5;
+            monthlyUSD = 100;
+            maxConcurrent = 5;
+        };
     };
 
     public shared func init() : async () {
@@ -60,6 +83,7 @@ actor {
             addedBy = Principal.fromText(INITIAL_ADMIN);
             addedAt = Time.now();
         });
+        aiConfig.put("default", DEFAULT_AI_CONFIG);
     };
 
     public query func getConfig() : async TaskConfig {
@@ -188,5 +212,41 @@ actor {
             };
             case null #err("User not found");
         };
+    };
+
+    public shared func getAIConfig() : async Result.Result<AIConfig, Text> {
+        switch (aiConfig.get("default")) {
+            case (?config) { #ok(config) };
+            case null { #ok(DEFAULT_AI_CONFIG) };
+        };
+    };
+
+    public shared({ caller }) func updateAIConfig(newConfig : AIConfig) : async Result.Result<(), Text> {
+        if (not hasRole(caller, #SuperAdmin)) {
+            return #err("Unauthorized");
+        };
+
+        aiConfig.put("default", newConfig);
+        #ok(())
+    };
+
+    // For development only - clear all data
+    public shared func clearAllData() : async Text {
+        for (key in tasks.keys()) {
+            ignore tasks.remove(key);
+        };
+        for (key in config.keys()) {
+            ignore config.remove(key);
+        };
+        for (key in admins.keys()) {
+            ignore admins.remove(key);
+        };
+        for (key in users.keys()) {
+            ignore users.remove(key);
+        };
+        for (key in aiConfig.keys()) {
+            ignore aiConfig.remove(key);
+        };
+        return "All data cleared";
     };
 }

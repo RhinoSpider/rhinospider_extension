@@ -1,0 +1,58 @@
+type ScrapedData = 
+ record {
+   clientId: principal;
+   content: text;
+   id: text;
+   source: text;
+   timestamp: int;
+   topic: text;
+   url: text;
+ };
+type ScrapedContent = 
+ record {
+   aiAnalysis:
+    record {
+      codeSnippets: vec record {
+                          code: text;
+                          language: text;
+                        };
+      keyPoints: vec text;
+      relevanceScore: nat;
+    };
+   author: text;
+   content: text;
+   engagement:
+    record {
+      claps: opt nat;
+      comments: nat;
+      reactions: opt nat;
+      stars: opt nat;
+    };
+   id: text;
+   metadata:
+    record {
+      language: opt text;
+      license: opt text;
+      readingTime: opt nat;
+      techStack: vec text;
+    };
+   publishDate: int;
+   source: text;
+   summary: text;
+   title: text;
+   topics: vec text;
+   updateDate: int;
+   url: text;
+ };
+type Result = 
+ variant {
+   err: text;
+   ok;
+ };
+service : {
+  getBySource: (text) -> (vec ScrapedData) query;
+  getContent: (text) -> (opt ScrapedContent) query;
+  getContentBySource: (text) -> (vec ScrapedContent) query;
+  getContentByTopic: (text, nat) -> (vec ScrapedContent) query;
+  storeContent: (ScrapedContent) -> (Result);
+}

@@ -29,46 +29,39 @@ export class AuthClient {
 
   private async ensureAuthClient() {
     if (!this.authClient) {
+      console.log('Creating new auth client...');
       this.authClient = await IcAuthClient.create({
         idleOptions: {
           disableDefaultIdleCallback: true,
           disableIdle: true
         }
       });
+      console.log('Auth client created successfully');
     }
     return this.authClient;
   }
 
   async initialize(): Promise<AuthState> {
     try {
+      console.log('Initializing auth client...');
       const authClient = await this.ensureAuthClient();
       const isAuthenticated = await authClient.isAuthenticated();
+      console.log('Is authenticated?', isAuthenticated);
       
       if (isAuthenticated) {
         const identity = authClient.getIdentity();
+        console.log('Got identity:', identity.getPrincipal().toString());
         this.state = {
           isAuthenticated: true,
-          identity: {
-            getPrincipal: () => identity.getPrincipal().toString()
-          },
+          identity,
           isInitialized: true,
           error: null
         };
       }
 
-      // Try to load state from chrome.storage if in extension environment
-      if (typeof chrome !== 'undefined' && chrome.storage) {
-        const { authState } = await chrome.storage.local.get('authState');
-        if (authState) {
-          this.state = {
-            ...this.state,
-            ...authState
-          };
-        }
-      }
-
       return this.state;
     } catch (error) {
+      console.error('Failed to initialize auth:', error);
       this.state.error = error instanceof Error ? error : new Error('Failed to initialize auth');
       return this.state;
     }
@@ -76,60 +69,56 @@ export class AuthClient {
 
   async login(): Promise<void> {
     try {
+      console.log('Starting login process...');
       const authClient = await this.ensureAuthClient();
       
-      return new Promise((resolve, reject) => {
+      await new Promise<void>((resolve, reject) => {
         authClient.login({
           identityProvider: II_URL,
+          maxTimeToLive: BigInt(7 * 24 * 60 * 60 * 1000 * 1000 * 1000), // 7 days in nanoseconds
           onSuccess: async () => {
             try {
+              console.log('Login successful, getting identity...');
               const identity = authClient.getIdentity();
-              // Convert identity to a serializable format
-              const serializedIdentity = {
-                getPrincipal: () => identity.getPrincipal().toString()
-              };
+              console.log('Got identity:', identity.getPrincipal().toString());
               
               this.state = {
                 isAuthenticated: true,
-                identity: serializedIdentity,
+                identity,
                 isInitialized: true,
                 error: null
               };
 
-              // Store auth state in chrome.storage if in extension environment
-              if (typeof chrome !== 'undefined' && chrome.storage) {
-                await chrome.storage.local.set({ 
-                  authState: {
-                    isAuthenticated: true,
-                    isInitialized: true,
-                    error: null,
-                    principalId: identity.getPrincipal().toString()
-                  }
-                });
-              }
-
+              // Force state update by reloading the page
+              window.location.reload();
               resolve();
             } catch (error) {
+              console.error('Error in onSuccess:', error);
               reject(error);
             }
           },
           onError: (error) => {
+            console.error('Login error:', error);
             this.state.error = error instanceof Error ? error : new Error('Login failed');
             reject(this.state.error);
           }
         });
       });
     } catch (error) {
-      this.state.error = error instanceof Error ? error : new Error('Login failed');
+      console.error('Login process error:', error);
+      this.state.error = error instanceof Error ? error : new Error('Failed to login');
       throw this.state.error;
     }
   }
 
   async logout(): Promise<void> {
     try {
+      console.log('Starting logout process...');
       const authClient = await this.ensureAuthClient();
       await authClient.logout();
+      console.log('Logged out from auth client');
       
+      // Clear state
       this.state = {
         isAuthenticated: false,
         identity: null,
@@ -137,12 +126,11 @@ export class AuthClient {
         error: null
       };
 
-      // Clear auth state from chrome.storage if in extension environment
-      if (typeof chrome !== 'undefined' && chrome.storage) {
-        await chrome.storage.local.remove('authState');
-      }
+      // Force page reload to clear any cached state
+      window.location.reload();
     } catch (error) {
-      this.state.error = error instanceof Error ? error : new Error('Logout failed');
+      console.error('Logout error:', error);
+      this.state.error = error instanceof Error ? error : new Error('Failed to logout');
       throw this.state.error;
     }
   }
