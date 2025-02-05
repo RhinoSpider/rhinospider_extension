@@ -46,45 +46,27 @@ export const getAdminActor = async () => {
 
       const agent = new HttpAgent({ 
         identity,
-        host: 'http://127.0.0.1:8000'
+        host: import.meta.env.VITE_IC_HOST || 'http://127.0.0.1:8000'
       });
 
-      // Fetch root key for local development
       if (process.env.NODE_ENV !== 'production') {
-        try {
-          console.log('Fetching root key...');
-          await agent.fetchRootKey();
-        } catch (err) {
-          console.warn('Could not fetch root key. Proceeding anyway:', err);
-        }
+        await agent.fetchRootKey();
       }
 
-      // Create actor with retry
-      let retries = 3;
-      while (retries > 0) {
-        try {
-          actor = Actor.createActor(idlFactory, {
-            agent,
-            canisterId: import.meta.env.VITE_ADMIN_CANISTER_ID!,
-          });
-          console.log('Actor created successfully');
-          break;
-        } catch (err) {
-          console.error(`Failed to create actor (${retries} retries left):`, err);
-          retries--;
-          if (retries === 0) throw err;
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-      }
+      actor = Actor.createActor(idlFactory, {
+        agent,
+        canisterId: import.meta.env.VITE_ADMIN_CANISTER_ID!,
+      });
     }
 
     return actor;
   } catch (error) {
-    console.error('Failed to create admin actor:', error);
-    throw error;
+    console.error('Failed to get admin actor:', error);
+    return null;
   }
 };
 
+// Clear the cached actor (useful for logout)
 export const clearAdminActor = () => {
   actor = null;
 };
@@ -126,23 +108,42 @@ export async function deleteTopic(id: string): Promise<void> {
 }
 
 // AI Configuration
-export async function getAIConfig(): Promise<AIConfig> {
-  const actor = await getAdminActor();
-  const result = await actor.getAIConfig();
-  if ('Ok' in result) {
-    return result.Ok;
-  }
-  throw new Error(result.Err);
-}
+export const getAIConfig = async (): Promise<AIConfig | null> => {
+  try {
+    const actor = await getAdminActor();
+    if (!actor) return null;
 
-export async function updateAIConfig(config: AIConfig): Promise<AIConfig> {
-  const actor = await getAdminActor();
-  const result = await actor.updateAIConfig(config);
-  if ('Ok' in result) {
-    return result.Ok;
+    const result = await actor.getAIConfig();
+    if ('ok' in result) {
+      return result.ok;
+    }
+    console.error('Failed to get AI config:', result.err);
+    return null;
+  } catch (error) {
+    console.error('Failed to get AI config:', error);
+    return null;
   }
-  throw new Error(result.Err);
-}
+};
+
+export const updateAIConfig = async (config: AIConfig): Promise<AIConfig | null> => {
+  try {
+    const actor = await getAdminActor();
+    if (!actor) return null;
+
+    const result = await actor.updateAIConfig(config);
+    if ('ok' in result) {
+      const getResult = await actor.getAIConfig();
+      if ('ok' in getResult) {
+        return getResult.ok;
+      }
+    }
+    console.error('Failed to update AI config:', result.err);
+    return null;
+  } catch (error) {
+    console.error('Failed to update AI config:', error);
+    return null;
+  }
+};
 
 // Scraped Data
 export async function getScrapedData(topicId?: string): Promise<ScrapedData[]> {

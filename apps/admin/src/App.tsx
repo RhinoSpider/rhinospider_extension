@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { getAuthClient } from './lib/auth';
 import { useAuth } from './hooks/useAuth';
 import { Login } from './components/Login';
 import { Dashboard } from './components/Dashboard';
@@ -6,16 +7,35 @@ import { Dashboard } from './components/Dashboard';
 export const App: React.FC = () => {
   const { isAuthenticated, isInitialized } = useAuth();
 
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        const authClient = getAuthClient();
+        await authClient.initialize();
+      } catch (error) {
+        console.error('Failed to initialize auth:', error);
+      }
+    };
+    initAuth();
+  }, []);
+
   if (!isInitialized) {
     return (
       <div className="min-h-screen bg-[#131217] flex items-center justify-center">
-        <div className="flex flex-col items-center space-y-4">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#B692F6]"></div>
-          <p className="text-[#B692F6]">Loading...</p>
-        </div>
+        <div className="text-white">Loading...</div>
       </div>
     );
   }
 
-  return isAuthenticated ? <Dashboard /> : <Login />;
+  if (!isAuthenticated) {
+    return <Login />;
+  }
+
+  return (
+    <div className="min-h-screen bg-[#131217] text-white">
+      <div className="container mx-auto px-4 py-8">
+        <Dashboard />
+      </div>
+    </div>
+  );
 };

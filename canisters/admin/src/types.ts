@@ -1,6 +1,18 @@
 import { Record, Vec } from 'azle';
 
 // Default AI Configuration
+export interface CostLimits {
+  dailyUSD: number;
+  monthlyUSD: number;
+  maxConcurrent: number;
+}
+
+export interface AIConfig {
+  apiKey: string;
+  model: string;
+  costLimits: CostLimits;
+}
+
 export const DEFAULT_AI_CONFIG: AIConfig = {
   apiKey: '',
   model: 'gpt-3.5-turbo',
@@ -10,17 +22,6 @@ export const DEFAULT_AI_CONFIG: AIConfig = {
     maxConcurrent: 5
   }
 };
-
-// AI Configuration
-export type AIConfig = Record<{
-  apiKey: string;
-  model: string;
-  costLimits: {
-    dailyUSD: number;
-    monthlyUSD: number;
-    maxConcurrent: number;
-  };
-}>;
 
 export interface ScrapingField {
   name: string;

@@ -27,16 +27,16 @@ type ScrapingTopic = record {
   };
 };
 
+type CostLimits = record {
+  dailyUSD: nat;
+  monthlyUSD: nat;
+  maxConcurrent: nat;
+};
+
 type AIConfig = record {
-  provider: text;
-  api_key: text; // Encrypted
+  apiKey: text;
   model: text;
-  max_tokens: nat32;
-  temperature: float64;
-  cost_limits: record {
-    daily_usd: float64;
-    monthly_usd: float64;
-  };
+  costLimits: CostLimits;
 };
 
 type ScrapedData = record {
@@ -70,6 +70,16 @@ type ExtensionUser = record {
   };
 };
 
+type Result = variant {
+  Ok: AIConfig;
+  Err: text;
+};
+
+type Result_1 = variant {
+  Ok;
+  Err: text;
+};
+
 service : {
   // Topic Management
   get_topics : () -> (vec ScrapingTopic) query;
@@ -78,8 +88,8 @@ service : {
   delete_topic : (text) -> ();
   
   // AI Configuration
-  get_ai_config : () -> (AIConfig) query;
-  update_ai_config : (AIConfig) -> (AIConfig);
+  "getAIConfig": () -> (Result);
+  "updateAIConfig": (AIConfig) -> (Result_1);
   
   // Scraped Data Management
   get_scraped_data : (opt text) -> (vec ScrapedData) query; // Optional topic ID filter

@@ -15,6 +15,18 @@ type TaskConfig = record {
     maxBandwidthPerDay: nat;
 };
 
+type CostLimits = record {
+    dailyUSD: nat;
+    monthlyUSD: nat;
+    maxConcurrent: nat;
+};
+
+type AIConfig = record {
+    apiKey: text;
+    model: text;
+    costLimits: CostLimits;
+};
+
 type Result = variant {
     ok: nat;
     err: text;
@@ -25,6 +37,11 @@ type Result_1 = variant {
     err: text;
 };
 
+type AIConfigResult = variant {
+    ok: AIConfig;
+    err: text;
+};
+
 service : {
     init: () -> ();
     getTasks: (nat) -> (vec Task);
@@ -32,4 +49,6 @@ service : {
     updateTaskStatus: (text, text) -> (Result_1);
     getConfig: () -> (TaskConfig) query;
     updateConfig: (TaskConfig) -> (Result_1);
-}
+    getAIConfig: () -> (AIConfigResult) query;
+    updateAIConfig: (AIConfig) -> (Result_1);
+};

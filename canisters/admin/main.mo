@@ -1,14 +1,17 @@
+import Array "mo:base/Array";
+import Blob "mo:base/Blob";
+import Buffer "mo:base/Buffer";
+import Char "mo:base/Char";
+import Debug "mo:base/Debug";
+import Hash "mo:base/Hash";
+import HashMap "mo:base/HashMap";
+import Int "mo:base/Int";
+import Nat "mo:base/Nat";
+import Nat32 "mo:base/Nat32";
 import Principal "mo:base/Principal";
 import Result "mo:base/Result";
 import Text "mo:base/Text";
-import HashMap "mo:base/HashMap";
-import Array "mo:base/Array";
-import Buffer "mo:base/Buffer";
 import Time "mo:base/Time";
-import Iter "mo:base/Iter";
-import Nat8 "mo:base/Nat8";
-import Nat32 "mo:base/Nat32";
-import Char "mo:base/Char";
 
 actor {
     type UserRole = {
@@ -67,7 +70,7 @@ actor {
     };
 
     // Default AI configuration
-    let DEFAULT_AI_CONFIG : AIConfig = {
+    private stable var aiConfig : AIConfig = {
         apiKey = "";
         model = "gpt-3.5-turbo";
         costLimits = {
@@ -77,28 +80,73 @@ actor {
         };
     };
 
-    // AI Configuration with basic obfuscation
-    private stable var aiConfig : AIConfig = DEFAULT_AI_CONFIG;
-
-    // Simple obfuscation for API key (ROT13-like)
-    private func obfuscateApiKey(apiKey: Text) : Text {
+    // Simple XOR-based obfuscation for API key
+    private func obfuscateApiKey(key : Text) : Text {
+        let salt = "RhinoSpider2024";
+        var keyChars = Text.toIter(key);
+        var saltChars = Text.toIter(salt);
         var result = "";
-        for (c in Text.toIter(apiKey)) {
-            let n = Nat32.toNat(Char.toNat32(c));
-            let shifted = (n + 13) % 128;  // Simple shift by 13 positions
-            result := result # Text.fromChar(Char.fromNat32(Nat32.fromNat(shifted)));
+        
+        label l loop {
+            switch (keyChars.next()) {
+                case (null) { break l; };
+                case (?k) {
+                    let s = switch (saltChars.next()) {
+                        case (null) { 
+                            saltChars := Text.toIter(salt);
+                            switch (saltChars.next()) {
+                                case (?firstChar) { firstChar };
+                                case (null) { break l; };
+                            };
+                        };
+                        case (?c) { c };
+                    };
+                    
+                    let kNum = Nat32.toNat(Char.toNat32(k));
+                    let sNum = Nat32.toNat(Char.toNat32(s));
+                    let xored = (kNum + sNum) % 128;
+                    result := result # Char.toText(Char.fromNat32(Nat32.fromNat(xored)));
+                };
+            };
         };
-        result;
+        
+        return result;
     };
 
-    private func deobfuscateApiKey(obfuscated: Text) : Text {
+    private func deobfuscateApiKey(obfuscated : Text) : Text {
+        let salt = "RhinoSpider2024";
+        var obfChars = Text.toIter(obfuscated);
+        var saltChars = Text.toIter(salt);
         var result = "";
-        for (c in Text.toIter(obfuscated)) {
-            let n = Nat32.toNat(Char.toNat32(c));
-            let shifted = (n + 115) % 128;  // Shift back by adding (128-13)
-            result := result # Text.fromChar(Char.fromNat32(Nat32.fromNat(shifted)));
+        
+        label l loop {
+            switch (obfChars.next()) {
+                case (null) { break l; };
+                case (?o) {
+                    let s = switch (saltChars.next()) {
+                        case (null) { 
+                            saltChars := Text.toIter(salt);
+                            switch (saltChars.next()) {
+                                case (?firstChar) { firstChar };
+                                case (null) { break l; };
+                            };
+                        };
+                        case (?c) { c };
+                    };
+                    
+                    let oNum = Nat32.toNat(Char.toNat32(o));
+                    let sNum = Nat32.toNat(Char.toNat32(s));
+                    let xored : Nat = if (oNum >= sNum) {
+                        oNum - sNum;
+                    } else {
+                        128 + oNum - sNum;
+                    };
+                    result := result # Char.toText(Char.fromNat32(Nat32.fromNat(xored)));
+                };
+            };
         };
-        result;
+        
+        return result;
     };
 
     public shared func init() : async () {
@@ -136,12 +184,20 @@ actor {
             return #err("Unauthorized");
         };
         
-        // Deobfuscate API key before returning
-        #ok({
+        // Return a copy with deobfuscated API key
+        let config = {
             apiKey = deobfuscateApiKey(aiConfig.apiKey);
             model = aiConfig.model;
-            costLimits = aiConfig.costLimits;
-        });
+            costLimits = {
+                dailyUSD = aiConfig.costLimits.dailyUSD;
+                monthlyUSD = aiConfig.costLimits.monthlyUSD;
+                maxConcurrent = aiConfig.costLimits.maxConcurrent;
+            };
+        };
+
+        // Only log non-sensitive data
+        Debug.print("Getting AI config with model: " # config.model # ", limits: " # debug_show(config.costLimits));
+        #ok(config);
     };
 
     public shared({ caller }) func updateAIConfig(config: AIConfig) : async Result.Result<(), Text> {
@@ -149,13 +205,28 @@ actor {
             return #err("Unauthorized");
         };
         
-        // Obfuscate API key before storing
+        // Only log non-sensitive data
+        Debug.print("Updating AI config with model: " # config.model # ", limits: " # debug_show(config.costLimits));
+
+        // Validate cost limits
+        if (config.costLimits.maxConcurrent < 1 or config.costLimits.maxConcurrent > 10) {
+            return #err("Max concurrent requests must be between 1 and 10");
+        };
+
+        // Store config with obfuscated API key
         aiConfig := {
             apiKey = obfuscateApiKey(config.apiKey);
             model = config.model;
-            costLimits = config.costLimits;
+            costLimits = {
+                dailyUSD = config.costLimits.dailyUSD;
+                monthlyUSD = config.costLimits.monthlyUSD;
+                maxConcurrent = config.costLimits.maxConcurrent;
+            };
         };
-        #ok();
+
+        // Only log non-sensitive data
+        Debug.print("Updated AI config with model: " # aiConfig.model # ", limits: " # debug_show(aiConfig.costLimits));
+        #ok(());
     };
 
     // For development only - clear all data
@@ -286,5 +357,17 @@ actor {
             };
             case null #err("User not found");
         };
+    };
+
+    public shared({ caller }) func getUsers() : async [User] {
+        if (not hasRole(caller, #Admin) and not hasRole(caller, #SuperAdmin)) {
+            return [];
+        };
+
+        let userArray = Buffer.Buffer<User>(0);
+        for ((_, user) in users.entries()) {
+            userArray.add(user);
+        };
+        return Buffer.toArray(userArray);
     };
 }

@@ -21,23 +21,43 @@ type Task =
    topic: text;
    url: text;
  };
-type Result_1 = 
+type Result_2 = 
  variant {
    err: text;
    ok: nat;
+ };
+type Result_1 = 
+ variant {
+   err: text;
+   ok: AIConfig;
  };
 type Result = 
  variant {
    err: text;
    ok;
  };
+type CostLimits = 
+ record {
+   dailyUSD: nat;
+   maxConcurrent: nat;
+   monthlyUSD: nat;
+ };
+type AIConfig = 
+ record {
+   apiKey: text;
+   costLimits: CostLimits;
+   model: text;
+ };
 service : {
-  addTasks: (vec Task) -> (Result_1);
+  addTasks: (vec Task) -> (Result_2);
   addUser: (principal, UserRole) -> (Result);
+  clearAllData: () -> (text);
+  getAIConfig: () -> (Result_1);
   getConfig: () -> (TaskConfig) query;
   getTasks: (nat) -> (vec Task);
   init: () -> ();
   removeUser: (principal) -> (Result);
+  updateAIConfig: (AIConfig) -> (Result);
   updateConfig: (TaskConfig) -> (Result);
   updateTaskStatus: (text, text) -> (Result);
 }
