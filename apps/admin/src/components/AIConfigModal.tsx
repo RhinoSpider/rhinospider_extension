@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { getAdminActor } from '../lib/admin';
+import { getAuthClient } from '../lib/auth';
 import type { AIConfig } from '../types';
 
 interface AIConfigModalProps {
@@ -17,48 +18,79 @@ export const AIConfigModal: React.FC<AIConfigModalProps> = ({
 }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const retryTimeout = useRef<number>();
   const [config, setConfig] = useState<AIConfig>({
     apiKey: '',
-    model: 'gpt-3.5-turbo',  // Cheaper model
+    model: 'gpt-3.5-turbo',
     costLimits: {
-      dailyUSD: 5,     // Default daily limit $5
-      monthlyUSD: 100, // Default monthly limit $100
+      dailyUSD: 5,
+      monthlyUSD: 100,
       maxConcurrent: 5
     }
   });
 
   useEffect(() => {
     if (isOpen) {
-      if (initialConfig) {
-        setConfig(initialConfig);
-      } else {
-        loadConfig();
-      }
-    } else {
-      // Reset to defaults when modal closes
-      setConfig({
-        apiKey: '',
-        model: 'gpt-3.5-turbo',
-        costLimits: {
-          dailyUSD: 5,
-          monthlyUSD: 100,
-          maxConcurrent: 5
-        }
-      });
+      loadConfig();
     }
-  }, [isOpen, initialConfig]);
+    return () => {
+      if (retryTimeout.current) {
+        clearTimeout(retryTimeout.current);
+      }
+      setRetryCount(0);
+    };
+  }, [isOpen]);
 
   const loadConfig = async () => {
     try {
       setLoading(true);
+      setError(null);
+
+      const authClient = getAuthClient();
+      const isAuth = await authClient.isAuthenticated();
+      
+      if (!isAuth) {
+        if (retryCount < 3) {
+          setError('Please log in to view the configuration. Redirecting to login...');
+          await authClient.login();
+          return;
+        } else {
+          setError('Login timeout. Please refresh the page and try again.');
+          return;
+        }
+      }
+      
       const actor = await getAdminActor();
+      if (!actor) {
+        if (retryCount < 3) {
+          setError('Initializing connection. Please wait...');
+          retryTimeout.current = window.setTimeout(() => {
+            setRetryCount(prev => prev + 1);
+            loadConfig();
+          }, 2000);
+        } else {
+          setError('Failed to initialize connection. Please refresh the page and try again.');
+        }
+        return;
+      }
+
+      setRetryCount(0);
       const result = await actor.getAIConfig();
+      
       if ('Ok' in result) {
         setConfig(result.Ok);
+        setError(null);
+      } else {
+        setError(result.Err);
       }
     } catch (error) {
       console.error('Failed to load AI config:', error);
-      setError('Failed to load configuration');
+      if (error instanceof Error) {
+        setError(error.message || 'Failed to load configuration. Please try again.');
+      } else {
+        setError('Failed to load configuration. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -70,7 +102,22 @@ export const AIConfigModal: React.FC<AIConfigModalProps> = ({
     
     try {
       setLoading(true);
+
+      const authClient = getAuthClient();
+      const isAuth = await authClient.isAuthenticated();
+
+      if (!isAuth) {
+        setError('Please log in to save the configuration. Redirecting to login...');
+        await authClient.login();
+        return;
+      }
+
       const actor = await getAdminActor();
+      if (!actor) {
+        setError('Failed to initialize connection. Please try again.');
+        return;
+      }
+
       const result = await actor.updateAIConfig(config);
       
       if ('Ok' in result) {
@@ -83,7 +130,11 @@ export const AIConfigModal: React.FC<AIConfigModalProps> = ({
       }
     } catch (error) {
       console.error('Failed to update AI config:', error);
-      setError('Failed to save configuration');
+      if (error instanceof Error) {
+        setError(error.message || 'Failed to save configuration. Please try again.');
+      } else {
+        setError('Failed to save configuration. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -101,108 +152,100 @@ export const AIConfigModal: React.FC<AIConfigModalProps> = ({
               onClick={onClose}
               className="text-gray-400 hover:text-white"
             >
-              ✕
+              ×
             </button>
           </div>
-          
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {error && (
-              <div className="bg-red-500 bg-opacity-10 text-red-500 px-4 py-2 rounded">
-                {error}
-              </div>
-            )}
 
-            {/* API Key */}
+          {error && (
+            <div className="bg-red-500 bg-opacity-10 text-red-500 px-4 py-2 rounded mb-4">
+              {error}
+            </div>
+          )}
+
+          {loading && (
+            <div className="bg-blue-500 bg-opacity-10 text-blue-500 px-4 py-2 rounded mb-4">
+              Loading...
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-[#B692F6] mb-2">
-                OpenAI API Key
-              </label>
+              <label className="block text-[#B692F6] mb-2">OpenAI API Key</label>
               <input
                 type="password"
                 value={config.apiKey}
-                onChange={(e) => setConfig({ ...config, apiKey: e.target.value })}
-                className="w-full bg-[#131217] text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#B692F6]"
-                placeholder="sk-..."
-                required
+                onChange={(e) => setConfig(prev => ({ ...prev, apiKey: e.target.value }))}
+                className="w-full bg-[#131217] text-white p-2 rounded border border-[#2D2B37] focus:border-[#B692F6] focus:outline-none"
+                disabled={loading}
               />
             </div>
 
-            {/* Model Selection */}
             <div>
-              <label className="block text-sm font-medium text-[#B692F6] mb-2">
-                Model
-              </label>
+              <label className="block text-[#B692F6] mb-2">Model</label>
               <select
                 value={config.model}
-                onChange={(e) => setConfig({ ...config, model: e.target.value })}
-                className="w-full bg-[#131217] text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#B692F6]"
+                onChange={(e) => setConfig(prev => ({ ...prev, model: e.target.value }))}
+                className="w-full bg-[#131217] text-white p-2 rounded border border-[#2D2B37] focus:border-[#B692F6] focus:outline-none"
+                disabled={loading}
               >
                 <option value="gpt-3.5-turbo">GPT-3.5 Turbo ($0.002/1K tokens)</option>
                 <option value="gpt-4">GPT-4 ($0.03/1K tokens)</option>
               </select>
             </div>
 
-            {/* Cost Limits */}
             <div>
-              <label className="block text-sm font-medium text-[#B692F6] mb-2">
-                Cost Limits
-              </label>
+              <label className="block text-[#B692F6] mb-2">Cost Limits</label>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-400 mb-1">
-                    Daily Limit (USD)
-                  </label>
+                  <label className="block text-sm text-gray-400 mb-1">Daily Limit (USD)</label>
                   <input
                     type="number"
-                    min="0"
-                    step="0.01"
                     value={config.costLimits.dailyUSD}
-                    onChange={(e) => setConfig({
-                      ...config,
+                    onChange={(e) => setConfig(prev => ({
+                      ...prev,
                       costLimits: {
-                        ...config.costLimits,
-                        dailyUSD: parseFloat(e.target.value)
+                        ...prev.costLimits,
+                        dailyUSD: parseInt(e.target.value)
                       }
-                    })}
-                    className="w-full bg-[#131217] text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#B692F6]"
-                    required
+                    }))}
+                    className="w-full bg-[#131217] text-white p-2 rounded border border-[#2D2B37] focus:border-[#B692F6] focus:outline-none"
+                    disabled={loading}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-400 mb-1">
-                    Monthly Limit (USD)
-                  </label>
+                  <label className="block text-sm text-gray-400 mb-1">Monthly Limit (USD)</label>
                   <input
                     type="number"
-                    min="0"
-                    step="0.01"
                     value={config.costLimits.monthlyUSD}
-                    onChange={(e) => setConfig({
-                      ...config,
+                    onChange={(e) => setConfig(prev => ({
+                      ...prev,
                       costLimits: {
-                        ...config.costLimits,
-                        monthlyUSD: parseFloat(e.target.value)
+                        ...prev.costLimits,
+                        monthlyUSD: parseInt(e.target.value)
                       }
-                    })}
-                    className="w-full bg-[#131217] text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#B692F6]"
-                    required
+                    }))}
+                    className="w-full bg-[#131217] text-white p-2 rounded border border-[#2D2B37] focus:border-[#B692F6] focus:outline-none"
+                    disabled={loading}
                   />
                 </div>
               </div>
             </div>
 
-            <div className="flex justify-end space-x-4 pt-4">
+            <div className="mt-6 flex justify-end space-x-3">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
+                className="px-4 py-2 text-white hover:bg-[#2D2B37] rounded"
+                disabled={loading}
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={loading}
-                className="px-4 py-2 bg-[#B692F6] text-[#131217] rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+                className={`px-4 py-2 bg-[#B692F6] text-[#131217] rounded ${
+                  loading ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-90'
+                }`}
               >
                 {loading ? 'Saving...' : 'Save Changes'}
               </button>

@@ -2,34 +2,92 @@
 const _global = typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : typeof self !== 'undefined' ? self : {};
 (window as any).global = _global;
 
-import { Actor, HttpAgent } from '@dfinity/agent';
-import { Principal } from '@dfinity/principal';
-import { idlFactory } from '../../../../src/declarations/admin/admin.did.js';
+import { Actor, HttpAgent, AnonymousIdentity } from '@dfinity/agent';
+import { idlFactory } from '@declarations/admin/admin.did.js';
 import type { ScrapingTopic, AIConfig, ScrapedData, ExtensionUser } from '../types';
-
-const adminCanisterId = import.meta.env.VITE_ADMIN_CANISTER_ID;
+import { getAuthClient } from './auth';
 
 let actor: any = null;
 
-export async function getAdminActor() {
-  if (!actor) {
-    const agent = new HttpAgent({
-      host: import.meta.env.VITE_DFX_NETWORK === 'ic' 
-        ? 'https://ic0.app' 
-        : 'http://127.0.0.1:8000'
-    });
-
-    if (import.meta.env.VITE_DFX_NETWORK !== 'ic') {
-      await agent.fetchRootKey();
+export const getAdminActor = async () => {
+  try {
+    // For local development, use anonymous identity
+    if (process.env.NODE_ENV !== 'production') {
+      if (!actor) {
+        const agent = new HttpAgent({ 
+          identity: new AnonymousIdentity(),
+          host: 'http://127.0.0.1:8000'
+        });
+        
+        await agent.fetchRootKey();
+        
+        actor = Actor.createActor(idlFactory, {
+          agent,
+          canisterId: import.meta.env.VITE_ADMIN_CANISTER_ID!,
+        });
+      }
+      return actor;
     }
 
-    actor = Actor.createActor(idlFactory, {
-      agent,
-      canisterId: adminCanisterId!
-    });
+    // For production, use Internet Identity
+    const authClient = getAuthClient();
+    const state = authClient.getState();
+    console.log('Auth state:', state);
+    
+    if (!state.isAuthenticated || !state.identity) {
+      console.log('Not authenticated, starting login...');
+      await authClient.login();
+      return null;
+    }
+
+    if (!actor) {
+      const identity = state.identity;
+      console.log('Got identity:', identity.getPrincipal().toString());
+
+      const agent = new HttpAgent({ 
+        identity,
+        host: 'http://127.0.0.1:8000'
+      });
+
+      // Fetch root key for local development
+      if (process.env.NODE_ENV !== 'production') {
+        try {
+          console.log('Fetching root key...');
+          await agent.fetchRootKey();
+        } catch (err) {
+          console.warn('Could not fetch root key. Proceeding anyway:', err);
+        }
+      }
+
+      // Create actor with retry
+      let retries = 3;
+      while (retries > 0) {
+        try {
+          actor = Actor.createActor(idlFactory, {
+            agent,
+            canisterId: import.meta.env.VITE_ADMIN_CANISTER_ID!,
+          });
+          console.log('Actor created successfully');
+          break;
+        } catch (err) {
+          console.error(`Failed to create actor (${retries} retries left):`, err);
+          retries--;
+          if (retries === 0) throw err;
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+    }
+
+    return actor;
+  } catch (error) {
+    console.error('Failed to create admin actor:', error);
+    throw error;
   }
-  return actor;
-}
+};
+
+export const clearAdminActor = () => {
+  actor = null;
+};
 
 // Topic Management
 export async function getTopics(): Promise<ScrapingTopic[]> {
