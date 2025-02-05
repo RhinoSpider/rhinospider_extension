@@ -106,24 +106,37 @@ export default defineConfig({
         analytics: resolve(__dirname, 'src/pages/analytics-entry.jsx'),
         settings: resolve(__dirname, 'src/pages/settings-entry.jsx'),
         profile: resolve(__dirname, 'src/pages/profile-entry.jsx'),
-        referrals: resolve(__dirname, 'src/pages/referrals-entry.jsx')
+        referrals: resolve(__dirname, 'src/pages/referrals-entry.jsx'),
+        'analytics-html': resolve(__dirname, 'src/pages/analytics.html'),
+        'settings-html': resolve(__dirname, 'src/pages/settings.html'),
+        'profile-html': resolve(__dirname, 'src/pages/profile.html'),
+        'referrals-html': resolve(__dirname, 'src/pages/referrals.html')
       },
       output: {
         entryFileNames: (chunkInfo) => {
           if (chunkInfo.name === 'background') {
-            return '[name].js';
+            return 'background.js';
           }
-          const name = chunkInfo.name.toLowerCase();
-          return `assets/${name}.js`;
+          if (chunkInfo.name.endsWith('-html')) {
+            return `src/pages/${chunkInfo.name.replace('-html', '')}.html`;
+          }
+          return 'assets/[name].js';
         },
         chunkFileNames: 'assets/[name]-[hash].js',
         assetFileNames: (assetInfo) => {
-          if (assetInfo.name === 'style.css') {
-            return 'assets/[name][extname]';
+          const info = assetInfo.name.split('.');
+          const extType = info[info.length - 1];
+          
+          if (extType === 'css') {
+            return `assets/[name][extname]`;
           }
-          return 'assets/[name]-[hash][extname]';
+          
+          return `assets/[name]-[hash][extname]`;
         }
       }
+    },
+    css: {
+      modules: false,
     }
   },
   resolve: {

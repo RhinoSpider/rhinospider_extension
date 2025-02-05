@@ -1,14 +1,12 @@
 // Background script for the extension
 import {
   initDB,
-  getScrapingConfig,
   canMakeRequest,
   updateBandwidthUsage,
   updateStats,
-  updateScrapingConfig,
   getTodayStats
 } from './services/api';
-import { AuthClient } from '@rhinospider/web3-client';
+import { AuthClient, AdminClient, StorageClient } from '@rhinospider/web3-client';
 
 // Initialize when installed
 chrome.runtime.onInstalled.addListener(async () => {
@@ -16,21 +14,8 @@ chrome.runtime.onInstalled.addListener(async () => {
   await initDB();
   await initAuth();
   
-  // Initialize default stats and config
+  // Initialize today's stats
   try {
-    const config = await getScrapingConfig();
-    if (!config) {
-      const defaultConfig = {
-        id: 'current',
-        enabled: false,
-        maxRequestsPerDay: 1000,
-        maxBandwidthPerDay: 100 * 1024 * 1024, // 100MB
-        urls: []
-      };
-      await updateScrapingConfig(defaultConfig);
-    }
-    
-    // Initialize today's stats if not present
     const date = new Date().toISOString().split('T')[0];
     await updateStats({
       date,
@@ -40,7 +25,7 @@ chrome.runtime.onInstalled.addListener(async () => {
       activeTime: 0
     });
   } catch (error) {
-    console.error('Error initializing stats and config:', error);
+    console.error('Error initializing stats:', error);
   }
 });
 
@@ -49,14 +34,7 @@ const initAuth = async () => {
   try {
     const authClient = AuthClient.getInstance();
     const state = await authClient.initialize();
-    console.log('Background - Auth initialized:', state);
-    
-    // Store auth state
-    if (state.isAuthenticated) {
-      chrome.storage.local.set({ authState: state }, () => {
-        console.log('Background - Auth state saved');
-      });
-    }
+    console.log('Auth initialized:', state);
   } catch (error) {
     console.error('Background - Auth initialization error:', error);
   }
@@ -73,50 +51,135 @@ async function processQueue() {
     return;
   }
 
-  const request = requestQueue.shift();
+  const task = requestQueue.shift();
   activeRequests++;
 
   try {
     if (await canMakeRequest()) {
-      const response = await fetch(request.url);
-      const data = await response.text();
-      const bytesDownloaded = new TextEncoder().encode(data).length;
+      // Update task status to 'processing'
+      await AdminClient.updateTaskStatus(task.id, 'processing');
+
+      // Fetch and process the page
+      const response = await fetch(task.url);
+      const html = await response.text();
+      const bytesDownloaded = new TextEncoder().encode(html).length;
       
-      // Generate mock upload data
-      const bytesUploaded = Math.floor(Math.random() * 1024); // Random upload between 0-1KB
+      // Process the content based on task configuration
+      const processedData = await processContent(html, task);
       
-      await updateBandwidthUsage(bytesDownloaded, bytesUploaded);
+      // Store the processed data in the storage canister
+      const contentId = await StorageClient.storeContent({
+        url: task.url,
+        data: processedData,
+        taskId: task.id,
+        timestamp: Date.now()
+      });
+      
+      // Update task status to 'completed'
+      await AdminClient.updateTaskStatus(task.id, 'completed');
+      
+      // Update bandwidth usage and stats
+      await updateBandwidthUsage(bytesDownloaded, processedData.length);
       
       // Update active time
       const stats = await getTodayStats();
       await updateStats({
         ...stats,
         activeTime: stats.activeTime + 60, // Add 1 minute of active time
-        lastScrapedUrl: request.url,
+        lastScrapedUrl: task.url,
         lastScrapedTime: Date.now()
       });
     }
   } catch (error) {
-    console.error('Error processing request:', error);
+    console.error('Error processing task:', error);
+    // Update task status to 'failed'
+    await AdminClient.updateTaskStatus(task.id, 'failed');
   } finally {
     activeRequests--;
     processQueue();
   }
 }
 
+// Process content based on task configuration
+async function processContent(html, task) {
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    
+    // Get task configuration
+    const config = await AdminClient.getConfig();
+    
+    // Extract data based on task topic and configuration
+    const data = {
+      url: task.url,
+      topic: task.topic,
+      timestamp: Date.now(),
+      content: {},
+      metadata: {}
+    };
+    
+    // Process based on topic
+    switch (task.topic) {
+      case 'product':
+        data.content = extractProductData(doc);
+        break;
+      case 'article':
+        data.content = extractArticleData(doc);
+        break;
+      default:
+        data.content = extractGeneralData(doc);
+    }
+    
+    return JSON.stringify(data);
+  } catch (error) {
+    console.error('Error processing content:', error);
+    throw error;
+  }
+}
+
+// Extract product data
+function extractProductData(doc) {
+  return {
+    title: doc.querySelector('h1')?.textContent,
+    price: doc.querySelector('[itemprop="price"]')?.content,
+    description: doc.querySelector('[itemprop="description"]')?.content,
+    // Add more product-specific selectors
+  };
+}
+
+// Extract article data
+function extractArticleData(doc) {
+  return {
+    title: doc.querySelector('h1')?.textContent,
+    author: doc.querySelector('[rel="author"]')?.textContent,
+    content: doc.querySelector('article')?.textContent,
+    // Add more article-specific selectors
+  };
+}
+
+// Extract general data
+function extractGeneralData(doc) {
+  return {
+    title: doc.querySelector('title')?.textContent,
+    description: doc.querySelector('meta[name="description"]')?.content,
+    text: doc.body?.textContent,
+  };
+}
+
 // Schedule scraping
 async function scheduleScraping() {
   try {
-    const config = await getScrapingConfig();
-    if (!config || !config.urls || config.urls.length === 0) {
-      console.log('No URLs configured for scraping');
-      return;
-    }
-
-    for (const url of config.urls) {
-      requestQueue.push({ url });
-    }
-
+    // Get tasks from admin canister
+    const tasks = await AdminClient.getTasks(10); // Get up to 10 pending tasks
+    
+    // Filter out tasks that are already in the queue
+    const queuedTaskIds = requestQueue.map(task => task.id);
+    const newTasks = tasks.filter(task => !queuedTaskIds.includes(task.id));
+    
+    // Add new tasks to queue
+    requestQueue.push(...newTasks);
+    
+    // Start processing
     processQueue();
   } catch (error) {
     console.error('Error scheduling scraping:', error);
@@ -144,44 +207,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       scrapingInterval = null;
     }
     sendResponse({ success: true });
-  } else if (request.type === 'AUTH_STATE_CHANGED') {
-    chrome.storage.local.set({ authState: request.state }, () => {
-      console.log('Background - Auth state updated:', request.state);
-      sendResponse({ success: true });
-    });
-    return true; // Keep the message channel open for async response
-  } else if (request.type === 'GET_AUTH_STATE') {
-    chrome.storage.local.get(['authState'], (result) => {
-      sendResponse(result.authState || { isAuthenticated: false });
-    });
-    return true; // Required for async response
-  } else if (request.type === 'SET_AUTH_STATE') {
-    chrome.storage.local.set({ authState: request.state }, () => {
-      sendResponse({ success: true });
-    });
-    return true; // Required for async response
-  } else if (request.type === 'OPEN_II') {
-    // Open II in a new tab
-    chrome.tabs.create({
-      url: 'https://identity.ic0.app',
-      active: true
-    });
-    sendResponse({ success: true });
-  } else if (request.type === 'II_LOGIN') {
-    // Handle II login
-    chrome.identity.launchWebAuthFlow({
-      url: 'https://identity.ic0.app/#authorize',
-      interactive: true
-    }, (responseUrl) => {
-      if (responseUrl) {
-        // Handle successful login
-        console.log('II login successful:', responseUrl);
-      } else {
-        console.error('II login failed');
-      }
+  } else if (request.type === 'GET_STATUS') {
+    sendResponse({
+      isRunning: !!scrapingInterval,
+      activeRequests,
+      queueLength: requestQueue.length
     });
   }
-  return true; // Required for async sendResponse
+  return true; // Required for async response
 });
 
 // Keep track of the popup window

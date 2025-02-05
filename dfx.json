@@ -1,22 +1,35 @@
 {
   "canisters": {
+    "internet_identity": {
+      "type": "custom",
+      "candid": "https://github.com/dfinity/internet-identity/releases/latest/download/internet_identity.did",
+      "wasm": "https://github.com/dfinity/internet-identity/releases/latest/download/internet_identity_dev.wasm.gz",
+      "remote": {
+        "id": {
+          "ic": "rdmx6-jaaaa-aaaaa-aaadq-cai"
+        }
+      }
+    },
     "storage": {
-      "main": "canisters/storage/src/main.mo",
-      "type": "motoko"
+      "main": "canisters/storage/main.mo",
+      "type": "motoko",
+      "dependencies": []
     },
     "auth": {
-      "main": "canisters/auth/src/main.mo",
-      "type": "motoko"
+      "main": "canisters/auth/main.mo",
+      "type": "motoko",
+      "dependencies": []
     },
-    "billing": {
-      "main": "canisters/billing/src/main.mo",
-      "type": "motoko"
+    "admin": {
+      "main": "canisters/admin/main.mo",
+      "type": "motoko",
+      "dependencies": ["storage", "auth"]
     }
   },
   "defaults": {
     "build": {
-      "args": "",
-      "packtool": ""
+      "packtool": "vessel sources",
+      "args": ""
     }
   },
   "networks": {
