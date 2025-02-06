@@ -6,6 +6,7 @@ import Debug "mo:base/Debug";
 import Hash "mo:base/Hash";
 import HashMap "mo:base/HashMap";
 import Int "mo:base/Int";
+import Iter "mo:base/Iter";
 import Nat "mo:base/Nat";
 import Nat32 "mo:base/Nat32";
 import Principal "mo:base/Principal";
@@ -56,18 +57,42 @@ actor {
         costLimits: CostLimits;
     };
 
+    type ScrapingField = {
+        name: Text;
+        description: ?Text;
+        aiPrompt: Text;
+        required: Bool;
+        fieldType: Text;
+        example: ?Text;
+    };
+
+    type ScrapingTopic = {
+        id: Text;
+        name: Text;
+        description: Text;
+        urlPatterns: [Text];
+        active: Bool;
+        extractionRules: {
+            fields: [ScrapingField];
+            customPrompt: ?Text;
+        };
+        validation: ?{
+            rules: [Text];
+            aiValidation: ?Text;
+        };
+        rateLimit: ?{
+            requestsPerHour: Nat;
+            maxConcurrent: Nat;
+        };
+        createdAt: Int;
+    };
+
     private var tasks = HashMap.HashMap<Text, Task>(0, Text.equal, Text.hash);
     private var config = HashMap.HashMap<Text, TaskConfig>(1, Text.equal, Text.hash);
     private var admins = HashMap.HashMap<Principal, Bool>(0, Principal.equal, Principal.hash);
     private var users = HashMap.HashMap<Principal, User>(10, Principal.equal, Principal.hash);
-
-    private stable let INITIAL_ADMIN = "ynyv4-or367-gln75-f3usn-xabzu-a4s2g-awpw2-mwyu3-f46dm-gd7jt-aqe";
-    private let DEFAULT_CONFIG : TaskConfig = {
-        topics = [];
-        targetSites = ["github.com", "dev.to", "medium.com"];
-        scanInterval = 1800000;
-        maxBandwidthPerDay = 104857600;
-    };
+    private var topics = HashMap.HashMap<Text, ScrapingTopic>(0, Text.equal, Text.hash);
+    private stable var stableTopics : [(Text, ScrapingTopic)] = [];
 
     // Default AI configuration
     private stable var aiConfig : AIConfig = {
@@ -77,6 +102,50 @@ actor {
             dailyUSD = 5;
             monthlyUSD = 100;
             maxConcurrent = 5;
+        };
+    };
+
+    system func preupgrade() {
+        stableTopics := Iter.toArray(topics.entries());
+    };
+
+    system func postupgrade() {
+        topics := HashMap.fromIter<Text, ScrapingTopic>(stableTopics.vals(), 0, Text.equal, Text.hash);
+        
+        // Initialize admin for local development
+        let INITIAL_ADMIN = "ynyv4-or367-gln75-f3usn-xabzu-a4s2g-awpw2-mwyu3-f46dm-gd7jt-aqe";
+        admins.put(Principal.fromText(INITIAL_ADMIN), true);
+        users.put(Principal.fromText(INITIAL_ADMIN), {
+            principal = Principal.fromText(INITIAL_ADMIN);
+            role = #SuperAdmin;
+            addedBy = Principal.fromText(INITIAL_ADMIN);
+            addedAt = Time.now();
+        });
+    };
+
+    private let INITIAL_ADMIN = "ynyv4-or367-gln75-f3usn-xabzu-a4s2g-awpw2-mwyu3-f46dm-gd7jt-aqe";
+    private let DEFAULT_CONFIG : TaskConfig = {
+        topics = [];
+        targetSites = ["github.com", "dev.to", "medium.com"];
+        scanInterval = 1800000;
+        maxBandwidthPerDay = 104857600;
+    };
+
+    private func hasRole(caller: Principal, role: UserRole) : Bool {
+        // For local development, allow anonymous access
+        if (Principal.isAnonymous(caller)) {
+            return true;
+        };
+
+        switch (users.get(caller)) {
+            case (?user) {
+                switch (user.role) {
+                    case (#SuperAdmin) { true };
+                    case (#Admin) { role == #Admin or role == #Operator };
+                    case (#Operator) { role == #Operator };
+                };
+            };
+            case null { false };
         };
     };
 
@@ -110,7 +179,7 @@ actor {
             };
         };
         
-        return result;
+        result;
     };
 
     private func deobfuscateApiKey(obfuscated : Text) : Text {
@@ -146,40 +215,25 @@ actor {
             };
         };
         
-        return result;
+        result;
     };
 
-    public shared func init() : async () {
-        config.put("default", DEFAULT_CONFIG);
-        admins.put(Principal.fromText(INITIAL_ADMIN), true);
-        users.put(Principal.fromText(INITIAL_ADMIN), {
-            principal = Principal.fromText(INITIAL_ADMIN);
-            role = #SuperAdmin;
-            addedBy = Principal.fromText(INITIAL_ADMIN);
-            addedAt = Time.now();
-        });
-    };
-
-    private func hasRole(caller: Principal, role: UserRole) : Bool {
+    public shared({ caller }) func getAIConfig() : async Result.Result<AIConfig, Text> {
         // For local development, allow anonymous access
         if (Principal.isAnonymous(caller)) {
-            return true;
-        };
-
-        switch (users.get(caller)) {
-            case (?user) {
-                switch (user.role) {
-                    case (#SuperAdmin) { true };
-                    case (#Admin) { role == #Admin or role == #Operator };
-                    case (#Operator) { role == #Operator };
+            // Return a copy with deobfuscated API key
+            let config = {
+                apiKey = deobfuscateApiKey(aiConfig.apiKey);
+                model = aiConfig.model;
+                costLimits = {
+                    dailyUSD = aiConfig.costLimits.dailyUSD;
+                    monthlyUSD = aiConfig.costLimits.monthlyUSD;
+                    maxConcurrent = aiConfig.costLimits.maxConcurrent;
                 };
             };
-            case null { false };
+            return #ok(config);
         };
-    };
 
-    // AI Configuration
-    public shared({ caller }) func getAIConfig() : async Result.Result<AIConfig, Text> {
         if (not hasRole(caller, #Admin) and not hasRole(caller, #SuperAdmin)) {
             return #err("Unauthorized");
         };
@@ -195,8 +249,6 @@ actor {
             };
         };
 
-        // Only log non-sensitive data
-        Debug.print("Getting AI config with model: " # config.model # ", limits: " # debug_show(config.costLimits));
         #ok(config);
     };
 
@@ -242,6 +294,9 @@ actor {
         };
         for (key in users.keys()) {
             ignore users.remove(key);
+        };
+        for (key in topics.keys()) {
+            ignore topics.remove(key);
         };
         return "All data cleared";
     };
@@ -369,5 +424,94 @@ actor {
             userArray.add(user);
         };
         return Buffer.toArray(userArray);
+    };
+
+    // Get all topics
+    public query func getTopics() : async [ScrapingTopic] {
+        let buffer = Buffer.Buffer<ScrapingTopic>(0);
+        for ((_, topic) in topics.entries()) {
+            buffer.add(topic);
+        };
+        Buffer.toArray(buffer)
+    };
+
+    // Check if topic name exists
+    private func topicNameExists(name: Text, excludeId: ?Text) : Bool {
+        for ((_, topic) in topics.entries()) {
+            if (Text.equal(topic.name, name)) {
+                switch (excludeId) {
+                    case (?id) {
+                        if (not Text.equal(topic.id, id)) {
+                            return true;
+                        };
+                    };
+                    case null {
+                        return true;
+                    };
+                };
+            };
+        };
+        false
+    };
+
+    // Create a new topic
+    public shared({ caller }) func createTopic(topic: ScrapingTopic) : async Result.Result<ScrapingTopic, Text> {
+        if (not hasRole(caller, #Admin) and not hasRole(caller, #SuperAdmin)) {
+            return #err("Unauthorized");
+        };
+
+        // Check for duplicate name
+        if (topicNameExists(topic.name, null)) {
+            return #err("A topic with this name already exists");
+        };
+
+        switch (topics.get(topic.id)) {
+            case (?existing) {
+                return #err("Topic with this ID already exists");
+            };
+            case null {
+                topics.put(topic.id, topic);
+                return #ok(topic);
+            };
+        }
+    };
+
+    // Update an existing topic
+    public shared({ caller }) func updateTopic(id: Text, topic: ScrapingTopic) : async Result.Result<ScrapingTopic, Text> {
+        if (not hasRole(caller, #Admin) and not hasRole(caller, #SuperAdmin)) {
+            return #err("Unauthorized");
+        };
+
+        // Check for duplicate name
+        if (topicNameExists(topic.name, ?id)) {
+            return #err("A topic with this name already exists");
+        };
+
+        switch (topics.get(id)) {
+            case null {
+                return #err("Topic not found");
+            };
+            case (?_) {
+                topics.put(id, topic);
+                return #ok(topic);
+            };
+        }
+    };
+
+    // Delete a topic
+    public shared({ caller }) func deleteTopic(id: Text) : async Result.Result<(), Text> {
+        if (not hasRole(caller, #Admin) and not hasRole(caller, #SuperAdmin)) {
+            return #err("Unauthorized");
+        };
+
+        switch (topics.get(id)) {
+            case null {
+                return #err("Topic not found");
+            };
+            case (?_) {
+                topics.delete(id);
+                return #ok();
+            };
+        }
     };
 }

@@ -8,42 +8,52 @@ import { getAuthClient } from '../lib/auth';
 
 export const ScrapingConfig: React.FC = () => {
   const [topics, setTopics] = useState<ScrapingTopic[]>([]);
+  const [topicsLoading, setTopicsLoading] = useState(true); // Start with loading true
+  const [topicsError, setTopicsError] = useState<string | null>(null);
   const [aiConfig, setAIConfig] = useState<AIConfig | null>(null);
+  const [aiConfigLoading, setAIConfigLoading] = useState(true); // Start with loading true
   const [isTopicModalOpen, setIsTopicModalOpen] = useState(false);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
-  const [selectedTopic, setSelectedTopic] = useState<ScrapingTopic | null>(null);
+  const [selectedTopic, setSelectedTopic] = useState<ScrapingTopic | undefined>();
   const [loading, setLoading] = useState(true);
-  const [aiConfigLoading, setAIConfigLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Fetch topics on mount
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setTopicsLoading(true);
+        setTopicsError(null);
+        const actor = await getAdminActor();
+        console.log('Fetching topics...');
+        const topics = await actor.getTopics();
+        console.log('Fetched topics:', topics);
+        setTopics(topics);
+      } catch (error) {
+        console.error('Failed to fetch topics:', error);
+        setTopicsError('Failed to fetch topics');
+      } finally {
+        setTopicsLoading(false);
+      }
+    };
+
+    loadData();
+  }, []);
+
+  // Fetch AI config on mount
   useEffect(() => {
     const loadAIConfig = async () => {
       try {
         setAIConfigLoading(true);
         const actor = await getAdminActor();
-        if (!actor) {
-          console.error('Failed to initialize admin actor');
-          return;
-        }
-
         const result = await actor.getAIConfig();
-        console.log('Loaded AI config:', {
-          ok: result.ok ? {
-            model: result.ok.model,
-            costLimits: result.ok.costLimits,
-            apiKey: '[HIDDEN]'
-          } : undefined,
-          err: result.err
-        });
-
+        console.log('AI config result:', result);
         if ('ok' in result) {
           setAIConfig(result.ok);
-        } else {
-          console.error('Failed to load AI config:', result.err);
         }
       } catch (error) {
-        console.error('Error loading AI config:', error);
+        console.error('Failed to load AI config:', error);
       } finally {
         setAIConfigLoading(false);
       }
@@ -52,8 +62,9 @@ export const ScrapingConfig: React.FC = () => {
     loadAIConfig();
   }, []);
 
+  // Check authentication
   useEffect(() => {
-    const loadData = async () => {
+    const checkAuth = async () => {
       try {
         setLoading(true);
         setError(null);
@@ -64,106 +75,58 @@ export const ScrapingConfig: React.FC = () => {
         if (!isAuth) {
           setError('Please log in to view the configuration');
           await authClient.login();
-          return;
         }
-
-        const actor = await getAdminActor();
-        if (!actor) {
-          setError('Failed to initialize connection');
-          return;
-        }
-
-        try {
-          // Load config
-          const configResult = await actor.getConfig();
-          if (configResult) {
-            setTopics(configResult.topics.map((topic, index) => ({
-              id: index.toString(),
-              name: topic,
-              description: '',
-              urlPatterns: [],
-              active: true,
-              extractionRules: {
-                fields: []
-              }
-            })));
-          }
-        } catch (error) {
-          console.error('Failed to load topics:', error);
-        }
-
       } catch (error) {
-        console.error('Failed to load data:', error);
-        setError(error instanceof Error ? error.message : 'Failed to load data');
+        console.error('Failed to check auth:', error);
+        setError(error instanceof Error ? error.message : 'Failed to check authentication');
       } finally {
         setLoading(false);
       }
     };
 
-    loadData();
+    checkAuth();
   }, []);
 
   const handleSaveTopic = async (topic: ScrapingTopic) => {
     try {
+      setUpdating(true);
       const actor = await getAdminActor();
-      if (!actor) {
-        throw new Error('Failed to initialize connection');
-      }
-
-      // Get current config
-      const currentConfig = await actor.getConfig();
       
-      // Update topics
-      const updatedTopics = topic.id 
-        ? topics.map(t => t.id === topic.id ? topic : t)
-        : [...topics, { ...topic, id: Date.now().toString() }];
-      
-      // Update config in canister
-      const result = await actor.updateConfig({
-        ...currentConfig,
-        topics: updatedTopics.map(t => t.name)
-      });
-
-      if ('Ok' in result) {
-        setTopics(updatedTopics);
-        setIsTopicModalOpen(false);
-        setSelectedTopic(null);
+      if (topic.id) {
+        // Update existing topic
+        await actor.updateTopic(topic);
       } else {
-        throw new Error(result.Err);
+        // Create new topic
+        await actor.createTopic(topic);
       }
+
+      // Refresh topics list
+      const topics = await actor.getTopics();
+      setTopics(topics);
+      setIsTopicModalOpen(false);
+      setSelectedTopic(undefined);
     } catch (error) {
       console.error('Failed to save topic:', error);
       // TODO: Show error to user
+    } finally {
+      setUpdating(false);
     }
   };
 
   const handleDeleteTopic = async (id: string) => {
     try {
+      setUpdating(true);
       const actor = await getAdminActor();
-      if (!actor) {
-        throw new Error('Failed to initialize connection');
-      }
+      await actor.deleteTopic(id);
 
-      // Get current config
-      const currentConfig = await actor.getConfig();
-      
-      // Remove topic
-      const updatedTopics = topics.filter(t => t.id !== id);
-      
-      // Update config in canister
-      const result = await actor.updateConfig({
-        ...currentConfig,
-        topics: updatedTopics.map(t => t.name)
-      });
-
-      if ('Ok' in result) {
-        setTopics(updatedTopics);
-      } else {
-        throw new Error(result.Err);
-      }
+      // Refresh topics list
+      const topics = await actor.getTopics();
+      setTopics(topics);
     } catch (error) {
       console.error('Failed to delete topic:', error);
       // TODO: Show error to user
+    } finally {
+      setUpdating(false);
     }
   };
 
@@ -262,162 +225,217 @@ export const ScrapingConfig: React.FC = () => {
     );
   };
 
-  if (loading) {
-    return <div className="p-4">Loading...</div>;
-  }
+  const handleCreateTopic = () => {
+    setSelectedTopic(undefined);
+    setIsTopicModalOpen(true);
+  };
 
-  if (error) {
-    return (
-      <div className="p-4 text-red-500">
-        Error: {error}
-        <button 
-          onClick={() => {
-            const loadData = async () => {
-              try {
-                setLoading(true);
-                setError(null);
+  const handleEditTopic = (topic: ScrapingTopic) => {
+    setSelectedTopic(topic);
+    setIsTopicModalOpen(true);
+  };
 
-                const authClient = getAuthClient();
-                const isAuth = await authClient.isAuthenticated();
-                
-                if (!isAuth) {
-                  setError('Please log in to view the configuration');
-                  await authClient.login();
-                  return;
-                }
-
-                const actor = await getAdminActor();
-                if (!actor) {
-                  setError('Failed to initialize connection');
-                  return;
-                }
-
-                try {
-                  // Load config
-                  const configResult = await actor.getConfig();
-                  if (configResult) {
-                    setTopics(configResult.topics.map((topic, index) => ({
-                      id: index.toString(),
-                      name: topic,
-                      description: '',
-                      urlPatterns: [],
-                      active: true,
-                      extractionRules: {
-                        fields: []
-                      }
-                    })));
-                  }
-                } catch (error) {
-                  console.error('Failed to load topics:', error);
-                }
-
-              } catch (error) {
-                console.error('Failed to load data:', error);
-                setError(error instanceof Error ? error.message : 'Failed to load data');
-              } finally {
-                setLoading(false);
-              }
-            };
-            loadData();
-          }}
-          className="ml-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-        >
-          Retry
-        </button>
-      </div>
-    );
-  }
+  const handleTopicModalClose = () => {
+    setIsTopicModalOpen(false);
+    setSelectedTopic(undefined);
+    // Refresh topics after modal closes
+    const loadData = async () => {
+      try {
+        setTopicsLoading(true);
+        setTopicsError(null);
+        const actor = await getAdminActor();
+        console.log('Refreshing topics...');
+        const topics = await actor.getTopics();
+        console.log('Refreshed topics:', topics);
+        setTopics(topics);
+      } catch (error) {
+        console.error('Failed to refresh topics:', error);
+        setTopicsError('Failed to refresh topics');
+      } finally {
+        setTopicsLoading(false);
+      }
+    };
+    loadData();
+  };
 
   return (
-    <div className="p-4">
-      <div className="mb-8">
+    <div className="space-y-8">
+      {/* Topics Section */}
+      <div>
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold">Scraping Topics</h2>
+          <div>
+            <h2 className="text-xl font-semibold text-white">Topics</h2>
+            <p className="text-gray-400 text-sm mt-1">
+              Configure scraping topics and their extraction rules
+            </p>
+          </div>
           <button
-            onClick={() => {
-              setSelectedTopic(null);
-              setIsTopicModalOpen(true);
-            }}
-            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+            onClick={() => setIsTopicModalOpen(true)}
+            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
           >
             Add Topic
           </button>
         </div>
 
-        <div className="grid gap-4">
-          {topics.map(topic => (
-            <div
-              key={topic.id}
-              className="p-4 border rounded-lg bg-white shadow-sm"
-            >
-              <div className="flex justify-between items-start">
-                <div>
-                  <h3 className="text-lg font-semibold">{topic.name}</h3>
-                  <p className="text-gray-600">{topic.description}</p>
-                </div>
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => {
-                      setSelectedTopic(topic);
-                      setIsTopicModalOpen(true);
-                    }}
-                    className="px-3 py-1 text-sm bg-gray-100 rounded hover:bg-gray-200"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => handleDeleteTopic(topic.id)}
-                    className="px-3 py-1 text-sm bg-red-100 text-red-600 rounded hover:bg-red-200"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
+        {/* Topics List */}
+        <div className="space-y-4">
+          {topicsLoading ? (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#B692F6] mx-auto"></div>
+              <p className="text-gray-400 mt-2">Loading topics...</p>
             </div>
-          ))}
+          ) : topicsError ? (
+            <div className="text-red-500 text-center py-8">
+              <p>{topicsError}</p>
+              <button
+                onClick={() => {
+                  setTopicsLoading(true);
+                  setTopicsError(null);
+                  const loadData = async () => {
+                    try {
+                      const actor = await getAdminActor();
+                      console.log('Fetching topics...');
+                      const topics = await actor.getTopics();
+                      console.log('Fetched topics:', topics);
+                      setTopics(topics);
+                    } catch (error) {
+                      console.error('Failed to fetch topics:', error);
+                      setTopicsError('Failed to fetch topics');
+                    } finally {
+                      setTopicsLoading(false);
+                    }
+                  };
+                  loadData();
+                }}
+                className="mt-2 text-[#B692F6] hover:text-white transition-colors"
+              >
+                Try Again
+              </button>
+            </div>
+          ) : topics.length === 0 ? (
+            <div className="text-center py-8 text-gray-400">
+              <p>No topics created yet.</p>
+              <p className="mt-2">Click the button above to create your first topic.</p>
+            </div>
+          ) : (
+            <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+              {topics.map((topic) => (
+                <div
+                  key={topic.id}
+                  className="bg-[#1C1B23] rounded-lg p-4 hover:bg-[#2C2B33] transition-colors"
+                >
+                  <h3 className="text-lg font-medium text-white mb-2">{topic.name}</h3>
+                  <p className="text-gray-400 text-sm mb-4">{topic.description}</p>
+                  <div className="space-y-2 mb-4">
+                    <div className="text-sm text-gray-400">
+                      <span className="font-medium">URL Patterns:</span>{' '}
+                      {topic.urlPatterns.length}
+                    </div>
+                    <div className="text-sm text-gray-400">
+                      <span className="font-medium">Fields:</span>{' '}
+                      {topic.extractionRules.fields.length}
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <div className="text-xs text-gray-500">
+                      Created {new Date(Number(topic.createdAt)).toLocaleDateString()}
+                    </div>
+                    <div className="flex gap-2">
+                      <div
+                        className={`px-2 py-1 rounded text-xs ${
+                          topic.active
+                            ? 'bg-green-900/20 text-green-400'
+                            : 'bg-red-900/20 text-red-400'
+                        }`}
+                      >
+                        {topic.active ? 'Active' : 'Inactive'}
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedTopic(topic);
+                          setIsTopicModalOpen(true);
+                        }}
+                        className="text-sm text-blue-500 hover:text-blue-400"
+                      >
+                        Edit
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="mb-8">
+      {/* AI Configuration Section */}
+      <div>
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold text-gray-800 dark:text-white">AI Configuration</h2>
+          <div>
+            <h2 className="text-xl font-semibold text-white">AI Configuration</h2>
+            <p className="text-gray-400 text-sm mt-1">
+              Configure AI settings for content extraction
+            </p>
+          </div>
           <button
             onClick={() => setIsAIModalOpen(true)}
-            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-            disabled={aiConfigLoading || updating}
+            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+            disabled={aiConfigLoading}
           >
             Configure AI
           </button>
         </div>
 
-        {error ? (
-          <div className="p-3 bg-red-900/50 border border-red-500 text-red-200 rounded">
-            {error}
-          </div>
-        ) : (
-          <div className="p-4 bg-[#1E1E1E] rounded-lg border border-gray-700">
-            {renderAIConfig()}
-          </div>
-        )}
+        <div className="bg-[#1C1B23] rounded-lg p-4">
+          {aiConfigLoading ? (
+            <div className="text-center py-4">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#B692F6] mx-auto"></div>
+              <p className="text-gray-400 mt-2">Loading AI configuration...</p>
+            </div>
+          ) : !aiConfig ? (
+            <div className="text-center py-4 text-gray-400">
+              <p>No AI configuration set.</p>
+              <p className="mt-2">Click the button above to configure AI settings.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-sm font-medium text-gray-200">Model</h3>
+                <p className="text-gray-400 mt-1">{aiConfig.model}</p>
+              </div>
+              <div>
+                <h3 className="text-sm font-medium text-gray-200">Cost Limits</h3>
+                <div className="mt-1 space-y-2">
+                  <p className="text-gray-400">
+                    Daily: ${Number(aiConfig.costLimits.dailyUSD)} USD
+                  </p>
+                  <p className="text-gray-400">
+                    Monthly: ${Number(aiConfig.costLimits.monthlyUSD)} USD
+                  </p>
+                  <p className="text-gray-400">
+                    Max Concurrent: {Number(aiConfig.costLimits.maxConcurrent)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
-      {isTopicModalOpen && (
-        <TopicModal
-          isOpen={isTopicModalOpen}
-          onClose={() => {
-            setIsTopicModalOpen(false);
-            setSelectedTopic(null);
-          }}
-          topic={selectedTopic}
-          onSave={handleSaveTopic}
-        />
-      )}
+      {/* Modals */}
+      <TopicModal
+        isOpen={isTopicModalOpen}
+        onClose={handleTopicModalClose}
+        topic={selectedTopic}
+        onSave={handleSaveTopic}
+      />
 
       <AIConfigModal
         isOpen={isAIModalOpen}
         onClose={() => setIsAIModalOpen(false)}
+        config={aiConfig}
         onSave={handleSaveAIConfig}
-        initialConfig={aiConfig}
       />
     </div>
   );

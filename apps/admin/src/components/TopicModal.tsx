@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { Dialog } from '@headlessui/react';
+import { XMarkIcon } from '@heroicons/react/24/outline';
 import { getAdminActor } from '../lib/admin';
 import type { ScrapingTopic, ExtractionField } from '../types';
 
@@ -6,39 +8,57 @@ interface TopicModalProps {
   isOpen: boolean;
   onClose: () => void;
   topic?: ScrapingTopic;
+  onSave?: () => void;
 }
 
-const FIELD_TYPES = ['text', 'number', 'url', 'image', 'list'] as const;
+const FIELD_TYPES = ['text', 'number', 'date', 'list', 'boolean'] as const;
 
 const DEFAULT_FIELD: ExtractionField = {
   name: '',
+  description: [],
+  example: [],
   aiPrompt: '',
   required: true,
-  type: 'text',
+  fieldType: 'text',
   validation: {
     minLength: 1,
     maxLength: 1000
   }
 };
 
-export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic }) => {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, onSave }) => {
   const [name, setName] = useState(topic?.name || '');
   const [description, setDescription] = useState(topic?.description || '');
   const [urlPatterns, setUrlPatterns] = useState<string[]>(topic?.urlPatterns || ['']);
   const [fields, setFields] = useState<ExtractionField[]>(
     topic?.extractionRules?.fields || [{ ...DEFAULT_FIELD }]
   );
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
 
   useEffect(() => {
-    if (isOpen && topic) {
+    if (topic) {
       setName(topic.name);
-      setDescription(topic.description || '');
+      setDescription(topic.description);
       setUrlPatterns(topic.urlPatterns);
       setFields(topic.extractionRules.fields);
+    } else {
+      setName('');
+      setDescription('');
+      setUrlPatterns(['']);
+      setFields([{
+        name: '',
+        description: [],
+        example: [],
+        aiPrompt: '',
+        required: true,
+        fieldType: 'text'
+      }]);
     }
-  }, [isOpen, topic]);
+    setError(null);
+    setSaveStatus('idle');
+  }, [topic, isOpen]);
 
   const handleAddUrlPattern = () => {
     setUrlPatterns([...urlPatterns, '']);
@@ -68,261 +88,334 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic }
     setFields(fields.filter((_, i) => i !== index));
   };
 
-  const validateForm = (): string | null => {
-    if (!name.trim()) return 'Topic name is required';
-    if (urlPatterns.length === 0) return 'At least one URL pattern is required';
-    if (urlPatterns.some(p => !p.trim())) return 'URL patterns cannot be empty';
-    if (fields.length === 0) return 'At least one field is required';
-    
-    for (const field of fields) {
-      if (!field.name.trim()) return 'Field names are required';
-      if (!field.aiPrompt.trim()) return 'AI prompts are required';
-    }
-
-    return null;
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const validationError = validateForm();
-    if (validationError) {
-      setError(validationError);
-      return;
-    }
-
+    
     try {
-      setLoading(true);
+      setSaving(true);
+      setSaveStatus('saving');
       setError(null);
+
+      if (!name.trim()) {
+        throw new Error('Name is required');
+      }
+
+      if (!description.trim()) {
+        throw new Error('Description is required');
+      }
+
+      if (!urlPatterns.some(p => p.trim())) {
+        throw new Error('At least one URL pattern is required');
+      }
+
+      if (fields.length === 0) {
+        throw new Error('At least one field is required');
+      }
+
+      for (const field of fields) {
+        if (!field.name.trim()) {
+          throw new Error('Field names are required');
+        }
+        if (!field.aiPrompt.trim()) {
+          throw new Error('AI prompts are required');
+        }
+      }
 
       const newTopic: ScrapingTopic = {
         id: topic?.id || crypto.randomUUID(),
-        name,
-        description,
+        name: name.trim(),
+        description: description.trim(),
         urlPatterns: urlPatterns.filter(p => p.trim()),
+        active: true,
         extractionRules: {
           fields: fields.map(f => ({
-            ...f,
             name: f.name.trim(),
-            aiPrompt: f.aiPrompt.trim()
-          }))
+            description: f.description || [],
+            example: f.example || [],
+            aiPrompt: f.aiPrompt.trim(),
+            required: f.required,
+            fieldType: f.fieldType
+          })),
+          customPrompt: []
         },
-        active: true,
-        createdAt: topic?.createdAt || Date.now()
+        validation: [],
+        rateLimit: [],
+        createdAt: BigInt(topic?.createdAt || Date.now())
       };
 
-      const actor = await getAdminActor();
-      const result = await actor.updateTopic(newTopic);
+      console.log('Sending topic to canister:', newTopic);
 
-      if ('Ok' in result) {
-        onClose();
+      const actor = await getAdminActor();
+      let result;
+      
+      if (topic) {
+        console.log('Updating existing topic:', topic.id);
+        result = await actor.updateTopic(topic.id, newTopic);
       } else {
-        setError(result.Err);
+        console.log('Creating new topic');
+        result = await actor.createTopic(newTopic);
       }
-    } catch (error) {
-      console.error('Failed to save topic:', error);
-      setError('Failed to save topic');
+
+      console.log('Canister response:', result);
+
+      if ('ok' in result) {
+        setSaveStatus('success');
+        setTimeout(() => {
+          onClose();
+        }, 1000);
+      } else if ('err' in result) {
+        throw new Error(result.err);
+      } else {
+        throw new Error('Unexpected response from canister');
+      }
+    } catch (err) {
+      console.error('Failed to save topic:', err);
+      setSaveStatus('error');
+      setError(err instanceof Error ? err.message : 'Failed to save topic');
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-[#1C1B23] rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-        <div className="p-6">
-          <h2 className="text-2xl font-bold text-white mb-6">
-            {topic ? 'Edit Topic' : 'New Topic'}
-          </h2>
+    <Dialog
+      open={isOpen}
+      onClose={() => !saving && onClose()}
+      className="relative z-50"
+    >
+      <div className="fixed inset-0 bg-black/30" aria-hidden="true" />
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Basic Info */}
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-[#B692F6] mb-2">
-                  Topic Name
-                </label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full bg-[#131217] text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#B692F6]"
-                  placeholder="e.g., Product Details"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-[#B692F6] mb-2">
-                  Description
-                </label>
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  className="w-full bg-[#131217] text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#B692F6]"
-                  placeholder="What kind of data will be scraped?"
-                  rows={3}
-                />
-              </div>
+      <div className="fixed inset-0 flex items-center justify-center p-4">
+        <Dialog.Panel className="relative mx-auto w-full max-w-2xl rounded-xl bg-[#1C1B23] text-white">
+          <div className="flex flex-col h-[calc(100vh-8rem)] max-h-[800px]">
+            {/* Header */}
+            <div className="flex justify-between items-center p-6 border-b border-gray-700">
+              <Dialog.Title className="text-xl font-semibold">
+                {topic ? 'Edit Topic' : 'Create New Topic'}
+              </Dialog.Title>
+              <button
+                onClick={() => !saving && onClose()}
+                className="text-gray-400 hover:text-white"
+                disabled={saving}
+              >
+                <XMarkIcon className="h-6 w-6" />
+              </button>
             </div>
 
-            {/* URL Patterns */}
-            <div>
-              <div className="flex justify-between items-center mb-4">
-                <label className="block text-sm font-medium text-[#B692F6]">
-                  URL Patterns
-                </label>
-                <button
-                  type="button"
-                  onClick={handleAddUrlPattern}
-                  className="text-[#B692F6] hover:text-white transition-colors"
-                >
-                  + Add Pattern
-                </button>
-              </div>
-              <div className="space-y-3">
-                {urlPatterns.map((pattern, index) => (
-                  <div key={index} className="flex space-x-2">
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6">
+              <form onSubmit={handleSubmit} className="space-y-6">
+                {/* Basic Info */}
+                <div className="space-y-4">
+                  <div>
+                    <label htmlFor="name" className="block text-sm font-medium text-gray-200 mb-1">
+                      Name
+                    </label>
                     <input
                       type="text"
-                      value={pattern}
-                      onChange={(e) => handleUrlPatternChange(index, e.target.value)}
-                      className="flex-1 bg-[#131217] text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#B692F6]"
-                      placeholder="e.g., https://example.com/products/*"
-                      required
+                      id="name"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="w-full rounded-md bg-[#2C2B33] border-gray-700 text-white shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2"
+                      placeholder="e.g., Amazon Product Details"
                     />
-                    {urlPatterns.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveUrlPattern(index)}
-                        className="text-red-400 hover:text-red-300 transition-colors"
-                      >
-                        Remove
-                      </button>
-                    )}
                   </div>
-                ))}
-              </div>
+
+                  <div>
+                    <label htmlFor="description" className="block text-sm font-medium text-gray-200 mb-1">
+                      Description
+                    </label>
+                    <textarea
+                      id="description"
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      rows={4}
+                      className="w-full rounded-md bg-[#2C2B33] border-gray-700 text-white shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2"
+                      placeholder="e.g., Extracts product information from Amazon product pages"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-200 mb-1">
+                      URL Patterns
+                    </label>
+                    <div className="space-y-2">
+                      {urlPatterns.map((pattern, index) => (
+                        <div key={index} className="flex gap-2">
+                          <input
+                            type="text"
+                            value={pattern}
+                            onChange={(e) => handleUrlPatternChange(index, e.target.value)}
+                            className="w-full rounded-md bg-[#2C2B33] border-gray-700 text-white shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2"
+                            placeholder="e.g., https://www.amazon.com/*/dp/*"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveUrlPattern(index)}
+                            className="p-2 text-gray-400 hover:text-white"
+                            disabled={urlPatterns.length === 1}
+                          >
+                            <XMarkIcon className="h-5 w-5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleAddUrlPattern}
+                      className="mt-2 text-sm text-blue-500 hover:text-blue-400"
+                    >
+                      + Add URL Pattern
+                    </button>
+                  </div>
+
+                  {/* Fields */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-200 mb-1">
+                      Extraction Fields
+                    </label>
+                    <div className="space-y-4">
+                      {fields.map((field, index) => (
+                        <div
+                          key={index}
+                          className="p-4 bg-[#1C1B23] rounded-lg space-y-4"
+                        >
+                          <div className="flex justify-between items-center">
+                            <h4 className="text-sm font-medium text-gray-200">Field {index + 1}</h4>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveField(index)}
+                              className="p-1 text-gray-400 hover:text-white"
+                              disabled={fields.length === 1}
+                            >
+                              <XMarkIcon className="h-5 w-5" />
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-200 mb-1">
+                                Field Name
+                              </label>
+                              <input
+                                type="text"
+                                value={field.name}
+                                onChange={(e) => handleFieldChange(index, { name: e.target.value })}
+                                className="w-full rounded-md bg-[#2C2B33] border-gray-700 text-white shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2"
+                                placeholder="e.g., title"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-sm font-medium text-gray-200 mb-1">
+                                Description
+                              </label>
+                              <input
+                                type="text"
+                                value={field.description || ''}
+                                onChange={(e) => handleFieldChange(index, { description: [e.target.value] })}
+                                className="w-full rounded-md bg-[#2C2B33] border-gray-700 text-white shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2"
+                                placeholder="e.g., Product title"
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-200 mb-1">
+                              Example
+                            </label>
+                            <input
+                              type="text"
+                              value={field.example || ''}
+                              onChange={(e) => handleFieldChange(index, { example: [e.target.value] })}
+                              className="w-full rounded-md bg-[#2C2B33] border-gray-700 text-white shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2"
+                              placeholder="e.g., Apple iPhone 13"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-200 mb-1">
+                              AI Prompt
+                            </label>
+                            <textarea
+                              value={field.aiPrompt}
+                              onChange={(e) => handleFieldChange(index, { aiPrompt: e.target.value })}
+                              rows={3}
+                              className="w-full rounded-md bg-[#2C2B33] border-gray-700 text-white shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2"
+                              placeholder="Describe how to extract this field..."
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-200 mb-1">
+                              Type
+                            </label>
+                            <select
+                              value={field.fieldType}
+                              onChange={(e) => handleFieldChange(index, { fieldType: e.target.value })}
+                              className="w-full rounded-md bg-[#2C2B33] border-gray-700 text-white shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2"
+                            >
+                              {FIELD_TYPES.map(type => (
+                                <option key={type} value={type}>
+                                  {type.charAt(0).toUpperCase() + type.slice(1)}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              checked={field.required}
+                              onChange={(e) => handleFieldChange(index, { required: e.target.checked })}
+                              className="rounded border-gray-700 text-blue-500 focus:ring-blue-500 bg-[#2C2B33]"
+                            />
+                            <label className="text-sm text-gray-200">Required Field</label>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleAddField}
+                      className="mt-4 text-sm text-blue-500 hover:text-blue-400"
+                    >
+                      + Add Field
+                    </button>
+                  </div>
+                </div>
+              </form>
             </div>
 
-            {/* Extraction Fields */}
-            <div>
-              <div className="flex justify-between items-center mb-4">
-                <label className="block text-sm font-medium text-[#B692F6]">
-                  Extraction Fields
-                </label>
+            {/* Actions */}
+            <div className="p-6 border-t border-gray-700 bg-[#1C1B23]">
+              <div className="flex justify-end gap-4">
                 <button
                   type="button"
-                  onClick={handleAddField}
-                  className="text-[#B692F6] hover:text-white transition-colors"
+                  onClick={() => !saving && onClose()}
+                  className="px-4 py-2 text-gray-300 hover:text-white"
+                  disabled={saving}
                 >
-                  + Add Field
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={saving}
+                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50"
+                >
+                  {saving ? 'Saving...' : 'Save Topic'}
                 </button>
               </div>
-              <div className="space-y-4">
-                {fields.map((field, index) => (
-                  <div key={index} className="bg-[#131217] p-4 rounded-lg space-y-4">
-                    <div className="flex justify-between">
-                      <h3 className="text-white font-medium">Field {index + 1}</h3>
-                      {fields.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveField(index)}
-                          className="text-red-400 hover:text-red-300 transition-colors"
-                        >
-                          Remove
-                        </button>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm text-gray-400 mb-1">
-                          Field Name
-                        </label>
-                        <input
-                          type="text"
-                          value={field.name}
-                          onChange={(e) => handleFieldChange(index, { name: e.target.value })}
-                          className="w-full bg-[#1C1B23] text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#B692F6]"
-                          placeholder="e.g., price"
-                          required
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm text-gray-400 mb-1">
-                          Type
-                        </label>
-                        <select
-                          value={field.type}
-                          onChange={(e) => handleFieldChange(index, { type: e.target.value as any })}
-                          className="w-full bg-[#1C1B23] text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#B692F6]"
-                        >
-                          {FIELD_TYPES.map(type => (
-                            <option key={type} value={type}>
-                              {type.charAt(0).toUpperCase() + type.slice(1)}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm text-gray-400 mb-1">
-                        AI Prompt
-                      </label>
-                      <textarea
-                        value={field.aiPrompt}
-                        onChange={(e) => handleFieldChange(index, { aiPrompt: e.target.value })}
-                        className="w-full bg-[#1C1B23] text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#B692F6]"
-                        placeholder="Instructions for AI to extract this field"
-                        rows={2}
-                        required
-                      />
-                    </div>
-
-                    <div className="flex items-center space-x-4">
-                      <label className="flex items-center space-x-2">
-                        <input
-                          type="checkbox"
-                          checked={field.required}
-                          onChange={(e) => handleFieldChange(index, { required: e.target.checked })}
-                          className="form-checkbox bg-[#1C1B23] text-[#B692F6] rounded focus:ring-[#B692F6]"
-                        />
-                        <span className="text-sm text-gray-400">Required</span>
-                      </label>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              {error && (
+                <p className="mt-2 text-sm text-red-500">{error}</p>
+              )}
             </div>
-
-            {error && (
-              <div className="text-red-500 text-sm">{error}</div>
-            )}
-
-            <div className="flex justify-end space-x-4">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 text-white hover:text-[#B692F6] transition-colors"
-                disabled={loading}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-4 py-2 bg-[#B692F6] text-[#131217] rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
-                disabled={loading}
-              >
-                {loading ? 'Saving...' : 'Save Topic'}
-              </button>
-            </div>
-          </form>
-        </div>
+          </div>
+        </Dialog.Panel>
       </div>
-    </div>
+    </Dialog>
   );
 };
