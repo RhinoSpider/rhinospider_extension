@@ -61,7 +61,10 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
       setFields([{ ...DEFAULT_FIELD }]);
       setRateLimit(DEFAULT_RATE_LIMIT);
     }
-  }, [topic]);
+    setError(null);
+    setSaveStatus('idle');
+    setShowTester(false);
+  }, [topic, isOpen]);
 
   const validateUrlPatterns = () => {
     const errors: { [key: number]: string[] } = {};
