@@ -8,6 +8,39 @@ type ScrapedData = record {
     clientId: principal;
 };
 
+type ScrapedContent = record {
+    id: text;
+    source: text;
+    url: text;
+    title: text;
+    author: text;
+    publishDate: int;
+    updateDate: int;
+    content: text;
+    summary: text;
+    topics: vec text;
+    engagement: record {
+        stars: opt nat;
+        reactions: opt nat;
+        claps: opt nat;
+        comments: nat;
+    };
+    metadata: record {
+        readingTime: opt nat;
+        language: opt text;
+        license: opt text;
+        techStack: vec text;
+    };
+    aiAnalysis: record {
+        relevanceScore: nat;
+        keyPoints: vec text;
+        codeSnippets: vec record {
+            language: text;
+            code: text;
+        };
+    };
+};
+
 type DataBatch = record {
     items: vec ScrapedData;
     clientId: principal;
@@ -26,9 +59,15 @@ type Result = variant {
 };
 
 service : {
+    // Legacy endpoints
     storeBatch: (DataBatch) -> (Result);
     getByTopic: (text) -> (vec ScrapedData) query;
     getBySource: (text) -> (vec ScrapedData) query;
     getStats: () -> (StorageStats) query;
     getCycles: () -> (nat) query;
-}
+    
+    // New endpoints
+    storeContent: (ScrapedContent) -> (Result);
+    getContentByTopic: (text, nat) -> (vec ScrapedContent) query;
+    getDailyStats: () -> (StorageStats) query;
+};
