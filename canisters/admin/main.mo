@@ -1,20 +1,25 @@
-import Array "mo:base/Array";
-import Blob "mo:base/Blob";
+import Result "mo:base/Result";
+import Principal "mo:base/Principal";
+import _Debug "mo:base/Debug";
 import Buffer "mo:base/Buffer";
-import Char "mo:base/Char";
-import Debug "mo:base/Debug";
-import Hash "mo:base/Hash";
-import HashMap "mo:base/HashMap";
+import Array "mo:base/Array";
+import Time "mo:base/Time";
+import Text "mo:base/Text";
 import Int "mo:base/Int";
-import Iter "mo:base/Iter";
 import Nat "mo:base/Nat";
 import Nat32 "mo:base/Nat32";
-import Principal "mo:base/Principal";
-import Result "mo:base/Result";
-import Text "mo:base/Text";
-import Time "mo:base/Time";
+import _Float "mo:base/Float";
+import _Hash "mo:base/Hash";
+import Iter "mo:base/Iter";
+import HashMap "mo:base/HashMap";
+import Error "mo:base/Error";
+import Char "mo:base/Char";
+import Types "./types/storage";
 
-actor {
+// Import actor interfaces
+import StorageTypes "./types/storage";
+
+actor Admin {
     type UserRole = {
         #SuperAdmin;
         #Admin;
@@ -51,20 +56,9 @@ actor {
         maxConcurrent: Nat;
     };
 
-    type AIConfig = {
-        apiKey: Text;
-        model: Text;
-        costLimits: CostLimits;
-    };
+    type AIConfig = Types.AIConfig;
 
-    type ScrapingField = {
-        name: Text;
-        description: ?Text;
-        aiPrompt: Text;
-        required: Bool;
-        fieldType: Text;
-        example: ?Text;
-    };
+    type ScrapingField = StorageTypes.ScrapingField;
 
     type ScrapingTopic = {
         id: Text;
@@ -95,15 +89,18 @@ actor {
     private stable var stableTopics : [(Text, ScrapingTopic)] = [];
 
     // Default AI configuration
-    private stable var aiConfig : AIConfig = {
+    private stable var _aiConfig : AIConfig = {
         apiKey = "";
         model = "gpt-3.5-turbo";
         costLimits = {
-            dailyUSD = 5;
+            dailyUSD = 10;
             monthlyUSD = 100;
             maxConcurrent = 5;
         };
     };
+
+    private var _cachedAIConfig : ?AIConfig = null;
+    private let storage : StorageTypes.Storage = actor(Principal.toText(Principal.fromText("bkyz2-fmaaa-aaaaa-qaaaq-cai")));
 
     system func preupgrade() {
         stableTopics := Iter.toArray(topics.entries());
@@ -113,18 +110,17 @@ actor {
         topics := HashMap.fromIter<Text, ScrapingTopic>(stableTopics.vals(), 0, Text.equal, Text.hash);
         
         // Initialize admin for local development
-        let INITIAL_ADMIN = "ynyv4-or367-gln75-f3usn-xabzu-a4s2g-awpw2-mwyu3-f46dm-gd7jt-aqe";
-        admins.put(Principal.fromText(INITIAL_ADMIN), true);
-        users.put(Principal.fromText(INITIAL_ADMIN), {
-            principal = Principal.fromText(INITIAL_ADMIN);
+        let _INITIAL_ADMIN = "ynyv4-or367-gln75-f3usn-xabzu-a4s2g-awpw2-mwyu3-f46dm-gd7jt-aqe";
+        admins.put(Principal.fromText(_INITIAL_ADMIN), true);
+        users.put(Principal.fromText(_INITIAL_ADMIN), {
+            principal = Principal.fromText(_INITIAL_ADMIN);
             role = #SuperAdmin;
-            addedBy = Principal.fromText(INITIAL_ADMIN);
+            addedBy = Principal.fromText(_INITIAL_ADMIN);
             addedAt = Time.now();
         });
     };
 
-    private let INITIAL_ADMIN = "ynyv4-or367-gln75-f3usn-xabzu-a4s2g-awpw2-mwyu3-f46dm-gd7jt-aqe";
-    private let DEFAULT_CONFIG : TaskConfig = {
+    private let _DEFAULT_CONFIG : TaskConfig = {
         topics = [];
         targetSites = ["github.com", "dev.to", "medium.com"];
         scanInterval = 1800000;
@@ -149,8 +145,26 @@ actor {
         };
     };
 
+    private func isAuthorized(caller: Principal) : Bool {
+        // For local development, allow anonymous access
+        if (Principal.isAnonymous(caller)) {
+            return true;
+        };
+
+        switch (users.get(caller)) {
+            case (?user) {
+                switch (user.role) {
+                    case (#SuperAdmin) { true };
+                    case (#Admin) { true };
+                    case (#Operator) { false };
+                };
+            };
+            case null { false };
+        };
+    };
+
     // Simple XOR-based obfuscation for API key
-    private func obfuscateApiKey(key : Text) : Text {
+    private func _obfuscateApiKey(key : Text) : Text {
         let salt = "RhinoSpider2024";
         var keyChars = Text.toIter(key);
         var saltChars = Text.toIter(salt);
@@ -182,7 +196,7 @@ actor {
         result;
     };
 
-    private func deobfuscateApiKey(obfuscated : Text) : Text {
+    private func _deobfuscateApiKey(obfuscated : Text) : Text {
         let salt = "RhinoSpider2024";
         var obfChars = Text.toIter(obfuscated);
         var saltChars = Text.toIter(salt);
@@ -219,66 +233,37 @@ actor {
     };
 
     public shared({ caller }) func getAIConfig() : async Result.Result<AIConfig, Text> {
-        // For local development, allow anonymous access
-        if (Principal.isAnonymous(caller)) {
-            // Return a copy with deobfuscated API key
-            let config = {
-                apiKey = deobfuscateApiKey(aiConfig.apiKey);
-                model = aiConfig.model;
-                costLimits = {
-                    dailyUSD = aiConfig.costLimits.dailyUSD;
-                    monthlyUSD = aiConfig.costLimits.monthlyUSD;
-                    maxConcurrent = aiConfig.costLimits.maxConcurrent;
-                };
-            };
-            return #ok(config);
-        };
-
-        if (not hasRole(caller, #Admin) and not hasRole(caller, #SuperAdmin)) {
+        if (not isAuthorized(caller)) {
             return #err("Unauthorized");
         };
-        
-        // Return a copy with deobfuscated API key
-        let config = {
-            apiKey = deobfuscateApiKey(aiConfig.apiKey);
-            model = aiConfig.model;
-            costLimits = {
-                dailyUSD = aiConfig.costLimits.dailyUSD;
-                monthlyUSD = aiConfig.costLimits.monthlyUSD;
-                maxConcurrent = aiConfig.costLimits.maxConcurrent;
+        let result = await storage.getAIConfig();
+        switch (result) {
+            case (#ok(config)) {
+                #ok({
+                    apiKey = config.apiKey;
+                    model = config.model;
+                    costLimits = {
+                        dailyUSD = config.costLimits.dailyUSD;
+                        monthlyUSD = config.costLimits.monthlyUSD;
+                        maxConcurrent = config.costLimits.maxConcurrent;
+                    };
+                })
             };
-        };
-
-        #ok(config);
+            case (#err(msg)) {
+                #err(msg)
+            };
+        }
     };
 
     public shared({ caller }) func updateAIConfig(config: AIConfig) : async Result.Result<(), Text> {
-        if (not hasRole(caller, #Admin) and not hasRole(caller, #SuperAdmin)) {
+        if (not isAuthorized(caller)) {
             return #err("Unauthorized");
         };
-        
-        // Only log non-sensitive data
-        Debug.print("Updating AI config with model: " # config.model # ", limits: " # debug_show(config.costLimits));
-
-        // Validate cost limits
-        if (config.costLimits.maxConcurrent < 1 or config.costLimits.maxConcurrent > 10) {
-            return #err("Max concurrent requests must be between 1 and 10");
-        };
-
-        // Store config with obfuscated API key
-        aiConfig := {
-            apiKey = obfuscateApiKey(config.apiKey);
-            model = config.model;
-            costLimits = {
-                dailyUSD = config.costLimits.dailyUSD;
-                monthlyUSD = config.costLimits.monthlyUSD;
-                maxConcurrent = config.costLimits.maxConcurrent;
-            };
-        };
-
-        // Only log non-sensitive data
-        Debug.print("Updated AI config with model: " # aiConfig.model # ", limits: " # debug_show(aiConfig.costLimits));
-        #ok(());
+        let result = await storage.updateAIConfig(config);
+        switch (result) {
+            case (#ok(_)) #ok();
+            case (#err(msg)) #err(msg);
+        }
     };
 
     // For development only - clear all data
@@ -303,7 +288,7 @@ actor {
 
     public query func getConfig() : async TaskConfig {
         switch (config.get("default")) {
-            case (null) { DEFAULT_CONFIG };
+            case (null) { _DEFAULT_CONFIG };
             case (?c) { c };
         }
     };
@@ -385,13 +370,13 @@ actor {
         #ok(())
     };
 
-    public shared({ caller }) func addUser(newUserPrincipal: Principal, role: UserRole) : async Result.Result<(), Text> {
+    public shared({ caller }) func addUser(_newUserPrincipal: Principal, role: UserRole) : async Result.Result<(), Text> {
         if (not hasRole(caller, #SuperAdmin)) {
             return #err("Only SuperAdmin can add users");
         };
 
-        users.put(newUserPrincipal, {
-            principal = newUserPrincipal;
+        users.put(_newUserPrincipal, {
+            principal = _newUserPrincipal;
             role = role;
             addedBy = caller;
             addedAt = Time.now();
@@ -477,13 +462,13 @@ actor {
     };
 
     // Update an existing topic
-    public shared({ caller }) func updateTopic(id: Text, topic: ScrapingTopic) : async Result.Result<ScrapingTopic, Text> {
+    public shared({ caller }) func updateTopic(id: Text, _existing: ScrapingTopic) : async Result.Result<ScrapingTopic, Text> {
         if (not hasRole(caller, #Admin) and not hasRole(caller, #SuperAdmin)) {
             return #err("Unauthorized");
         };
 
         // Check for duplicate name
-        if (topicNameExists(topic.name, ?id)) {
+        if (topicNameExists(_existing.name, ?id)) {
             return #err("A topic with this name already exists");
         };
 
@@ -492,8 +477,8 @@ actor {
                 return #err("Topic not found");
             };
             case (?_) {
-                topics.put(id, topic);
-                return #ok(topic);
+                topics.put(id, _existing);
+                return #ok(_existing);
             };
         }
     };
@@ -513,5 +498,49 @@ actor {
                 return #ok();
             };
         }
+    };
+
+    // Extraction Testing
+    public shared func testExtraction(request : {
+        url : Text;
+        extraction_rules : {
+            fields : [ScrapingField];
+            custom_prompt : ?Text;
+        };
+    }) : async Result.Result<{
+        data : [(Text, Text)];
+    }, Text> {
+        try {
+            // For testing, we'll use the existing scraping logic
+            let contentId = await storage.storeRequest({
+                id = Int.toText(Time.now());
+                url = request.url;
+                topicId = "test";
+                timestamp = Time.now();
+            });
+
+            switch(contentId) {
+                case (#err(e)) { return #err("Failed to store request: " # e) };
+                case (#ok(id)) {
+                    // Process with AI
+                    let result = await storage.processWithAI({
+                        contentId = id;
+                        topicId = "test";
+                        url = request.url;
+                        extractionRules = {
+                            fields = request.extraction_rules.fields;
+                            customPrompt = request.extraction_rules.custom_prompt;
+                        };
+                    });
+
+                    switch(result) {
+                        case (#err(e)) { return #err("Failed to process with AI: " # e) };
+                        case (#ok(data)) { return #ok({ data = data }) };
+                    };
+                };
+            };
+        } catch (e) {
+            #err("Failed to test extraction: " # Error.message(e));
+        };
     };
 }

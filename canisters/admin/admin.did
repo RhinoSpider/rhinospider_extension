@@ -1,18 +1,49 @@
+type ExtractionField = record {
+    name: text;
+    description: text;
+    ai_prompt: text;
+    required: bool;
+    field_type: text;
+    example: opt text;
+};
+
+type ExtractionRules = record {
+    fields: vec ExtractionField;
+    custom_prompt: opt text;
+};
+
+type Request = record {
+    url: text;
+    content_id: text;
+    extraction_rules: ExtractionRules;
+    topic_id: text;
+};
+
 type Task = record {
     id: text;
     url: text;
     topic: text;
     priority: nat;
-    createdAt: int;
-    assignedTo: opt principal;
+    created_at: int;
+    assigned_to: opt principal;
     status: text;
 };
 
 type TaskConfig = record {
     topics: vec text;
-    targetSites: vec text;
-    scanInterval: nat;
-    maxBandwidthPerDay: nat;
+    target_sites: vec text;
+    scan_interval: nat;
+    max_bandwidth_per_day: nat;
+};
+
+type Result = variant {
+    ok: text;
+    err: text;
+};
+
+type Result_1 = variant {
+    ok;
+    err: text;
 };
 
 type CostLimits = record {
@@ -27,19 +58,39 @@ type AIConfig = record {
     costLimits: CostLimits;
 };
 
-type Result = variant {
-    ok: nat;
-    err: text;
-};
-
-type Result_1 = variant {
-    ok;
-    err: text;
-};
-
-type AIConfigResult = variant {
+type Result_2 = variant {
     ok: AIConfig;
     err: text;
+};
+
+type ScrapingField = record {
+    name: text;
+    description: opt text;
+    example: opt text;
+    aiPrompt: text;
+    required: bool;
+    fieldType: text;
+};
+
+type ScrapingTopic = record {
+    id: text;
+    name: text;
+    description: opt text;
+    urlPatterns: vec text;
+    active: bool;
+    extractionRules: record {
+        fields: vec ScrapingField;
+        customPrompt: opt text;
+    };
+    validation: opt record {
+        rules: vec text;
+        aiValidation: opt text;
+    };
+    rateLimit: opt record {
+        requestsPerHour: nat;
+        maxConcurrent: nat;
+    };
+    createdAt: int;
 };
 
 service : {
@@ -49,6 +100,13 @@ service : {
     updateTaskStatus: (text, text) -> (Result_1);
     getConfig: () -> (TaskConfig) query;
     updateConfig: (TaskConfig) -> (Result_1);
-    getAIConfig: () -> (AIConfigResult) query;
+    getAIConfig: () -> (Result_2) query;
     updateAIConfig: (AIConfig) -> (Result_1);
+    processWithAI: (Request) -> (variant { ok: text; err: text; });
+    "getAIConfig": () -> (Result_2) query;
+    "updateAIConfig": (AIConfig) -> (Result_1);
+    "getTopics": () -> (vec ScrapingTopic) query;
+    "createTopic": (ScrapingTopic) -> (Result_1);
+    "updateTopic": (ScrapingTopic) -> (Result_1);
+    "deleteTopic": (text) -> (Result_1);
 };

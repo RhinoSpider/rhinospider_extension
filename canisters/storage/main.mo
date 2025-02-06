@@ -1,21 +1,56 @@
-import Principal "mo:base/Principal";
+import Buffer "mo:base/Buffer";
 import Result "mo:base/Result";
 import Text "mo:base/Text";
-import Time "mo:base/Time";
 import HashMap "mo:base/HashMap";
-import Buffer "mo:base/Buffer";
+import Nat32 "mo:base/Nat32";
+import Nat64 "mo:base/Nat64";
+import Int "mo:base/Int";
+import IC "./ic";
+import Types "./types";
+import Nat8 "mo:base/Nat8";
+import Float "mo:base/Float";
+import Char "mo:base/Char";
+import Principal "mo:base/Principal";
+import Blob "mo:base/Blob";
+import Error "mo:base/Error";
+import _Time "mo:base/Time";
+import HttpHandler "./http";
 
-actor Storage {
-    // Legacy type for compatibility
-    type ScrapedData = {
-        id: Text;
-        url: Text;
-        topic: Text;
-        source: Text;
-        content: Text;
-        timestamp: Int;
-        clientId: Principal;
+actor class Storage() = this {
+    type IC = actor {
+        http_request : Types.HttpRequestArgs -> async Types.HttpResponse;
     };
+
+    type ICManagement = actor {
+        raw_rand : () -> async [Nat8];
+        http_request : {
+            url : Text;
+            max_response_bytes : ?Nat64;
+            headers : [Types.HttpHeader];
+            body : ?[Nat8];
+            method : Types.HttpMethod;
+            transform : ?Types.TransformContext;
+            cycles : Nat64;
+        } -> async Types.HttpResponse;
+    };
+
+    type AdminCanister = actor {
+        getAIConfiguration : () -> async {
+            api_key: Text;
+            model: Text;
+            temperature: Float;
+            max_tokens: Nat;
+            top_p: Float;
+            frequency_penalty: Float;
+            presence_penalty: Float;
+        };
+    };
+
+    type HttpHeader = Types.HttpHeader;
+    type HttpMethod = Types.HttpMethod;
+    type TransformContext = Types.TransformContext;
+    type HttpRequestArgs = Types.HttpRequestArgs;
+    type HttpResponse = Types.HttpResponse;
 
     // New enhanced type
     type ScrapedContent = {
@@ -24,8 +59,8 @@ actor Storage {
         url: Text;
         title: Text;
         author: Text;
-        publishDate: Int;
-        updateDate: Int;
+        publish_date: Int;
+        update_date: Int;
         content: Text;
         summary: Text;
         topics: [Text];
@@ -36,73 +71,251 @@ actor Storage {
             comments: Nat;
         };
         metadata: {
-            readingTime: ?Nat;
+            reading_time: ?Nat;
             language: ?Text;
             license: ?Text;
-            techStack: [Text];
+            tech_stack: [Text];
         };
-        aiAnalysis: {
-            relevanceScore: Nat;
-            keyPoints: [Text];
-            codeSnippets: [{
+        ai_analysis: {
+            relevance_score: Nat;
+            key_points: [Text];
+            code_snippets: [{
                 language: Text;
                 code: Text;
             }];
         };
     };
 
-    // State
-    private var content = HashMap.HashMap<Text, ScrapedContent>(0, Text.equal, Text.hash);
-    private var contentByTopic = HashMap.HashMap<Text, Buffer.Buffer<Text>>(0, Text.equal, Text.hash);
-    private var contentBySource = HashMap.HashMap<Text, Buffer.Buffer<Text>>(0, Text.equal, Text.hash);
+    // Legacy type for compatibility
+    type ScrapedData = {
+        id: Text;
+        url: Text;
+        topic: Text;
+        source: Text;
+        content: Text;
+        timestamp: Int;
+        client_id: Principal;
+    };
 
-    // Store scraped content
-    public shared({ caller }) func storeContent(data: ScrapedContent) : async Result.Result<(), Text> {
+    // Request type for storing URLs
+    type Request = {
+        id: Text;
+        url: Text;
+        topic_id: Text;
+        timestamp: Int;
+        content_id: Text;
+        extraction_rules: ExtractionRules;
+    };
+
+    // Extraction rules type
+    type ExtractionRules = {
+        fields: [ScrapingField];
+        custom_prompt: ?Text;
+    };
+
+    type ScrapingField = {
+        name: Text;
+        description: ?Text;
+        ai_prompt: Text;
+        required: Bool;
+        field_type: Text;
+        example: ?Text;
+        selector_type: Text;
+        selector: Text;
+    };
+
+    private let _admin : AdminCanister = actor "bkyz2-fmaaa-aaaaa-qaaaq-cai";
+
+    // Helper function to convert Nat8 array to Text
+    private func _nat8ArrayToText(arr: [Nat8]) : Text {
+        let buffer = Buffer.Buffer<Char>(arr.size());
+        for (byte in arr.vals()) {
+            buffer.add(Char.fromNat32(Nat32.fromNat(Nat8.toNat(byte))));
+        };
+        Text.fromIter(buffer.vals());
+    };
+
+    // Helper function to encode URL
+    private func _encodeUrl(text: Text) : Text {
+        let chars = text.chars();
+        var encoded = "";
+        for (c in chars) {
+            let char = switch (c) {
+                case ' ' { "%20" };
+                case '!' { "%21" };
+                case '#' { "%23" };
+                case '$' { "%24" };
+                case '&' { "%26" };
+                case '\'' { "%27" };
+                case '(' { "%28" };
+                case ')' { "%29" };
+                case '*' { "%2A" };
+                case '+' { "%2B" };
+                case ',' { "%2C" };
+                case '/' { "%2F" };
+                case ':' { "%3A" };
+                case ';' { "%3B" };
+                case '=' { "%3D" };
+                case '?' { "%3F" };
+                case '@' { "%40" };
+                case '[' { "%5B" };
+                case ']' { "%5D" };
+                case _ { Char.toText(c) };
+            };
+            encoded := encoded # char;
+        };
+        encoded
+    };
+
+    // Helper function to make HTTP request through proxy
+    private func _makeHttpRequest(request: Types.HttpRequestArgs) : async Result.Result<Types.HttpResponse, Text> {
+        try {
+            let ic : IC.Self = actor("aaaaa-aa");
+            
+            // Use local proxy
+            let requestBody = "{ \"url\": \"" # request.url # "\" }";
+            let requestBodyBytes = Blob.toArray(Text.encodeUtf8(requestBody));
+            
+            let response = await ic.http_request {
+                url = "http://127.0.0.1:3000/fetch";
+                method = #post;
+                body = requestBodyBytes;
+                headers = [
+                    { name = "Content-Type"; value = "application/json" }
+                ];
+                transform = null;
+            };
+
+            #ok({
+                status = response.status;
+                headers = response.headers;
+                body = response.body;
+            });
+        } catch (e) {
+            #err("HTTP request failed: " # Error.message(e));
+        };
+    };
+
+    // Queue for URLs to be processed
+    private stable var _nextId : Nat = 0;
+    private var _pendingUrls = Buffer.Buffer<(Text, Text)>(0); // (id, url)
+    private var _htmlContent = HashMap.HashMap<Text, Text>(0, Text.equal, Text.hash);
+
+    // Get next URL to process (for external service)
+    public func getNextPendingUrl() : async ?{id: Text; url: Text} {
+        if (_pendingUrls.size() == 0) {
+            return null;
+        };
+        let url = _pendingUrls.get(0);
+        ignore _pendingUrls.removeLast();
+        ?{id = url.0; url = url.1}
+    };
+
+    // Store HTML content (called by external service)
+    public shared({ caller = _ }) func storeHtmlContent(id: Text, content: Text) : async () {
+        _htmlContent.put(id, content);
+    };
+
+    // Process URL with AI
+    public shared({ caller = _ }) func processWithAI(request: Request) : async Result.Result<[(Text, Text)], Text> {
+        if (request.content_id == "") {
+            return #err("Content ID is required");
+        };
+
+        // Get the stored HTML content
+        switch (_htmlContent.get(request.content_id)) {
+            case (null) { return #err("Content not found for ID: " # request.content_id) };
+            case (?content) {
+                // For testing, just extract a small sample to demonstrate
+                return #ok([("sample", content)]);
+            };
+        };
+    };
+
+    // Add URL to processing queue
+    public shared({ caller }) func queueUrlForProcessing(id: Text, url: Text) : async Result.Result<(), Text> {
+        _pendingUrls.add((id, url));
+        #ok(())
+    };
+
+    // Store a request for processing
+    public shared({ caller }) func storeRequest(request: Request) : async Result.Result<(), Text> {
         // Verify caller is authorized
         if (not isAuthorized(caller)) {
             return #err("Unauthorized");
         };
 
-        content.put(data.id, data);
-        
-        // Index by topics
-        for (topic in data.topics.vals()) {
-            switch (contentByTopic.get(topic)) {
-                case (null) {
-                    let buffer = Buffer.Buffer<Text>(1);
-                    buffer.add(data.id);
-                    contentByTopic.put(topic, buffer);
-                };
-                case (?buffer) {
-                    buffer.add(data.id);
-                };
-            };
+        _requests.put(request.id, request);
+        #ok()
+    };
+
+    // Store scraped content
+    public shared({ caller = _ }) func storeContent(data: ScrapedContent) : async Result.Result<(), Text> {
+        // Verify caller is authorized
+        if (not isAuthorized(Principal.fromActor(this))) {
+            return #err("Unauthorized");
         };
 
-        // Index by source
-        switch (contentBySource.get(data.source)) {
+        _content.put(data.id, data);
+
+        // Add to topic index
+        switch (_contentByTopic.get(data.topics[0])) {
             case (null) {
                 let buffer = Buffer.Buffer<Text>(1);
                 buffer.add(data.id);
-                contentBySource.put(data.source, buffer);
+                _contentByTopic.put(data.topics[0], buffer);
             };
             case (?buffer) {
                 buffer.add(data.id);
             };
         };
-        
-        #ok(())
+
+        // Add to source index
+        let sourceUrl = data.url;
+        switch (_contentBySource.get(sourceUrl)) {
+            case (null) {
+                let buffer = Buffer.Buffer<Text>(1);
+                buffer.add(data.id);
+                _contentBySource.put(sourceUrl, buffer);
+            };
+            case (?buffer) {
+                buffer.add(data.id);
+            };
+        };
+
+        #ok()
+    };
+
+    // New method for enhanced content
+    public query func getContentBySource(source: Text) : async Result.Result<[ScrapedContent], Text> {
+        if (not isAuthorized(Principal.fromActor(this))) {
+            return #err("Unauthorized");
+        };
+
+        switch (_contentBySource.get(source)) {
+            case (null) { return #ok([]) };
+            case (?buffer) {
+                let result = Buffer.Buffer<ScrapedContent>(buffer.size());
+                for (id in buffer.vals()) {
+                    switch (_content.get(id)) {
+                        case (?item) { result.add(item) };
+                        case (null) {};
+                    };
+                };
+                #ok(Buffer.toArray(result))
+            };
+        };
     };
 
     // Legacy method for compatibility
     public query func getBySource(source: Text) : async [ScrapedData] {
         let buffer = Buffer.Buffer<ScrapedData>(0);
         
-        switch (contentBySource.get(source)) {
+        switch (_contentBySource.get(source)) {
             case (null) { [] };
             case (?ids) {
                 for (id in ids.vals()) {
-                    switch (content.get(id)) {
+                    switch (_content.get(id)) {
                         case (?item) {
                             // Convert new type to legacy type
                             let legacyItem : ScrapedData = {
@@ -111,8 +324,8 @@ actor Storage {
                                 topic = if (item.topics.size() > 0) item.topics[0] else "";
                                 source = item.source;
                                 content = item.content;
-                                timestamp = item.publishDate;
-                                clientId = Principal.fromText("2vxsx-fae"); // Default system principal
+                                timestamp = item.publish_date;
+                                client_id = Principal.fromText("2vxsx-fae"); // Default system principal
                             };
                             buffer.add(legacyItem);
                         };
@@ -124,55 +337,138 @@ actor Storage {
         }
     };
 
-    // New method for enhanced content
-    public query func getContentBySource(source: Text) : async [ScrapedContent] {
-        let buffer = Buffer.Buffer<ScrapedContent>(0);
-        
-        switch (contentBySource.get(source)) {
-            case (null) { [] };
-            case (?ids) {
-                for (id in ids.vals()) {
-                    switch (content.get(id)) {
-                        case (?item) {
-                            buffer.add(item);
-                        };
-                        case (null) {};
-                    };
-                };
-                Buffer.toArray(buffer)
-            };
-        }
-    };
-
     // Query content by topic
-    public query func getContentByTopic(topic: Text, limit: Nat) : async [ScrapedContent] {
-        let buffer = Buffer.Buffer<ScrapedContent>(0);
-        
-        switch (contentByTopic.get(topic)) {
-            case (null) { [] };
-            case (?ids) {
+    public query func getContentByTopic(topic: Text, limit: Nat) : async Result.Result<[ScrapedContent], Text> {
+        if (not isAuthorized(Principal.fromActor(this))) {
+            return #err("Unauthorized");
+        };
+
+        switch (_contentByTopic.get(topic)) {
+            case (null) { return #ok([]) };
+            case (?buffer) {
+                let result = Buffer.Buffer<ScrapedContent>(buffer.size());
                 var count = 0;
-                label l for (id in ids.vals()) {
+                label l for (id in buffer.vals()) {
                     if (count >= limit) break l;
-                    switch (content.get(id)) {
-                        case (?item) {
-                            buffer.add(item);
-                            count += 1;
-                        };
+                    switch (_content.get(id)) {
+                        case (?item) { result.add(item) };
                         case (null) {};
                     };
+                    count += 1;
                 };
-                Buffer.toArray(buffer)
+                #ok(Buffer.toArray(result))
+            };
+        };
+    };
+
+    public query func getContent(id: Text) : async Result.Result<ScrapedContent, Text> {
+        if (not isAuthorized(Principal.fromActor(this))) {
+            return #err("Unauthorized");
+        };
+
+        switch (_content.get(id)) {
+            case (null) { #err("Content not found") };
+            case (?item) { #ok(item) };
+        };
+    };
+
+    // Simple test endpoint that only tests extraction rules
+    public shared(_msg) func testExtractRules(url : Text, rules : ExtractionRules) : async Result.Result<Text, Text> {
+        try {
+            let response = await HttpHandler.get(url, null);
+            
+            switch(response) {
+                case (#ok(content)) {
+                    // Process with AI directly
+                    var result = "{";
+                    var first = true;
+                    
+                    for (field in rules.fields.vals()) {
+                        if (not first) { result #= "," };
+                        result #= "\"" # field.name # "\":\"" # content # "\"";
+                        first := false;
+                    };
+                    
+                    result #= "}";
+                    return #ok(result);
+                };
+                case (#err(error)) {
+                    return #err("Failed to fetch URL: " # error);
+                };
+            };
+        } catch (e) {
+            return #err("Error testing extraction: " # Error.message(e));
+        };
+    };
+
+    // Topic management
+    private var _topics = HashMap.HashMap<Text, Types.ScrapingTopic>(0, Text.equal, Text.hash);
+    private var _aiConfig : ?Types.AIConfig = ?{
+        apiKey = "";
+        model = "gpt-3.5-turbo";
+        costLimits = {
+            dailyUSD = 10;
+            monthlyUSD = 100;
+            maxConcurrent = 5;
+        };
+    };
+
+    public query func getTopics() : async [Types.ScrapingTopic] {
+        var result : Buffer.Buffer<Types.ScrapingTopic> = Buffer.Buffer(0);
+        for ((_, topic) in _topics.entries()) {
+            result.add(topic);
+        };
+        Buffer.toArray(result)
+    };
+
+    public shared({ caller }) func createTopic(topic: Types.ScrapingTopic) : async Result.Result<(), Text> {
+        if (not isAuthorized(caller)) {
+            return #err("Unauthorized");
+        };
+        _topics.put(topic.id, topic);
+        #ok()
+    };
+
+    public shared({ caller }) func updateTopic(topic: Types.ScrapingTopic) : async Result.Result<(), Text> {
+        if (not isAuthorized(caller)) {
+            return #err("Unauthorized");
+        };
+        _topics.put(topic.id, topic);
+        #ok()
+    };
+
+    public shared({ caller }) func deleteTopic(id: Text) : async Result.Result<(), Text> {
+        if (not isAuthorized(caller)) {
+            return #err("Unauthorized");
+        };
+        _topics.delete(id);
+        #ok()
+    };
+
+    public query func getAIConfig() : async Result.Result<Types.AIConfig, Text> {
+        switch (_aiConfig) {
+            case (?config) {
+                #ok(config)
+            };
+            case null {
+                #err("AI config not found")
             };
         }
     };
 
-    public query func getContent(id: Text) : async ?ScrapedContent {
-        content.get(id)
+    public shared({ caller }) func updateAIConfig(config: Types.AIConfig) : async Result.Result<(), Text> {
+        _aiConfig := ?config;
+        #ok()
     };
+
+    // State
+    private var _content = HashMap.HashMap<Text, ScrapedContent>(0, Text.equal, Text.hash);
+    private var _contentByTopic = HashMap.HashMap<Text, Buffer.Buffer<Text>>(0, Text.equal, Text.hash);
+    private var _contentBySource = HashMap.HashMap<Text, Buffer.Buffer<Text>>(0, Text.equal, Text.hash);
+    private var _requests = HashMap.HashMap<Text, Request>(0, Text.equal, Text.hash);
 
     // Helper function to check if caller is authorized
-    private func isAuthorized(caller: Principal): Bool {
+    private func isAuthorized(_caller: Principal): Bool {
         // TODO: Implement proper authorization
         // For now, accept all calls
         true

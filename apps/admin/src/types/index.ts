@@ -33,16 +33,16 @@ export interface ScrapingTopic {
   rateLimit?: RateLimit;
 }
 
+export interface CostLimits {
+  dailyUSD: number;
+  monthlyUSD: number;
+  maxConcurrent: number;
+}
+
 export interface AIConfig {
-  provider: string;
   apiKey: string;
   model: string;
-  maxTokens: number;
-  temperature: number;
-  costLimits: {
-    dailyUsd: number;
-    monthlyUsd: number;
-  };
+  costLimits: CostLimits;
 }
 
 export interface QualityMetrics {

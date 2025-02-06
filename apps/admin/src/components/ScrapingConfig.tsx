@@ -48,9 +48,21 @@ export const ScrapingConfig: React.FC = () => {
         setAIConfigLoading(true);
         const actor = await getAdminActor();
         const result = await actor.getAIConfig();
-        console.log('AI config result:', result);
+        console.log('Raw AI config result:', JSON.stringify(result, (_, value) =>
+          typeof value === 'bigint' ? Number(value) : value
+        ));
         if ('ok' in result) {
-          setAIConfig(result.ok);
+          // Convert BigInt to Number for the frontend
+          const config = result.ok;
+          setAIConfig({
+            ...config,
+            costLimits: {
+              ...config.costLimits,
+              dailyUSD: Number(config.costLimits.dailyUSD),
+              monthlyUSD: Number(config.costLimits.monthlyUSD),
+              maxConcurrent: Number(config.costLimits.maxConcurrent)
+            }
+          });
         }
       } catch (error) {
         console.error('Failed to load AI config:', error);
@@ -135,7 +147,9 @@ export const ScrapingConfig: React.FC = () => {
       setUpdating(true);
       console.log('Saving AI config:', {
         model: config.model,
-        costLimits: config.costLimits,
+        dailyLimitUSD: config.dailyLimitUSD,
+        monthlyLimitUSD: config.monthlyLimitUSD,
+        maxConcurrent: config.maxConcurrent,
         apiKey: '[HIDDEN]'
       });
 
@@ -152,7 +166,9 @@ export const ScrapingConfig: React.FC = () => {
         console.log('Loaded AI config:', {
           ok: result.ok ? {
             model: result.ok.model,
-            costLimits: result.ok.costLimits,
+            dailyLimitUSD: result.ok.dailyLimitUSD,
+            monthlyLimitUSD: result.ok.monthlyLimitUSD,
+            maxConcurrent: result.ok.maxConcurrent,
             apiKey: '[HIDDEN]'
           } : undefined,
           err: result.err
@@ -211,15 +227,15 @@ export const ScrapingConfig: React.FC = () => {
         </div>
         <div>
           <label className="text-gray-400">Daily Cost Limit</label>
-          <div className="text-white">${Number(aiConfig.costLimits?.dailyUSD || 0).toFixed(2)} USD</div>
+          <div className="text-white">${Number(aiConfig?.costLimits?.dailyUSD || 0).toFixed(2)} USD</div>
         </div>
         <div>
           <label className="text-gray-400">Monthly Cost Limit</label>
-          <div className="text-white">${Number(aiConfig.costLimits?.monthlyUSD || 0).toFixed(2)} USD</div>
+          <div className="text-white">${Number(aiConfig?.costLimits?.monthlyUSD || 0).toFixed(2)} USD</div>
         </div>
         <div>
           <label className="text-gray-400">Max Concurrent Requests</label>
-          <div className="text-white">{Number(aiConfig.costLimits?.maxConcurrent || 1)}</div>
+          <div className="text-white">{Number(aiConfig?.costLimits?.maxConcurrent || 1)}</div>
         </div>
       </div>
     );
