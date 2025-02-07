@@ -48,9 +48,6 @@ export const ScrapingConfig: React.FC = () => {
         setAIConfigLoading(true);
         const actor = await getAdminActor();
         const result = await actor.getAIConfig();
-        console.log('Raw AI config result:', JSON.stringify(result, (_, value) =>
-          typeof value === 'bigint' ? Number(value) : value
-        ));
         if ('ok' in result) {
           // Convert BigInt to Number for the frontend
           const config = result.ok;
@@ -193,15 +190,14 @@ export const ScrapingConfig: React.FC = () => {
   };
 
   const renderAIConfig = () => {
-    if (aiConfigLoading || updating) {
+    if (aiConfigLoading) {
       return (
-        <div className="flex items-center justify-center py-8">
-          <div className="flex items-center space-x-2">
-            <svg className="animate-spin h-5 w-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            <span className="text-gray-300">{updating ? 'Updating configuration...' : 'Loading configuration...'}</span>
+        <div className="bg-[#1C1B23] rounded-lg p-6 animate-pulse">
+          <div className="h-6 w-48 bg-[#2C2B33] rounded mb-4"></div>
+          <div className="space-y-4">
+            <div className="h-4 w-32 bg-[#2C2B33] rounded"></div>
+            <div className="h-4 w-36 bg-[#2C2B33] rounded"></div>
+            <div className="h-4 w-40 bg-[#2C2B33] rounded"></div>
           </div>
         </div>
       );
@@ -209,33 +205,61 @@ export const ScrapingConfig: React.FC = () => {
 
     if (!aiConfig) {
       return (
-        <div className="text-gray-400 text-center py-8">
-          No configuration set
+        <div className="bg-[#1C1B23] rounded-lg p-6">
+          <p className="text-gray-400">AI configuration not found</p>
         </div>
       );
     }
 
     return (
-      <div className="space-y-4">
-        <div>
-          <label className="text-gray-400">API Key</label>
-          <div className="text-white font-mono">••••••••</div>
+      <div className="bg-[#1C1B23] rounded-lg p-6">
+        <div className="flex justify-between items-start mb-6">
+          <div>
+            <h2 className="text-lg font-medium text-white mb-1">AI Configuration</h2>
+            <p className="text-sm text-gray-400">OpenAI API settings and cost limits</p>
+          </div>
+          <button
+            onClick={() => setIsAIModalOpen(true)}
+            className="px-4 py-2 bg-[#B692F6] text-[#131217] rounded-lg hover:opacity-90 transition-opacity"
+          >
+            Configure
+          </button>
         </div>
-        <div>
-          <label className="text-gray-400">Model</label>
-          <div className="text-white">{aiConfig.model}</div>
-        </div>
-        <div>
-          <label className="text-gray-400">Daily Cost Limit</label>
-          <div className="text-white">${Number(aiConfig?.costLimits?.dailyUSD || 0).toFixed(2)} USD</div>
-        </div>
-        <div>
-          <label className="text-gray-400">Monthly Cost Limit</label>
-          <div className="text-white">${Number(aiConfig?.costLimits?.monthlyUSD || 0).toFixed(2)} USD</div>
-        </div>
-        <div>
-          <label className="text-gray-400">Max Concurrent Requests</label>
-          <div className="text-white">{Number(aiConfig?.costLimits?.maxConcurrent || 1)}</div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <h3 className="text-sm font-medium text-gray-200 mb-4">API Settings</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="text-gray-400">API Key</label>
+                <div className="text-white font-mono">
+                  {aiConfig.apiKey ? '••••••••' : 'Not set'}
+                </div>
+              </div>
+              <div>
+                <label className="text-gray-400">Model</label>
+                <div className="text-white">{aiConfig.model}</div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-sm font-medium text-gray-200 mb-4">Cost Limits</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="text-gray-400">Daily Limit</label>
+                <div className="text-white">${aiConfig.costLimits.dailyUSD.toFixed(2)} USD</div>
+              </div>
+              <div>
+                <label className="text-gray-400">Monthly Limit</label>
+                <div className="text-white">${aiConfig.costLimits.monthlyUSD.toFixed(2)} USD</div>
+              </div>
+              <div>
+                <label className="text-gray-400">Max Concurrent</label>
+                <div className="text-white">{aiConfig.costLimits.maxConcurrent}</div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -403,40 +427,7 @@ export const ScrapingConfig: React.FC = () => {
           </button>
         </div>
 
-        <div className="bg-[#1C1B23] rounded-lg p-4">
-          {aiConfigLoading ? (
-            <div className="text-center py-4">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#B692F6] mx-auto"></div>
-              <p className="text-gray-400 mt-2">Loading AI configuration...</p>
-            </div>
-          ) : !aiConfig ? (
-            <div className="text-center py-4 text-gray-400">
-              <p>No AI configuration set.</p>
-              <p className="mt-2">Click the button above to configure AI settings.</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-sm font-medium text-gray-200">Model</h3>
-                <p className="text-gray-400 mt-1">{aiConfig.model}</p>
-              </div>
-              <div>
-                <h3 className="text-sm font-medium text-gray-200">Cost Limits</h3>
-                <div className="mt-1 space-y-2">
-                  <p className="text-gray-400">
-                    Daily: ${Number(aiConfig.costLimits.dailyUSD)} USD
-                  </p>
-                  <p className="text-gray-400">
-                    Monthly: ${Number(aiConfig.costLimits.monthlyUSD)} USD
-                  </p>
-                  <p className="text-gray-400">
-                    Max Concurrent: {Number(aiConfig.costLimits.maxConcurrent)}
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+        {renderAIConfig()}
       </div>
 
       {/* Modals */}
