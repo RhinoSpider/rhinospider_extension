@@ -63,38 +63,14 @@ export const ScrapingConfig: React.FC = () => {
         }
       } catch (error) {
         console.error('Failed to load AI config:', error);
+        setError('Failed to load AI configuration');
       } finally {
         setAIConfigLoading(false);
       }
     };
 
     loadAIConfig();
-  }, []);
-
-  // Check authentication
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-
-        const authClient = getAuthClient();
-        const isAuth = await authClient.isAuthenticated();
-        
-        if (!isAuth) {
-          setError('Please log in to view the configuration');
-          await authClient.login();
-        }
-      } catch (error) {
-        console.error('Failed to check auth:', error);
-        setError(error instanceof Error ? error.message : 'Failed to check authentication');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    checkAuth();
-  }, []);
+  }, [isAIModalOpen]); // Reload when modal closes
 
   const handleSaveTopic = async (topic: ScrapingTopic) => {
     try {
@@ -139,65 +115,35 @@ export const ScrapingConfig: React.FC = () => {
     }
   };
 
-  const handleSaveAIConfig = async (config: AIConfig) => {
+  const handleSaveAIConfig = async (newConfig: AIConfig) => {
     try {
-      setUpdating(true);
-      console.log('Saving AI config:', {
-        model: config.model,
-        dailyLimitUSD: config.dailyLimitUSD,
-        monthlyLimitUSD: config.monthlyLimitUSD,
-        maxConcurrent: config.maxConcurrent,
-        apiKey: '[HIDDEN]'
-      });
-
+      setAIConfigLoading(true);
       const actor = await getAdminActor();
-      if (!actor) {
-        throw new Error('Failed to initialize connection');
-      }
-
-      const result = await actor.updateAIConfig(config);
-      if ('ok' in result) {
-        // Wait a bit before reloading to ensure canister state is updated
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        const result = await actor.getAIConfig();
-        console.log('Loaded AI config:', {
-          ok: result.ok ? {
-            model: result.ok.model,
-            dailyLimitUSD: result.ok.dailyLimitUSD,
-            monthlyLimitUSD: result.ok.monthlyLimitUSD,
-            maxConcurrent: result.ok.maxConcurrent,
-            apiKey: '[HIDDEN]'
-          } : undefined,
-          err: result.err
-        });
-
-        if ('ok' in result) {
-          setAIConfig(result.ok);
-        } else {
-          console.error('Failed to load AI config:', result.err);
-        }
+      const result = await actor.updateAIConfig(newConfig);
+      if ('err' in result) {
+        setError(result.err);
       } else {
-        throw new Error(result.err);
+        setAIConfig(newConfig);
       }
     } catch (error) {
       console.error('Failed to save AI config:', error);
-      // We'll let the modal handle the error display
-      throw error;
+      setError('Failed to save AI configuration');
     } finally {
-      setUpdating(false);
-      setIsAIModalOpen(false);
+      setAIConfigLoading(false);
     }
   };
 
   const renderAIConfig = () => {
     if (aiConfigLoading) {
       return (
-        <div className="bg-[#1C1B23] rounded-lg p-6 animate-pulse">
-          <div className="h-6 w-48 bg-[#2C2B33] rounded mb-4"></div>
-          <div className="space-y-4">
-            <div className="h-4 w-32 bg-[#2C2B33] rounded"></div>
-            <div className="h-4 w-36 bg-[#2C2B33] rounded"></div>
-            <div className="h-4 w-40 bg-[#2C2B33] rounded"></div>
+        <div className="bg-[#1C1B23] rounded-lg p-6">
+          <div className="animate-pulse space-y-4">
+            <div className="h-4 bg-[#2C2B33] rounded w-1/4"></div>
+            <div className="space-y-3">
+              <div className="h-4 bg-[#2C2B33] rounded w-1/2"></div>
+              <div className="h-4 bg-[#2C2B33] rounded w-1/3"></div>
+              <div className="h-4 bg-[#2C2B33] rounded w-2/5"></div>
+            </div>
           </div>
         </div>
       );
@@ -221,6 +167,7 @@ export const ScrapingConfig: React.FC = () => {
           <button
             onClick={() => setIsAIModalOpen(true)}
             className="px-4 py-2 bg-[#B692F6] text-[#131217] rounded-lg hover:opacity-90 transition-opacity"
+            disabled={aiConfigLoading}
           >
             Configure
           </button>
@@ -248,11 +195,11 @@ export const ScrapingConfig: React.FC = () => {
             <div className="space-y-4">
               <div>
                 <label className="text-gray-400">Daily Limit</label>
-                <div className="text-white">${aiConfig.costLimits.dailyUSD.toFixed(2)} USD</div>
+                <div className="text-white">${typeof aiConfig.costLimits.dailyUSD === 'number' ? aiConfig.costLimits.dailyUSD.toFixed(2) : '0.00'} USD</div>
               </div>
               <div>
                 <label className="text-gray-400">Monthly Limit</label>
-                <div className="text-white">${aiConfig.costLimits.monthlyUSD.toFixed(2)} USD</div>
+                <div className="text-white">${typeof aiConfig.costLimits.monthlyUSD === 'number' ? aiConfig.costLimits.monthlyUSD.toFixed(2) : '0.00'} USD</div>
               </div>
               <div>
                 <label className="text-gray-400">Max Concurrent</label>
@@ -261,6 +208,12 @@ export const ScrapingConfig: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {error && (
+          <div className="mt-4 bg-red-900/20 border border-red-400 text-red-400 px-4 py-3 rounded">
+            {error}
+          </div>
+        )}
       </div>
     );
   };
@@ -297,6 +250,31 @@ export const ScrapingConfig: React.FC = () => {
     };
     loadData();
   };
+
+  // Check authentication
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const authClient = getAuthClient();
+        const isAuth = await authClient.isAuthenticated();
+        
+        if (!isAuth) {
+          setError('Please log in to view the configuration');
+          await authClient.login();
+        }
+      } catch (error) {
+        console.error('Failed to check auth:', error);
+        setError(error instanceof Error ? error.message : 'Failed to check authentication');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkAuth();
+  }, []);
 
   return (
     <div className="space-y-8">
