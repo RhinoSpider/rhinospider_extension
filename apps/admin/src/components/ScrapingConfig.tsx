@@ -411,20 +411,11 @@ export const ScrapingConfig: React.FC = () => {
 
       {/* AI Configuration Section */}
       <div>
-        <div className="flex justify-between items-center mb-4">
-          <div>
-            <h2 className="text-xl font-semibold text-white">AI Configuration</h2>
-            <p className="text-gray-400 text-sm mt-1">
-              Configure AI settings for content extraction
-            </p>
-          </div>
-          <button
-            onClick={() => setIsAIModalOpen(true)}
-            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-            disabled={aiConfigLoading}
-          >
-            Configure AI
-          </button>
+        <div className="mb-4">
+          <h2 className="text-xl font-semibold text-white">AI Configuration</h2>
+          <p className="text-gray-400 text-sm mt-1">
+            Configure AI settings for content extraction
+          </p>
         </div>
 
         {renderAIConfig()}
