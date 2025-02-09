@@ -1,6 +1,50 @@
+type Storage = 
+ service {
+   createTopic: (ScrapingTopic) -> (Result);
+   deleteTopic: (text) -> (Result);
+   getAIConfig: () -> (Result_5) query;
+   getBySource: (text) -> (vec ScrapedData) query;
+   getContent: (text) -> (Result_4) query;
+   getContentBySource: (text) -> (Result_3) query;
+   getContentByTopic: (text, nat) -> (Result_3) query;
+   getNextPendingUrl: () -> (opt record {
+                                   id: text;
+                                   url: text;
+                                 });
+   getTopics: () -> (vec ScrapingTopic) query;
+   processWithAI: (Request) -> (Result_2);
+   queueUrlForProcessing: (text, text) -> (Result);
+   storeContent: (ScrapedContent) -> (Result);
+   storeHtmlContent: (text, text) -> ();
+   storeRequest: (Request) -> (Result);
+   testExtractRules: (text, ExtractionRules__1) -> (Result_1);
+   updateAIConfig: (AIConfig) -> (Result);
+   updateTopic: (ScrapingTopic) -> (Result);
+ };
+type ScrapingTopic = 
+ record {
+   createdAt: int;
+   description: opt text;
+   extractionRules: opt ExtractionRules;
+   id: text;
+   name: text;
+   updatedAt: int;
+   urlPatterns: vec text;
+ };
+type ScrapingField = 
+ record {
+   ai_prompt: text;
+   description: opt text;
+   example: opt text;
+   field_type: text;
+   name: text;
+   required: bool;
+   selector: text;
+   selector_type: text;
+ };
 type ScrapedData = 
  record {
-   clientId: principal;
+   client_id: principal;
    content: text;
    id: text;
    source: text;
@@ -10,14 +54,14 @@ type ScrapedData =
  };
 type ScrapedContent = 
  record {
-   aiAnalysis:
+   ai_analysis:
     record {
-      codeSnippets: vec record {
-                          code: text;
-                          language: text;
-                        };
-      keyPoints: vec text;
-      relevanceScore: nat;
+      code_snippets: vec record {
+                           code: text;
+                           language: text;
+                         };
+      key_points: vec text;
+      relevance_score: nat;
     };
    author: text;
    content: text;
@@ -33,26 +77,88 @@ type ScrapedContent =
     record {
       language: opt text;
       license: opt text;
-      readingTime: opt nat;
-      techStack: vec text;
+      reading_time: opt nat;
+      tech_stack: vec text;
     };
-   publishDate: int;
+   publish_date: int;
    source: text;
    summary: text;
    title: text;
    topics: vec text;
-   updateDate: int;
+   update_date: int;
    url: text;
+ };
+type Result_5 = 
+ variant {
+   err: text;
+   ok: AIConfig;
+ };
+type Result_4 = 
+ variant {
+   err: text;
+   ok: ScrapedContent;
+ };
+type Result_3 = 
+ variant {
+   err: text;
+   ok: vec ScrapedContent;
+ };
+type Result_2 = 
+ variant {
+   err: text;
+   ok: vec record {
+             text;
+             text;
+           };
+ };
+type Result_1 = 
+ variant {
+   err: text;
+   ok: text;
  };
 type Result = 
  variant {
    err: text;
    ok;
  };
-service : {
-  getBySource: (text) -> (vec ScrapedData) query;
-  getContent: (text) -> (opt ScrapedContent) query;
-  getContentBySource: (text) -> (vec ScrapedContent) query;
-  getContentByTopic: (text, nat) -> (vec ScrapedContent) query;
-  storeContent: (ScrapedContent) -> (Result);
-}
+type Request = 
+ record {
+   content_id: text;
+   extraction_rules: ExtractionRules__1;
+   id: text;
+   timestamp: int;
+   topic_id: text;
+   url: text;
+ };
+type ExtractionRules__1 = 
+ record {
+   custom_prompt: opt text;
+   fields: vec ScrapingField;
+ };
+type ExtractionRules = 
+ record {
+   customPrompt: opt text;
+   fields: vec ExtractionField;
+ };
+type ExtractionField = 
+ record {
+   aiPrompt: text;
+   description: opt text;
+   example: opt text;
+   fieldType: text;
+   name: text;
+   required: bool;
+ };
+type CostLimits = 
+ record {
+   dailyUSD: nat;
+   maxConcurrent: nat;
+   monthlyUSD: nat;
+ };
+type AIConfig = 
+ record {
+   apiKey: text;
+   costLimits: CostLimits;
+   model: text;
+ };
+service : () -> Storage

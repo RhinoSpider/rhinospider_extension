@@ -60,26 +60,7 @@ actor Admin {
 
     type ScrapingField = StorageTypes.ScrapingField;
 
-    type ScrapingTopic = {
-        id: Text;
-        name: Text;
-        description: Text;
-        urlPatterns: [Text];
-        active: Bool;
-        extractionRules: {
-            fields: [ScrapingField];
-            customPrompt: ?Text;
-        };
-        validation: ?{
-            rules: [Text];
-            aiValidation: ?Text;
-        };
-        rateLimit: ?{
-            requestsPerHour: Nat;
-            maxConcurrent: Nat;
-        };
-        createdAt: Int;
-    };
+    type ScrapingTopic = StorageTypes.ScrapingTopic;
 
     private var tasks = HashMap.HashMap<Text, Task>(0, Text.equal, Text.hash);
     private var config = HashMap.HashMap<Text, TaskConfig>(1, Text.equal, Text.hash);
@@ -87,6 +68,8 @@ actor Admin {
     private var users = HashMap.HashMap<Principal, User>(10, Principal.equal, Principal.hash);
     private var topics = HashMap.HashMap<Text, ScrapingTopic>(0, Text.equal, Text.hash);
     private stable var stableTopics : [(Text, ScrapingTopic)] = [];
+    private stable var _users : [(Principal, User)] = [];
+    private stable var _topics : [(Text, ScrapingTopic)] = [];
 
     // Default AI configuration
     private stable var _aiConfig : AIConfig = {
@@ -104,10 +87,15 @@ actor Admin {
 
     system func preupgrade() {
         stableTopics := Iter.toArray(topics.entries());
+        _users := Iter.toArray(users.entries());
+        _topics := Iter.toArray(topics.entries());
     };
 
     system func postupgrade() {
         topics := HashMap.fromIter<Text, ScrapingTopic>(stableTopics.vals(), 0, Text.equal, Text.hash);
+        users := HashMap.fromIter<Principal, User>(_users.vals(), 10, Principal.equal, Principal.hash);
+        _users := [];
+        _topics := [];
         
         // Initialize admin for local development
         let _INITIAL_ADMIN = "ynyv4-or367-gln75-f3usn-xabzu-a4s2g-awpw2-mwyu3-f46dm-gd7jt-aqe";

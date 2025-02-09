@@ -74,11 +74,8 @@ export const clearAdminActor = () => {
 // Topic Management
 export async function getTopics(): Promise<ScrapingTopic[]> {
   const actor = await getAdminActor();
-  const result = await actor.getTopics();
-  if ('Ok' in result) {
-    return result.Ok;
-  }
-  throw new Error(result.Err);
+  if (!actor) throw new Error('Failed to get admin actor');
+  return actor.getTopics();
 }
 
 export async function createTopic(topic: Omit<ScrapingTopic, 'id'>): Promise<ScrapingTopic> {

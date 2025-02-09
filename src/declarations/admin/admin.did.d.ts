@@ -12,12 +12,48 @@ export interface CostLimits {
   'dailyUSD' : bigint,
   'monthlyUSD' : bigint,
 }
-export type Result = { 'ok' : null } |
+export type Result = { 'ok' : ScrapingTopic } |
   { 'err' : string };
-export type Result_1 = { 'ok' : AIConfig } |
+export type Result_1 = { 'ok' : null } |
   { 'err' : string };
-export type Result_2 = { 'ok' : bigint } |
+export type Result_2 = { 'ok' : { 'data' : Array<[string, string]> } } |
   { 'err' : string };
+export type Result_3 = { 'ok' : AIConfig } |
+  { 'err' : string };
+export type Result_4 = { 'ok' : bigint } |
+  { 'err' : string };
+export interface ScrapingField {
+  'name' : string,
+  'description' : [] | [string],
+  'example' : [] | [string],
+  'aiPrompt' : string,
+  'required' : boolean,
+  'fieldType' : string,
+}
+export interface ScrapingField__1 {
+  'name' : string,
+  'description' : [] | [string],
+  'example' : [] | [string],
+  'aiPrompt' : string,
+  'required' : boolean,
+  'fieldType' : string,
+}
+export interface ScrapingTopic {
+  'id' : string,
+  'active' : boolean,
+  'name' : string,
+  'createdAt' : bigint,
+  'description' : string,
+  'urlPatterns' : Array<string>,
+  'extractionRules' : {
+    'fields' : Array<ScrapingField>,
+    'customPrompt' : [] | [string],
+  },
+  'rateLimit' : [] | [{ 'maxConcurrent' : bigint, 'requestsPerHour' : bigint }],
+  'validation' : [] | [
+    { 'aiValidation' : [] | [string], 'rules' : Array<string> }
+  ],
+}
 export interface Task {
   'id' : string,
   'url' : string,
@@ -33,21 +69,44 @@ export interface TaskConfig {
   'topics' : Array<string>,
   'scanInterval' : bigint,
 }
+export type Time = bigint;
+export interface User {
+  'principal' : Principal,
+  'role' : UserRole,
+  'addedAt' : Time,
+  'addedBy' : Principal,
+}
 export type UserRole = { 'Operator' : null } |
   { 'SuperAdmin' : null } |
   { 'Admin' : null };
 export interface _SERVICE {
-  'addTasks' : ActorMethod<[Array<Task>], Result_2>,
-  'addUser' : ActorMethod<[Principal, UserRole], Result>,
+  'addTasks' : ActorMethod<[Array<Task>], Result_4>,
+  'addUser' : ActorMethod<[Principal, UserRole], Result_1>,
   'clearAllData' : ActorMethod<[], string>,
-  'getAIConfig' : ActorMethod<[], Result_1>,
+  'createTopic' : ActorMethod<[ScrapingTopic], Result>,
+  'deleteTopic' : ActorMethod<[string], Result_1>,
+  'getAIConfig' : ActorMethod<[], Result_3>,
   'getConfig' : ActorMethod<[], TaskConfig>,
   'getTasks' : ActorMethod<[bigint], Array<Task>>,
-  'init' : ActorMethod<[], undefined>,
-  'removeUser' : ActorMethod<[Principal], Result>,
-  'updateAIConfig' : ActorMethod<[AIConfig], Result>,
-  'updateConfig' : ActorMethod<[TaskConfig], Result>,
-  'updateTaskStatus' : ActorMethod<[string, string], Result>,
+  'getTopics' : ActorMethod<[], Array<ScrapingTopic>>,
+  'getUsers' : ActorMethod<[], Array<User>>,
+  'removeUser' : ActorMethod<[Principal], Result_1>,
+  'testExtraction' : ActorMethod<
+    [
+      {
+        'url' : string,
+        'extraction_rules' : {
+          'custom_prompt' : [] | [string],
+          'fields' : Array<ScrapingField__1>,
+        },
+      },
+    ],
+    Result_2
+  >,
+  'updateAIConfig' : ActorMethod<[AIConfig], Result_1>,
+  'updateConfig' : ActorMethod<[TaskConfig], Result_1>,
+  'updateTaskStatus' : ActorMethod<[string, string], Result_1>,
+  'updateTopic' : ActorMethod<[string, ScrapingTopic], Result>,
 }
 export declare const idlFactory: IDL.InterfaceFactory;
 export declare const init: (args: { IDL: typeof IDL }) => IDL.Type[];

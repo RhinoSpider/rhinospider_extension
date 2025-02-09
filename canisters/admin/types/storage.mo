@@ -23,6 +23,27 @@ module {
         example: ?Text;
     };
 
+    public type ScrapingTopic = {
+        id: Text;
+        name: Text;
+        description: Text;
+        urlPatterns: [Text];
+        active: Bool;
+        extractionRules: {
+            fields: [ScrapingField];
+            customPrompt: ?Text;
+        };
+        validation: ?{
+            rules: [Text];
+            aiValidation: ?Text;
+        };
+        rateLimit: ?{
+            requestsPerHour: Nat;
+            maxConcurrent: Nat;
+        };
+        createdAt: Int;
+    };
+
     public type Storage = actor {
         storeRequest : shared ({
             id: Text;
