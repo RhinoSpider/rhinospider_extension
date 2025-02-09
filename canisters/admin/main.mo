@@ -83,7 +83,7 @@ actor Admin {
     };
 
     private var _cachedAIConfig : ?AIConfig = null;
-    private let storage : StorageTypes.Storage = actor(Principal.toText(Principal.fromText("bkyz2-fmaaa-aaaaa-qaaaq-cai")));
+    private let storage : StorageTypes.Storage = actor(Principal.toText(Principal.fromText("br5f7-7uaaa-aaaaa-qaaca-cai")));
 
     system func preupgrade() {
         stableTopics := Iter.toArray(topics.entries());
@@ -144,7 +144,7 @@ actor Admin {
                 switch (user.role) {
                     case (#SuperAdmin) { true };
                     case (#Admin) { true };
-                    case (#Operator) { false };
+                    case (#Operator) { true };
                 };
             };
             case null { false };

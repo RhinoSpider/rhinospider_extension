@@ -152,7 +152,20 @@ export const ScrapingConfig: React.FC = () => {
     if (!aiConfig) {
       return (
         <div className="bg-[#1C1B23] rounded-lg p-6">
-          <p className="text-gray-400">AI configuration not found</p>
+          <div className="flex justify-between items-start mb-6">
+            <div>
+              <h2 className="text-lg font-medium text-white mb-1">AI Configuration</h2>
+              <p className="text-sm text-gray-400">OpenAI API settings and cost limits</p>
+            </div>
+            <button
+              onClick={() => setIsAIModalOpen(true)}
+              className="px-4 py-2 bg-[#B692F6] text-[#131217] rounded-lg hover:opacity-90 transition-opacity"
+              disabled={aiConfigLoading}
+            >
+              Configure
+            </button>
+          </div>
+          <p className="text-gray-400">No AI configuration found. Click Configure to set one up.</p>
         </div>
       );
     }

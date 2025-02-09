@@ -453,6 +453,9 @@ actor class Storage() = this {
     };
 
     public shared({ caller }) func updateAIConfig(config: Types.AIConfig) : async Result.Result<(), Text> {
+        if (not isAuthorized(caller)) {
+            return #err("Unauthorized");
+        };
         _aiConfig := ?config;
         #ok()
     };
@@ -464,7 +467,12 @@ actor class Storage() = this {
     private var _requests = HashMap.HashMap<Text, Request>(0, Text.equal, Text.hash);
 
     // Helper function to check if caller is authorized
-    private func isAuthorized(_caller: Principal): Bool {
+    private func isAuthorized(caller: Principal): Bool {
+        // For local development, allow anonymous access
+        if (Principal.isAnonymous(caller)) {
+            return true;
+        };
+        
         // TODO: Implement proper authorization
         // For now, accept all calls
         true
