@@ -14,15 +14,11 @@ import Principal "mo:base/Principal";
 import Blob "mo:base/Blob";
 import Error "mo:base/Error";
 import _Time "mo:base/Time";
-import HttpHandler "./http";
+import HttpLib "./http/lib";
+import HttpHandler "./http/handler";
 
 actor class Storage() = this {
-    type IC = actor {
-        http_request : Types.HttpRequestArgs -> async Types.HttpResponse;
-    };
-
     type ICManagement = actor {
-        raw_rand : () -> async [Nat8];
         http_request : {
             url : Text;
             max_response_bytes : ?Nat64;
@@ -30,7 +26,6 @@ actor class Storage() = this {
             body : ?[Nat8];
             method : Types.HttpMethod;
             transform : ?Types.TransformContext;
-            cycles : Nat64;
         } -> async Types.HttpResponse;
     };
 
@@ -170,21 +165,22 @@ actor class Storage() = this {
     // Helper function to make HTTP request through proxy
     private func _makeHttpRequest(request: Types.HttpRequestArgs) : async Result.Result<Types.HttpResponse, Text> {
         try {
-            let ic : IC.Self = actor("aaaaa-aa");
+            let ic : ICManagement = actor("aaaaa-aa");
             
             // Use local proxy
             let requestBody = "{ \"url\": \"" # request.url # "\" }";
             let requestBodyBytes = Blob.toArray(Text.encodeUtf8(requestBody));
             
-            let response = await ic.http_request {
+            let response = await ic.http_request({
                 url = "http://127.0.0.1:3000/fetch";
                 method = #post;
-                body = requestBodyBytes;
+                body = ?requestBodyBytes;
                 headers = [
                     { name = "Content-Type"; value = "application/json" }
                 ];
                 transform = null;
-            };
+                max_response_bytes = null;
+            });
 
             #ok({
                 status = response.status;
