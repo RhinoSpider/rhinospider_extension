@@ -14,8 +14,6 @@ export interface CostLimits {
 }
 export interface ExtractionField {
   'name' : string,
-  'description' : [] | [string],
-  'example' : [] | [string],
   'aiPrompt' : string,
   'required' : boolean,
   'fieldType' : string,
@@ -24,21 +22,17 @@ export interface ExtractionRules {
   'fields' : Array<ExtractionField>,
   'customPrompt' : [] | [string],
 }
-export interface ExtractionRules__1 {
-  'custom_prompt' : [] | [string],
-  'fields' : Array<ScrapingField>,
-}
 export interface Request {
   'id' : string,
   'url' : string,
   'content_id' : string,
   'topic_id' : string,
   'timestamp' : bigint,
-  'extraction_rules' : ExtractionRules__1,
+  'extraction_rules' : ExtractionRules,
 }
 export type Result = { 'ok' : null } |
   { 'err' : string };
-export type Result_1 = { 'ok' : string } |
+export type Result_1 = { 'ok' : { 'data' : Array<[string, string]> } } |
   { 'err' : string };
 export type Result_2 = { 'ok' : Array<[string, string]> } |
   { 'err' : string };
@@ -86,16 +80,6 @@ export interface ScrapedData {
   'timestamp' : bigint,
   'client_id' : Principal,
 }
-export interface ScrapingField {
-  'field_type' : string,
-  'name' : string,
-  'description' : [] | [string],
-  'example' : [] | [string],
-  'ai_prompt' : string,
-  'selector_type' : string,
-  'selector' : string,
-  'required' : boolean,
-}
 export interface ScrapingTopic {
   'id' : string,
   'name' : string,
@@ -117,14 +101,25 @@ export interface Storage {
     [],
     [] | [{ 'id' : string, 'url' : string }]
   >,
-  'getScrapedData' : ActorMethod<[[] | [string]], Array<ScrapedData>>,
+  'getScrapedData' : ActorMethod<[Array<string>], Array<ScrapedData>>,
   'getTopics' : ActorMethod<[], Array<ScrapingTopic>>,
   'processWithAI' : ActorMethod<[Request], Result_2>,
   'queueUrlForProcessing' : ActorMethod<[string, string], Result>,
   'storeContent' : ActorMethod<[ScrapedContent], Result>,
   'storeHtmlContent' : ActorMethod<[string, string], undefined>,
   'storeRequest' : ActorMethod<[Request], Result>,
-  'testExtractRules' : ActorMethod<[string, ExtractionRules__1], Result_1>,
+  'testExtraction' : ActorMethod<
+    [
+      {
+        'url' : string,
+        'extraction_rules' : {
+          'custom_prompt' : [] | [string],
+          'fields' : Array<ExtractionField>,
+        },
+      },
+    ],
+    Result_1
+  >,
   'updateAIConfig' : ActorMethod<[AIConfig], Result>,
   'updateTopic' : ActorMethod<[ScrapingTopic], Result>,
 }

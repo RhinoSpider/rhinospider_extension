@@ -11,14 +11,22 @@ type Storage =
                                    id: text;
                                    url: text;
                                  });
-   getScrapedData: (opt text) -> (vec ScrapedData) query;
+   getScrapedData: (vec text) -> (vec ScrapedData) query;
    getTopics: () -> (vec ScrapingTopic) query;
    processWithAI: (Request) -> (Result_2);
    queueUrlForProcessing: (text, text) -> (Result);
    storeContent: (ScrapedContent) -> (Result);
    storeHtmlContent: (text, text) -> ();
    storeRequest: (Request) -> (Result);
-   testExtractRules: (text, ExtractionRules__1) -> (Result_1);
+   testExtraction:
+    (record {
+       extraction_rules:
+        record {
+          custom_prompt: opt text;
+          fields: vec ExtractionField;
+        };
+       url: text;
+     }) -> (Result_1);
    updateAIConfig: (AIConfig) -> (Result);
    updateTopic: (ScrapingTopic) -> (Result);
  };
@@ -31,17 +39,6 @@ type ScrapingTopic =
    name: text;
    updatedAt: int;
    urlPatterns: vec text;
- };
-type ScrapingField = 
- record {
-   ai_prompt: text;
-   description: opt text;
-   example: opt text;
-   field_type: text;
-   name: text;
-   required: bool;
-   selector: text;
-   selector_type: text;
  };
 type ScrapedData = 
  record {
@@ -115,7 +112,10 @@ type Result_2 =
 type Result_1 = 
  variant {
    err: text;
-   ok: text;
+   ok: record {data: vec record {
+                           text;
+                           text;
+                         };};
  };
 type Result = 
  variant {
@@ -125,16 +125,11 @@ type Result =
 type Request = 
  record {
    content_id: text;
-   extraction_rules: ExtractionRules__1;
+   extraction_rules: ExtractionRules;
    id: text;
    timestamp: int;
    topic_id: text;
    url: text;
- };
-type ExtractionRules__1 = 
- record {
-   custom_prompt: opt text;
-   fields: vec ScrapingField;
  };
 type ExtractionRules = 
  record {
@@ -144,8 +139,6 @@ type ExtractionRules =
 type ExtractionField = 
  record {
    aiPrompt: text;
-   description: opt text;
-   example: opt text;
    fieldType: text;
    name: text;
    required: bool;

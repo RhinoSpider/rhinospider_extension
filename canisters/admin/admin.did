@@ -1,15 +1,13 @@
 type ExtractionField = record {
     name: text;
-    description: text;
-    ai_prompt: text;
+    fieldType: text;
     required: bool;
-    field_type: text;
-    example: opt text;
+    aiPrompt: text;
 };
 
 type ExtractionRules = record {
     fields: vec ExtractionField;
-    custom_prompt: opt text;
+    customPrompt: opt text;
 };
 
 type Request = record {
@@ -72,24 +70,36 @@ type ScrapingField = record {
     fieldType: text;
 };
 
+type Validation = opt record {
+    rules: vec text;
+    aiValidation: opt text;
+};
+
+type RateLimit = opt record {
+    requestsPerHour: nat;
+    maxConcurrent: nat;
+};
+
+type CreateTopicRequest = record {
+    id: text;
+    name: text;
+    description: text;
+    urlPatterns: vec text;
+    active: bool;
+    extractionRules: ExtractionRules;
+    validation: Validation;
+    rateLimit: RateLimit;
+};
+
 type ScrapingTopic = record {
     id: text;
     name: text;
-    description: opt text;
+    description: text;
     urlPatterns: vec text;
     active: bool;
-    extractionRules: record {
-        fields: vec ScrapingField;
-        customPrompt: opt text;
-    };
-    validation: opt record {
-        rules: vec text;
-        aiValidation: opt text;
-    };
-    rateLimit: opt record {
-        requestsPerHour: nat;
-        maxConcurrent: nat;
-    };
+    extractionRules: ExtractionRules;
+    validation: Validation;
+    rateLimit: RateLimit;
     createdAt: int;
 };
 
@@ -120,10 +130,16 @@ service : {
     processWithAI: (Request) -> (variant { ok: text; err: text; });
     "getAIConfig": () -> (Result_2) query;
     "updateAIConfig": (AIConfig) -> (Result_1);
-    "getTopics": () -> (vec ScrapingTopic) query;
-    "createTopic": (ScrapingTopic) -> (Result_1);
-    "updateTopic": (ScrapingTopic) -> (Result_1);
-    "deleteTopic": (text) -> (Result_1);
     getScrapedData: (vec text) -> (Result_3) query;
-    updateTaskStatus: (text, text) -> (Result_1);
+    createTopic: (CreateTopicRequest) -> (Result) query;
+    updateTopic: (text, ScrapingTopic) -> (Result_1);
+    deleteTopic: (text) -> (Result_1);
+    getTopics: () -> (vec ScrapingTopic) query;
+    testExtraction: (record {
+        url: text;
+        extraction_rules: record {
+            fields: vec ExtractionField;
+            custom_prompt: opt text;
+        };
+    }) -> (Result_2) query;
 };

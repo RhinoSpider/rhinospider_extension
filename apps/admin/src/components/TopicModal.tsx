@@ -17,11 +17,9 @@ const FIELD_TYPES = ['text', 'number', 'date', 'list', 'boolean'] as const;
 
 const DEFAULT_FIELD: ExtractionField = {
   name: '',
-  description: [],
-  example: [],
-  aiPrompt: '',
-  required: true,
   fieldType: 'text',
+  required: false,
+  aiPrompt: '',
   validation: {
     minLength: 1,
     maxLength: 1000
@@ -35,11 +33,9 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
   const [fields, setFields] = useState<ExtractionField[]>(
     topic?.extractionRules?.fields || [{ 
       name: '',
-      description: [],
-      example: [],
-      aiPrompt: '',
-      required: true,
       fieldType: 'text',
+      required: false,
+      aiPrompt: '',
       validation: {
         minLength: 1,
         maxLength: 1000
@@ -64,11 +60,9 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
       setUrlPatterns(['']);
       setFields([{ 
         name: '',
-        description: [],
-        example: [],
-        aiPrompt: '',
-        required: true,
         fieldType: 'text',
+        required: false,
+        aiPrompt: '',
         validation: {
           minLength: 1,
           maxLength: 1000
@@ -99,37 +93,31 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
   };
 
   const handleSave = async () => {
-    if (!validateUrlPatterns()) {
+    if (!name || !urlPatterns.length || !fields.length) {
       return;
     }
 
-    try {
-      setSaving(true);
-      setSaveStatus('saving');
-      setError(null);
+    const newTopic = {
+      id: topic?.id || '',
+      name,
+      description: description || '',
+      urlPatterns,
+      active: true,
+      extractionRules: {
+        fields: fields.map(f => ({
+          name: f.name,
+          fieldType: f.fieldType,
+          required: f.required,
+          aiPrompt: f.aiPrompt,
+        })),
+        customPrompt: topic?.extractionRules?.customPrompt || null,
+      },
+      validation: null,
+      rateLimit: null,
+    };
 
-      const newTopic: ScrapingTopic = {
-        id: topic?.id || '',
-        name,
-        description,
-        urlPatterns,
-        active: topic?.active || true,
-        extractionRules: {
-          fields,
-          customPrompt: topic?.extractionRules?.customPrompt || []
-        },
-        validation: topic?.validation || []
-      };
-
-      onSave?.(newTopic);
-      setSaveStatus('success');
-    } catch (err) {
-      console.error('Failed to save topic:', err);
-      setError(err instanceof Error ? err.message : 'Failed to save topic');
-      setSaveStatus('error');
-    } finally {
-      setSaving(false);
-    }
+    onSave(newTopic);
+    onClose();
   };
 
   const handleAddUrlPattern = () => {
@@ -150,6 +138,17 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
     // Validate the new pattern
     const result = validateUrlPattern(value);
     setUrlErrors({ ...urlErrors, [index]: result.errors });
+  };
+
+  const handleFieldChange = (index: number, field: keyof ExtractionField, value: string | boolean) => {
+    const newFields = [...fields];
+    newFields[index] = { ...fields[index], [field]: value };
+    setFields(newFields);
+  };
+
+  const removeField = (index: number) => {
+    const newFields = fields.filter((_, i) => i !== index);
+    setFields(newFields);
   };
 
   return (
@@ -258,110 +257,48 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
               </div>
               <div className="space-y-4">
                 {fields.map((field, index) => (
-                  <div key={index} className="bg-[#131217] border border-[#2C2B33] rounded-lg p-4">
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="flex-1">
+                  <div key={index} className="space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="text"
+                        value={field.name}
+                        onChange={(e) => handleFieldChange(index, 'name', e.target.value)}
+                        placeholder="Field Name"
+                        className="bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white w-full"
+                      />
+                      <select
+                        value={field.fieldType}
+                        onChange={(e) => handleFieldChange(index, 'fieldType', e.target.value)}
+                        className="bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
+                      >
+                        {FIELD_TYPES.map((type) => (
+                          <option key={type} value={type}>
+                            {type.charAt(0).toUpperCase() + type.slice(1)}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="flex items-center space-x-2">
                         <input
-                          type="text"
-                          value={field.name}
-                          onChange={(e) => {
-                            const newFields = [...fields];
-                            newFields[index] = { ...field, name: e.target.value };
-                            setFields(newFields);
-                          }}
-                          className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white mb-2"
-                          placeholder="Field name"
+                          type="checkbox"
+                          checked={field.required}
+                          onChange={(e) => handleFieldChange(index, 'required', e.target.checked)}
+                          className="bg-[#131217] text-[#B692F6]"
                         />
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-xs text-gray-400 mb-1">Type</label>
-                            <select
-                              value={field.fieldType}
-                              onChange={(e) => {
-                                const newFields = [...fields];
-                                newFields[index] = { ...field, fieldType: e.target.value as any };
-                                setFields(newFields);
-                              }}
-                              className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
-                            >
-                              {FIELD_TYPES.map((type) => (
-                                <option key={type} value={type}>
-                                  {type.charAt(0).toUpperCase() + type.slice(1)}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-xs text-gray-400 mb-1">Required</label>
-                            <div className="flex items-center h-[38px]">
-                              <input
-                                type="checkbox"
-                                checked={field.required}
-                                onChange={(e) => {
-                                  const newFields = [...fields];
-                                  newFields[index] = { ...field, required: e.target.checked };
-                                  setFields(newFields);
-                                }}
-                                className="mr-2"
-                              />
-                              <span className="text-sm text-gray-400">Required field</span>
-                            </div>
-                          </div>
-                        </div>
+                        <label className="text-sm text-gray-400">Required</label>
                       </div>
-                      {fields.length > 1 && (
-                        <button
-                          onClick={() => {
-                            const newFields = fields.filter((_, i) => i !== index);
-                            setFields(newFields);
-                          }}
-                          className="text-red-400 hover:text-red-300 transition-colors ml-4"
-                        >
-                          <XMarkIcon className="h-5 w-5" />
-                        </button>
-                      )}
+                      <button
+                        onClick={() => removeField(index)}
+                        className="text-red-500 hover:text-red-400"
+                      >
+                        Remove
+                      </button>
                     </div>
-                    <div className="space-y-4">
-                      <div>
-                        <label className="block text-xs text-gray-400 mb-1">Description</label>
-                        <textarea
-                          value={field.description.join('\n')}
-                          onChange={(e) => {
-                            const newFields = [...fields];
-                            newFields[index] = { ...field, description: e.target.value.split('\n') };
-                            setFields(newFields);
-                          }}
-                          className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white h-20"
-                          placeholder="Enter field description"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-400 mb-1">Example</label>
-                        <textarea
-                          value={field.example.join('\n')}
-                          onChange={(e) => {
-                            const newFields = [...fields];
-                            newFields[index] = { ...field, example: e.target.value.split('\n') };
-                            setFields(newFields);
-                          }}
-                          className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white h-20"
-                          placeholder="Enter example values"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-400 mb-1">AI Prompt</label>
-                        <textarea
-                          value={field.aiPrompt}
-                          onChange={(e) => {
-                            const newFields = [...fields];
-                            newFields[index] = { ...field, aiPrompt: e.target.value };
-                            setFields(newFields);
-                          }}
-                          className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white h-20"
-                          placeholder="Enter AI prompt for this field"
-                        />
-                      </div>
-                    </div>
+                    <textarea
+                      value={field.aiPrompt}
+                      onChange={(e) => handleFieldChange(index, 'aiPrompt', e.target.value)}
+                      placeholder="AI Prompt"
+                      className="bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white w-full h-20"
+                    />
                   </div>
                 ))}
               </div>

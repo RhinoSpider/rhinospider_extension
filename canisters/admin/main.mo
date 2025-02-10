@@ -62,6 +62,17 @@ actor Admin {
 
     type ScrapingTopic = StorageTypes.ScrapingTopic;
 
+    type CreateTopicRequest = {
+        id: Text;
+        name: Text;
+        description: Text;
+        urlPatterns: [Text];
+        active: Bool;
+        extractionRules: StorageTypes.ExtractionRules;
+        validation: StorageTypes.Validation;
+        rateLimit: StorageTypes.RateLimit;
+    };
+
     private var tasks = HashMap.HashMap<Text, Task>(0, Text.equal, Text.hash);
     private var config = HashMap.HashMap<Text, TaskConfig>(1, Text.equal, Text.hash);
     private var admins = HashMap.HashMap<Principal, Bool>(0, Principal.equal, Principal.hash);
@@ -83,7 +94,8 @@ actor Admin {
     };
 
     private var _cachedAIConfig : ?AIConfig = null;
-    private let storage : StorageTypes.Storage = actor(Principal.toText(Principal.fromText("br5f7-7uaaa-aaaaa-qaaca-cai")));
+    private let STORAGE_CANISTER_ID = "br5f7-7uaaa-aaaaa-qaaca-cai";
+    private let storage : StorageTypes.Storage = actor(STORAGE_CANISTER_ID);
 
     system func preupgrade() {
         stableTopics := Iter.toArray(topics.entries());
@@ -221,37 +233,19 @@ actor Admin {
     };
 
     public shared({ caller }) func getAIConfig() : async Result.Result<AIConfig, Text> {
-        if (not isAuthorized(caller)) {
+        if (not hasRole(caller, #Admin) and not hasRole(caller, #SuperAdmin)) {
             return #err("Unauthorized");
         };
-        let result = await storage.getAIConfig();
-        switch (result) {
-            case (#ok(config)) {
-                #ok({
-                    apiKey = config.apiKey;
-                    model = config.model;
-                    costLimits = {
-                        dailyUSD = config.costLimits.dailyUSD;
-                        monthlyUSD = config.costLimits.monthlyUSD;
-                        maxConcurrent = config.costLimits.maxConcurrent;
-                    };
-                })
-            };
-            case (#err(msg)) {
-                #err(msg)
-            };
-        }
+        #ok(_aiConfig)
     };
 
     public shared({ caller }) func updateAIConfig(config: AIConfig) : async Result.Result<(), Text> {
-        if (not isAuthorized(caller)) {
+        if (not hasRole(caller, #Admin) and not hasRole(caller, #SuperAdmin)) {
             return #err("Unauthorized");
         };
-        let result = await storage.updateAIConfig(config);
-        switch (result) {
-            case (#ok(_)) #ok();
-            case (#err(msg)) #err(msg);
-        }
+
+        _aiConfig := config;
+        #ok()
     };
 
     // For development only - clear all data
@@ -358,33 +352,33 @@ actor Admin {
         #ok(())
     };
 
-    public shared({ caller }) func addUser(_newUserPrincipal: Principal, role: UserRole) : async Result.Result<(), Text> {
+    public shared({ caller }) func addUser(principal: Principal, role: UserRole) : async Result.Result<(), Text> {
         if (not hasRole(caller, #SuperAdmin)) {
             return #err("Only SuperAdmin can add users");
         };
 
-        users.put(_newUserPrincipal, {
-            principal = _newUserPrincipal;
+        let _ = users.put(principal, {
+            principal = principal;
             role = role;
             addedBy = caller;
             addedAt = Time.now();
         });
 
-        #ok();
+        #ok()
     };
 
-    public shared({ caller }) func removeUser(userPrincipal: Principal) : async Result.Result<(), Text> {
+    public shared({ caller }) func removeUser(principal: Principal) : async Result.Result<(), Text> {
         if (not hasRole(caller, #SuperAdmin)) {
             return #err("Only SuperAdmin can remove users");
         };
 
-        switch (users.get(userPrincipal)) {
-            case (?user) {
-                users.delete(userPrincipal);
-                #ok();
-            };
+        switch (users.get(principal)) {
             case null #err("User not found");
-        };
+            case (?_) {
+                users.delete(principal);
+                #ok()
+            };
+        }
     };
 
     public shared({ caller }) func getUsers() : async [User] {
@@ -396,7 +390,7 @@ actor Admin {
         for ((_, user) in users.entries()) {
             userArray.add(user);
         };
-        return Buffer.toArray(userArray);
+        return Buffer.toArray(userArray)
     };
 
     // Get all topics
@@ -408,38 +402,41 @@ actor Admin {
         Buffer.toArray(buffer)
     };
 
-    // Check if topic name exists
-    private func topicNameExists(name: Text, excludeId: ?Text) : Bool {
-        for ((_, topic) in topics.entries()) {
-            if (Text.equal(topic.name, name)) {
+    // Helper function to check if a topic name exists
+    private func _topicNameExists(name: Text, excludeId: ?Text) : Bool {
+        for ((id, topic) in topics.entries()) {
+            if (topic.name == name and (
                 switch (excludeId) {
-                    case (?id) {
-                        if (not Text.equal(topic.id, id)) {
-                            return true;
-                        };
-                    };
-                    case null {
-                        return true;
-                    };
-                };
+                    case null true;
+                    case (?excludeId) id != excludeId;
+                }
+            )) {
+                return true;
             };
         };
         false
     };
 
     // Create a new topic
-    public shared({ caller }) func createTopic(topic: ScrapingTopic) : async Result.Result<ScrapingTopic, Text> {
+    public shared({ caller }) func createTopic(request: CreateTopicRequest) : async Result.Result<ScrapingTopic, Text> {
         if (not hasRole(caller, #Admin) and not hasRole(caller, #SuperAdmin)) {
             return #err("Unauthorized");
         };
 
-        // Check for duplicate name
-        if (topicNameExists(topic.name, null)) {
-            return #err("A topic with this name already exists");
+        let topic : ScrapingTopic = {
+            id = request.id;
+            name = request.name;
+            description = request.description;
+            urlPatterns = request.urlPatterns;
+            active = request.active;
+            extractionRules = request.extractionRules;
+            validation = request.validation;
+            rateLimit = request.rateLimit;
+            createdAt = Time.now();
         };
 
         switch (topics.get(topic.id)) {
-            case (?existing) {
+            case (?_) {
                 return #err("Topic with this ID already exists");
             };
             case null {
@@ -450,23 +447,19 @@ actor Admin {
     };
 
     // Update an existing topic
-    public shared({ caller }) func updateTopic(id: Text, _existing: ScrapingTopic) : async Result.Result<ScrapingTopic, Text> {
+    public shared({ caller }) func updateTopic(id: Text, topic: ScrapingTopic) : async Result.Result<(), Text> {
         if (not hasRole(caller, #Admin) and not hasRole(caller, #SuperAdmin)) {
             return #err("Unauthorized");
         };
 
-        // Check for duplicate name
-        if (topicNameExists(_existing.name, ?id)) {
-            return #err("A topic with this name already exists");
-        };
-
         switch (topics.get(id)) {
-            case null {
-                return #err("Topic not found");
-            };
+            case null { #err("Topic not found") };
             case (?_) {
-                topics.put(id, _existing);
-                return #ok(_existing);
+                if (_topicNameExists(topic.name, ?id)) {
+                    return #err("Topic with this name already exists");
+                };
+                topics.put(id, topic);
+                #ok()
             };
         }
     };
@@ -503,46 +496,28 @@ actor Admin {
     };
 
     // Extraction Testing
-    public shared func testExtraction(request : {
-        url : Text;
-        extraction_rules : {
-            fields : [ScrapingField];
-            custom_prompt : ?Text;
+    public shared({ caller }) func testExtraction(request: {
+        url: Text;
+        extraction_rules: {
+            fields: [ScrapingField];
+            custom_prompt: ?Text;
         };
-    }) : async Result.Result<{
-        data : [(Text, Text)];
-    }, Text> {
+    }) : async Result.Result<{data: [(Text, Text)]}, Text> {
+        if (not hasRole(caller, #Admin) and not hasRole(caller, #SuperAdmin)) {
+            return #err("Unauthorized");
+        };
+
         try {
-            // For testing, we'll use the existing scraping logic
-            let contentId = await storage.storeRequest({
-                id = Int.toText(Time.now());
+            let result = await storage.testExtraction({
                 url = request.url;
-                topicId = "test";
-                timestamp = Time.now();
-            });
-
-            switch(contentId) {
-                case (#err(e)) { return #err("Failed to store request: " # e) };
-                case (#ok(id)) {
-                    // Process with AI
-                    let result = await storage.processWithAI({
-                        contentId = id;
-                        topicId = "test";
-                        url = request.url;
-                        extractionRules = {
-                            fields = request.extraction_rules.fields;
-                            customPrompt = request.extraction_rules.custom_prompt;
-                        };
-                    });
-
-                    switch(result) {
-                        case (#err(e)) { return #err("Failed to process with AI: " # e) };
-                        case (#ok(data)) { return #ok({ data = data }) };
-                    };
+                extraction_rules = {
+                    fields = request.extraction_rules.fields;
+                    custom_prompt = request.extraction_rules.custom_prompt;
                 };
-            };
+            });
+            result
         } catch (e) {
-            #err("Failed to test extraction: " # Error.message(e));
-        };
+            #err("Failed to test extraction: " # Error.message(e))
+        }
     };
 }

@@ -72,27 +72,19 @@ export const ScrapingConfig: React.FC = () => {
     loadAIConfig();
   }, [isAIModalOpen]); // Reload when modal closes
 
-  const handleSaveTopic = async (topic: ScrapingTopic) => {
+  const handleSaveTopic = async (topic: any) => {
     try {
       setUpdating(true);
       const actor = await getAdminActor();
-      
-      if (topic.id) {
-        // Update existing topic
-        await actor.updateTopic(topic);
+      const result = await actor.createTopic(topic);
+      if ('ok' in result) {
+        await loadTopics();
+        setIsTopicModalOpen(false);
       } else {
-        // Create new topic
-        await actor.createTopic(topic);
+        console.error('Failed to save topic:', result.err);
       }
-
-      // Refresh topics list
-      const topics = await actor.getTopics();
-      setTopics(topics);
-      setIsTopicModalOpen(false);
-      setSelectedTopic(undefined);
     } catch (error) {
       console.error('Failed to save topic:', error);
-      // TODO: Show error to user
     } finally {
       setUpdating(false);
     }
@@ -289,6 +281,23 @@ export const ScrapingConfig: React.FC = () => {
     checkAuth();
   }, []);
 
+  const loadTopics = async () => {
+    try {
+      setTopicsLoading(true);
+      setTopicsError(null);
+      const actor = await getAdminActor();
+      console.log('Fetching topics...');
+      const topics = await actor.getTopics();
+      console.log('Fetched topics:', topics);
+      setTopics(topics);
+    } catch (error) {
+      console.error('Failed to fetch topics:', error);
+      setTopicsError('Failed to fetch topics');
+    } finally {
+      setTopicsLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-8">
       {/* Topics Section */}
@@ -322,21 +331,7 @@ export const ScrapingConfig: React.FC = () => {
                 onClick={() => {
                   setTopicsLoading(true);
                   setTopicsError(null);
-                  const loadData = async () => {
-                    try {
-                      const actor = await getAdminActor();
-                      console.log('Fetching topics...');
-                      const topics = await actor.getTopics();
-                      console.log('Fetched topics:', topics);
-                      setTopics(topics);
-                    } catch (error) {
-                      console.error('Failed to fetch topics:', error);
-                      setTopicsError('Failed to fetch topics');
-                    } finally {
-                      setTopicsLoading(false);
-                    }
-                  };
-                  loadData();
+                  loadTopics();
                 }}
                 className="mt-2 text-[#B692F6] hover:text-white transition-colors"
               >

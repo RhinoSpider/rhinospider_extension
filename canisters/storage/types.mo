@@ -32,11 +32,9 @@ module {
 
     public type ExtractionField = {
         name: Text;
-        description: ?Text;
-        aiPrompt: Text;
-        required: Bool;
         fieldType: Text;
-        example: ?Text;
+        required: Bool;
+        aiPrompt: Text;
     };
 
     public type ExtractionRules = {

@@ -16,6 +16,7 @@ import Error "mo:base/Error";
 import _Time "mo:base/Time";
 import HttpLib "./http/lib";
 import HttpHandler "./http/handler";
+import AIHandler "./ai/handler";
 
 actor class Storage() = this {
     type ICManagement = actor {
@@ -86,8 +87,8 @@ actor class Storage() = this {
         id: Text;
         url: Text;
         topic: Text;
-        source: Text;
         content: Text;
+        source: Text;
         timestamp: Int;
         client_id: Principal;
     };
@@ -99,25 +100,12 @@ actor class Storage() = this {
         topic_id: Text;
         timestamp: Int;
         content_id: Text;
-        extraction_rules: ExtractionRules;
+        extraction_rules: Types.ExtractionRules;
     };
 
     // Extraction rules type
-    type ExtractionRules = {
-        fields: [ScrapingField];
-        custom_prompt: ?Text;
-    };
-
-    type ScrapingField = {
-        name: Text;
-        description: ?Text;
-        ai_prompt: Text;
-        required: Bool;
-        field_type: Text;
-        example: ?Text;
-        selector_type: Text;
-        selector: Text;
-    };
+    type ExtractionRules = Types.ExtractionRules;
+    type ScrapingField = Types.ExtractionField;
 
     private let _admin : AdminCanister = actor "bkyz2-fmaaa-aaaaa-qaaaq-cai";
 
@@ -308,24 +296,23 @@ actor class Storage() = this {
         let buffer = Buffer.Buffer<ScrapedData>(0);
         
         switch (_contentBySource.get(source)) {
-            case (null) { [] };
+            case null { [] };
             case (?ids) {
                 for (id in ids.vals()) {
                     switch (_content.get(id)) {
-                        case (?item) {
-                            // Convert new type to legacy type
+                        case null {};
+                        case (?content) {
                             let legacyItem : ScrapedData = {
-                                id = item.id;
-                                url = item.url;
-                                topic = if (item.topics.size() > 0) item.topics[0] else "";
-                                source = item.source;
-                                content = item.content;
-                                timestamp = item.publish_date;
+                                id = content.id;
+                                url = content.url;
+                                topic = if (content.topics.size() > 0) content.topics[0] else "";
+                                source = content.source;
+                                content = content.content;
+                                timestamp = content.publish_date;
                                 client_id = Principal.fromText("2vxsx-fae"); // Default system principal
                             };
                             buffer.add(legacyItem);
                         };
-                        case (null) {};
                     };
                 };
                 Buffer.toArray(buffer)
@@ -340,21 +327,21 @@ actor class Storage() = this {
         };
 
         switch (_contentByTopic.get(topic)) {
-            case (null) { return #ok([]) };
+            case null { return #ok([]) };
             case (?buffer) {
                 let result = Buffer.Buffer<ScrapedContent>(buffer.size());
                 var count = 0;
                 label l for (id in buffer.vals()) {
                     if (count >= limit) break l;
                     switch (_content.get(id)) {
+                        case null {};
                         case (?item) { result.add(item) };
-                        case (null) {};
                     };
                     count += 1;
                 };
                 #ok(Buffer.toArray(result))
             };
-        };
+        }
     };
 
     public query func getContent(id: Text) : async Result.Result<ScrapedContent, Text> {
@@ -363,45 +350,41 @@ actor class Storage() = this {
         };
 
         switch (_content.get(id)) {
-            case (null) { #err("Content not found") };
+            case null { #err("Content not found") };
             case (?item) { #ok(item) };
-        };
+        }
     };
 
     // Get scraped data with optional topic filter
     public query func getScrapedData(topicIds: [Text]) : async [ScrapedData] {
         let buffer = Buffer.Buffer<ScrapedData>(0);
         
-        for ((_, content) in _content.entries()) {
-            // If no topics specified, return all data
-            if (topicIds.size() == 0) {
-                let legacyItem : ScrapedData = {
-                    id = content.id;
-                    url = content.url;
-                    topic = if (content.topics.size() > 0) content.topics[0] else "";
-                    source = content.source;
-                    content = content.content;
-                    timestamp = content.publish_date;
-                    client_id = Principal.fromText("2vxsx-fae"); // Default system principal
-                };
-                buffer.add(legacyItem);
-            } else {
-                // Check if content's topic matches any of the requested topics
-                for (topicId in topicIds.vals()) {
+        for ((id, content) in _content.entries()) {
+            if (topicIds.size() > 0) {
+                label topicLoop for (topicId in topicIds.vals()) {
                     if (content.topics.size() > 0 and content.topics[0] == topicId) {
-                        let legacyItem : ScrapedData = {
-                            id = content.id;
+                        buffer.add({
+                            id = id;
                             url = content.url;
                             topic = if (content.topics.size() > 0) content.topics[0] else "";
-                            source = content.source;
                             content = content.content;
+                            source = content.source;
                             timestamp = content.publish_date;
-                            client_id = Principal.fromText("2vxsx-fae"); // Default system principal
-                        };
-                        buffer.add(legacyItem);
-                        break;
-                    };
-                };
+                            client_id = Principal.fromText("2vxsx-fae")
+                        });
+                        break topicLoop;
+                    }
+                }
+            } else {
+                buffer.add({
+                    id = id;
+                    url = content.url;
+                    topic = if (content.topics.size() > 0) content.topics[0] else "";
+                    content = content.content;
+                    source = content.source;
+                    timestamp = content.publish_date;
+                    client_id = Principal.fromText("2vxsx-fae")
+                });
             };
         };
         
@@ -409,32 +392,48 @@ actor class Storage() = this {
     };
 
     // Simple test endpoint that only tests extraction rules
-    public shared(_msg) func testExtractRules(url : Text, rules : ExtractionRules) : async Result.Result<Text, Text> {
+    public shared(_msg) func testExtraction(request: {
+        url: Text;
+        extraction_rules: {
+            fields: [Types.ExtractionField];
+            custom_prompt: ?Text;
+        };
+    }) : async Result.Result<{data: [(Text, Text)]}, Text> {
         try {
-            let response = await HttpHandler.get(url, null);
+            let response = await HttpHandler.get(request.url, null);
             
             switch(response) {
                 case (#ok(content)) {
-                    // Process with AI directly
-                    var result = "{";
-                    var first = true;
+                    let result = Buffer.Buffer<(Text, Text)>(0);
                     
-                    for (field in rules.fields.vals()) {
-                        if (not first) { result #= "," };
-                        result #= "\"" # field.name # "\":\"" # content # "\"";
-                        first := false;
+                    for (field in request.extraction_rules.fields.vals()) {
+                        let prompt = switch (request.extraction_rules.custom_prompt) {
+                            case (?custom) { custom # "\n" # field.aiPrompt };
+                            case null { field.aiPrompt };
+                        };
+
+                        let extractionResult = await AIHandler.extractField(content, prompt);
+                        switch (extractionResult) {
+                            case (#ok(value)) {
+                                result.add((field.name, value));
+                            };
+                            case (#err(e)) {
+                                if (field.required) {
+                                    return #err("Failed to extract required field '" # field.name # "': " # e);
+                                };
+                            };
+                        };
                     };
                     
-                    result #= "}";
-                    return #ok(result);
+                    #ok({ data = Buffer.toArray(result) })
                 };
-                case (#err(error)) {
-                    return #err("Failed to fetch URL: " # error);
+                case (#err(e)) {
+                    #err("Failed to fetch URL: " # e)
                 };
-            };
+            }
         } catch (e) {
-            return #err("Error testing extraction: " # Error.message(e));
-        };
+            #err("Error during extraction: " # Error.message(e))
+        }
     };
 
     // Topic management
@@ -445,8 +444,8 @@ actor class Storage() = this {
         costLimits = {
             dailyUSD = 10;
             monthlyUSD = 100;
-            maxConcurrent = 5;
-        };
+            maxConcurrent = 5
+        }
     };
 
     public query func getTopics() : async [Types.ScrapingTopic] {

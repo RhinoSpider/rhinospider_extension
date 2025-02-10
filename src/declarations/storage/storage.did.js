@@ -1,8 +1,6 @@
 export const idlFactory = ({ IDL }) => {
   const ExtractionField = IDL.Record({
     'name' : IDL.Text,
-    'description' : IDL.Opt(IDL.Text),
-    'example' : IDL.Opt(IDL.Text),
     'aiPrompt' : IDL.Text,
     'required' : IDL.Bool,
     'fieldType' : IDL.Text,
@@ -77,33 +75,22 @@ export const idlFactory = ({ IDL }) => {
     'ok' : IDL.Vec(ScrapedContent),
     'err' : IDL.Text,
   });
-  const ScrapingField = IDL.Record({
-    'field_type' : IDL.Text,
-    'name' : IDL.Text,
-    'description' : IDL.Opt(IDL.Text),
-    'example' : IDL.Opt(IDL.Text),
-    'ai_prompt' : IDL.Text,
-    'selector_type' : IDL.Text,
-    'selector' : IDL.Text,
-    'required' : IDL.Bool,
-  });
-  const ExtractionRules__1 = IDL.Record({
-    'custom_prompt' : IDL.Opt(IDL.Text),
-    'fields' : IDL.Vec(ScrapingField),
-  });
   const Request = IDL.Record({
     'id' : IDL.Text,
     'url' : IDL.Text,
     'content_id' : IDL.Text,
     'topic_id' : IDL.Text,
     'timestamp' : IDL.Int,
-    'extraction_rules' : ExtractionRules__1,
+    'extraction_rules' : ExtractionRules,
   });
   const Result_2 = IDL.Variant({
     'ok' : IDL.Vec(IDL.Tuple(IDL.Text, IDL.Text)),
     'err' : IDL.Text,
   });
-  const Result_1 = IDL.Variant({ 'ok' : IDL.Text, 'err' : IDL.Text });
+  const Result_1 = IDL.Variant({
+    'ok' : IDL.Record({ 'data' : IDL.Vec(IDL.Tuple(IDL.Text, IDL.Text)) }),
+    'err' : IDL.Text,
+  });
   const Storage = IDL.Service({
     'createTopic' : IDL.Func([ScrapingTopic], [Result], []),
     'deleteTopic' : IDL.Func([IDL.Text], [Result], []),
@@ -118,7 +105,7 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     'getScrapedData' : IDL.Func(
-        [IDL.Opt(IDL.Text)],
+        [IDL.Vec(IDL.Text)],
         [IDL.Vec(ScrapedData)],
         ['query'],
       ),
@@ -128,8 +115,16 @@ export const idlFactory = ({ IDL }) => {
     'storeContent' : IDL.Func([ScrapedContent], [Result], []),
     'storeHtmlContent' : IDL.Func([IDL.Text, IDL.Text], [], []),
     'storeRequest' : IDL.Func([Request], [Result], []),
-    'testExtractRules' : IDL.Func(
-        [IDL.Text, ExtractionRules__1],
+    'testExtraction' : IDL.Func(
+        [
+          IDL.Record({
+            'url' : IDL.Text,
+            'extraction_rules' : IDL.Record({
+              'custom_prompt' : IDL.Opt(IDL.Text),
+              'fields' : IDL.Vec(ExtractionField),
+            }),
+          }),
+        ],
         [Result_1],
         [],
       ),

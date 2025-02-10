@@ -16,11 +16,35 @@ module {
 
     public type ScrapingField = {
         name: Text;
-        description: ?Text;
-        aiPrompt: Text;
-        required: Bool;
         fieldType: Text;
-        example: ?Text;
+        required: Bool;
+        aiPrompt: Text;
+    };
+
+    public type ExtractionRules = {
+        fields: [ScrapingField];
+        customPrompt: ?Text;
+    };
+
+    public type Validation = ?{
+        rules: [Text];
+        aiValidation: ?Text;
+    };
+
+    public type RateLimit = ?{
+        requestsPerHour: Nat;
+        maxConcurrent: Nat;
+    };
+
+    public type CreateTopicRequest = {
+        id: Text;
+        name: Text;
+        description: Text;
+        urlPatterns: [Text];
+        active: Bool;
+        extractionRules: ExtractionRules;
+        validation: Validation;
+        rateLimit: RateLimit;
     };
 
     public type ScrapingTopic = {
@@ -29,18 +53,9 @@ module {
         description: Text;
         urlPatterns: [Text];
         active: Bool;
-        extractionRules: {
-            fields: [ScrapingField];
-            customPrompt: ?Text;
-        };
-        validation: ?{
-            rules: [Text];
-            aiValidation: ?Text;
-        };
-        rateLimit: ?{
-            requestsPerHour: Nat;
-            maxConcurrent: Nat;
-        };
+        extractionRules: ExtractionRules;
+        validation: Validation;
+        rateLimit: RateLimit;
         createdAt: Int;
     };
 
@@ -48,13 +63,21 @@ module {
         id: Text;
         url: Text;
         topic: Text;
-        source: Text;
         content: Text;
+        source: Text;
         timestamp: Int;
         client_id: Principal;
     };
 
     public type Storage = actor {
+        getScrapedData : shared ([Text]) -> async [ScrapedData];
+        testExtraction : shared ({
+            url: Text;
+            extraction_rules: {
+                fields: [ScrapingField];
+                custom_prompt: ?Text;
+            };
+        }) -> async Result.Result<{data: [(Text, Text)]}, Text>;
         storeRequest : shared ({
             id: Text;
             url: Text;
@@ -74,6 +97,5 @@ module {
 
         getAIConfig : shared query () -> async Result.Result<AIConfig, Text>;
         updateAIConfig : shared (AIConfig) -> async Result.Result<(), Text>;
-        getScrapedData: shared query (topicId: ?Text) -> async [ScrapedData];
     };
 };
