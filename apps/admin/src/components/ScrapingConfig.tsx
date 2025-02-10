@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Actor } from '@dfinity/agent';
-import type { ScrapingTopic, AIConfig } from '../types';
+import type { ScrapingTopic, AIConfig, CreateTopicRequest } from '../types';
 import { TopicModal } from './TopicModal';
 import { AIConfigModal } from './AIConfigModal';
 import { getAdminActor } from '../lib/admin';
@@ -72,7 +72,7 @@ export const ScrapingConfig: React.FC = () => {
     loadAIConfig();
   }, [isAIModalOpen]); // Reload when modal closes
 
-  const handleSaveTopic = async (topic: any) => {
+  const handleSaveTopic = async (topic: ScrapingTopic) => {
     try {
       setUpdating(true);
       const actor = await getAdminActor();

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Dialog } from '@headlessui/react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { getAdminActor } from '../lib/admin';
-import type { ScrapingTopic, ExtractionField } from '../types';
+import type { ScrapingTopic, ExtractionField, CreateTopicRequest } from '../types';
 import { validateUrlPattern } from '../lib/validation';
 import { ExtractionTester } from './ExtractionTester';
 
@@ -24,6 +24,11 @@ const DEFAULT_FIELD: ExtractionField = {
     minLength: 1,
     maxLength: 1000
   }
+};
+
+// Helper function to generate a unique ID
+const generateId = () => {
+  return 'topic_' + Math.random().toString(36).substr(2, 9);
 };
 
 export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, onSave }) => {
@@ -92,13 +97,25 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
     return !hasErrors;
   };
 
-  const handleSave = async () => {
-    if (!name || !urlPatterns.length || !fields.length) {
+  const handleSave = () => {
+    // Validate required fields
+    if (!name) {
+      setError('Name is required');
       return;
     }
 
-    const newTopic = {
-      id: topic?.id || '',
+    // Validate URL patterns
+    for (const [index, pattern] of urlPatterns.entries()) {
+      const result = validateUrlPattern(pattern);
+      if (result.errors.length > 0) {
+        setUrlErrors({ ...urlErrors, [index]: result.errors });
+        return;
+      }
+    }
+
+    // Create a ScrapingTopic with createdAt
+    const newTopic: ScrapingTopic = {
+      id: topic?.id || generateId(),
       name,
       description: description || '',
       urlPatterns,
@@ -109,11 +126,14 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
           fieldType: f.fieldType,
           required: f.required,
           aiPrompt: f.aiPrompt,
+          description: [],  // Optional field in candid
+          example: [],     // Optional field in candid
         })),
-        customPrompt: topic?.extractionRules?.customPrompt || null,
+        customPrompt: topic?.extractionRules?.customPrompt ? [topic.extractionRules.customPrompt] : [],
       },
-      validation: null,
-      rateLimit: null,
+      validation: [],  // Use empty array for optional field
+      rateLimit: [],  // Use empty array for optional field
+      createdAt: BigInt(Date.now()),
     };
 
     onSave(newTopic);

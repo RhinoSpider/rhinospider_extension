@@ -418,21 +418,9 @@ actor Admin {
     };
 
     // Create a new topic
-    public shared({ caller }) func createTopic(request: CreateTopicRequest) : async Result.Result<ScrapingTopic, Text> {
+    public shared({ caller }) func createTopic(topic: ScrapingTopic) : async Result.Result<ScrapingTopic, Text> {
         if (not hasRole(caller, #Admin) and not hasRole(caller, #SuperAdmin)) {
             return #err("Unauthorized");
-        };
-
-        let topic : ScrapingTopic = {
-            id = request.id;
-            name = request.name;
-            description = request.description;
-            urlPatterns = request.urlPatterns;
-            active = request.active;
-            extractionRules = request.extractionRules;
-            validation = request.validation;
-            rateLimit = request.rateLimit;
-            createdAt = Time.now();
         };
 
         switch (topics.get(topic.id)) {
@@ -440,8 +428,19 @@ actor Admin {
                 return #err("Topic with this ID already exists");
             };
             case null {
-                topics.put(topic.id, topic);
-                return #ok(topic);
+                let newTopic : ScrapingTopic = {
+                    id = topic.id;
+                    name = topic.name;
+                    description = topic.description;
+                    urlPatterns = topic.urlPatterns;
+                    active = topic.active;
+                    extractionRules = topic.extractionRules;
+                    validation = topic.validation;
+                    rateLimit = topic.rateLimit;
+                    createdAt = Time.now();
+                };
+                topics.put(topic.id, newTopic);
+                return #ok(newTopic);
             };
         }
     };
