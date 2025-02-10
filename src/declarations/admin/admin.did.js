@@ -8,7 +8,7 @@ export const idlFactory = ({ IDL }) => {
     'createdAt' : IDL.Int,
     'priority' : IDL.Nat,
   });
-  const Result_4 = IDL.Variant({ 'ok' : IDL.Nat, 'err' : IDL.Text });
+  const Result_5 = IDL.Variant({ 'ok' : IDL.Nat, 'err' : IDL.Text });
   const UserRole = IDL.Variant({
     'Operator' : IDL.Null,
     'SuperAdmin' : IDL.Null,
@@ -55,12 +55,25 @@ export const idlFactory = ({ IDL }) => {
     'costLimits' : CostLimits,
     'apiKey' : IDL.Text,
   });
-  const Result_3 = IDL.Variant({ 'ok' : AIConfig, 'err' : IDL.Text });
+  const Result_4 = IDL.Variant({ 'ok' : AIConfig, 'err' : IDL.Text });
   const TaskConfig = IDL.Record({
     'targetSites' : IDL.Vec(IDL.Text),
     'maxBandwidthPerDay' : IDL.Nat,
     'topics' : IDL.Vec(IDL.Text),
     'scanInterval' : IDL.Nat,
+  });
+  const ScrapedData = IDL.Record({
+    'id' : IDL.Text,
+    'url' : IDL.Text,
+    'topic' : IDL.Text,
+    'content' : IDL.Text,
+    'source' : IDL.Text,
+    'timestamp' : IDL.Int,
+    'client_id' : IDL.Principal,
+  });
+  const Result_3 = IDL.Variant({
+    'ok' : IDL.Vec(ScrapedData),
+    'err' : IDL.Text,
   });
   const Time = IDL.Int;
   const User = IDL.Record({
@@ -82,13 +95,14 @@ export const idlFactory = ({ IDL }) => {
     'err' : IDL.Text,
   });
   return IDL.Service({
-    'addTasks' : IDL.Func([IDL.Vec(Task)], [Result_4], []),
+    'addTasks' : IDL.Func([IDL.Vec(Task)], [Result_5], []),
     'addUser' : IDL.Func([IDL.Principal, UserRole], [Result_1], []),
     'clearAllData' : IDL.Func([], [IDL.Text], []),
     'createTopic' : IDL.Func([ScrapingTopic], [Result], []),
     'deleteTopic' : IDL.Func([IDL.Text], [Result_1], []),
-    'getAIConfig' : IDL.Func([], [Result_3], []),
+    'getAIConfig' : IDL.Func([], [Result_4], []),
     'getConfig' : IDL.Func([], [TaskConfig], ['query']),
+    'getScrapedData' : IDL.Func([IDL.Opt(IDL.Text)], [Result_3], []),
     'getTasks' : IDL.Func([IDL.Nat], [IDL.Vec(Task)], []),
     'getTopics' : IDL.Func([], [IDL.Vec(ScrapingTopic)], ['query']),
     'getUsers' : IDL.Func([], [IDL.Vec(User)], []),

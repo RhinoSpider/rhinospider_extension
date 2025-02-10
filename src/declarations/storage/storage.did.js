@@ -117,6 +117,11 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Opt(IDL.Record({ 'id' : IDL.Text, 'url' : IDL.Text }))],
         [],
       ),
+    'getScrapedData' : IDL.Func(
+        [IDL.Opt(IDL.Text)],
+        [IDL.Vec(ScrapedData)],
+        ['query'],
+      ),
     'getTopics' : IDL.Func([], [IDL.Vec(ScrapingTopic)], ['query']),
     'processWithAI' : IDL.Func([Request], [Result_2], []),
     'queueUrlForProcessing' : IDL.Func([IDL.Text, IDL.Text], [Result], []),

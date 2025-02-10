@@ -93,6 +93,21 @@ type ScrapingTopic = record {
     createdAt: int;
 };
 
+type ScrapedData = record {
+    id: text;
+    url: text;
+    topic: text;
+    source: text;
+    content: text;
+    timestamp: int;
+    client_id: principal;
+};
+
+type Result_3 = variant {
+    ok: vec ScrapedData;
+    err: text;
+};
+
 service : {
     init: () -> ();
     getTasks: (nat) -> (vec Task);
@@ -109,4 +124,6 @@ service : {
     "createTopic": (ScrapingTopic) -> (Result_1);
     "updateTopic": (ScrapingTopic) -> (Result_1);
     "deleteTopic": (text) -> (Result_1);
+    getScrapedData: (vec text) -> (Result_3) query;
+    updateTaskStatus: (text, text) -> (Result_1);
 };

@@ -117,6 +117,7 @@ export interface Storage {
     [],
     [] | [{ 'id' : string, 'url' : string }]
   >,
+  'getScrapedData' : ActorMethod<[[] | [string]], Array<ScrapedData>>,
   'getTopics' : ActorMethod<[], Array<ScrapingTopic>>,
   'processWithAI' : ActorMethod<[Request], Result_2>,
   'queueUrlForProcessing' : ActorMethod<[string, string], Result>,

@@ -368,6 +368,46 @@ actor class Storage() = this {
         };
     };
 
+    // Get scraped data with optional topic filter
+    public query func getScrapedData(topicIds: [Text]) : async [ScrapedData] {
+        let buffer = Buffer.Buffer<ScrapedData>(0);
+        
+        for ((_, content) in _content.entries()) {
+            // If no topics specified, return all data
+            if (topicIds.size() == 0) {
+                let legacyItem : ScrapedData = {
+                    id = content.id;
+                    url = content.url;
+                    topic = if (content.topics.size() > 0) content.topics[0] else "";
+                    source = content.source;
+                    content = content.content;
+                    timestamp = content.publish_date;
+                    client_id = Principal.fromText("2vxsx-fae"); // Default system principal
+                };
+                buffer.add(legacyItem);
+            } else {
+                // Check if content's topic matches any of the requested topics
+                for (topicId in topicIds.vals()) {
+                    if (content.topics.size() > 0 and content.topics[0] == topicId) {
+                        let legacyItem : ScrapedData = {
+                            id = content.id;
+                            url = content.url;
+                            topic = if (content.topics.size() > 0) content.topics[0] else "";
+                            source = content.source;
+                            content = content.content;
+                            timestamp = content.publish_date;
+                            client_id = Principal.fromText("2vxsx-fae"); // Default system principal
+                        };
+                        buffer.add(legacyItem);
+                        break;
+                    };
+                };
+            };
+        };
+        
+        Buffer.toArray(buffer)
+    };
+
     // Simple test endpoint that only tests extraction rules
     public shared(_msg) func testExtractRules(url : Text, rules : ExtractionRules) : async Result.Result<Text, Text> {
         try {

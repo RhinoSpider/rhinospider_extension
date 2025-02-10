@@ -488,6 +488,20 @@ actor Admin {
         }
     };
 
+    // Get scraped data with optional topic filter
+    public shared({ caller }) func getScrapedData(topicIds: [Text]) : async Result.Result<[StorageTypes.ScrapedData], Text> {
+        if (not hasRole(caller, #Admin) and not hasRole(caller, #SuperAdmin)) {
+            return #err("Unauthorized");
+        };
+
+        try {
+            let result = await storage.getScrapedData(topicIds);
+            #ok(result)
+        } catch (err) {
+            #err("Failed to get scraped data: " # Error.message(err))
+        }
+    };
+
     // Extraction Testing
     public shared func testExtraction(request : {
         url : Text;

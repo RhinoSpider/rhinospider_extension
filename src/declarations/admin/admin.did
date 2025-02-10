@@ -69,15 +69,30 @@ type ScrapingField =
    name: text;
    required: bool;
  };
-type Result_4 = 
+type ScrapedData = 
+ record {
+   client_id: principal;
+   content: text;
+   id: text;
+   source: text;
+   timestamp: int;
+   topic: text;
+   url: text;
+ };
+type Result_5 = 
  variant {
    err: text;
    ok: nat;
  };
-type Result_3 = 
+type Result_4 = 
  variant {
    err: text;
    ok: AIConfig;
+ };
+type Result_3 = 
+ variant {
+   err: text;
+   ok: vec ScrapedData;
  };
 type Result_2 = 
  variant {
@@ -110,13 +125,14 @@ type AIConfig =
    model: text;
  };
 service : {
-  addTasks: (vec Task) -> (Result_4);
+  addTasks: (vec Task) -> (Result_5);
   addUser: (principal, UserRole) -> (Result_1);
   clearAllData: () -> (text);
   createTopic: (ScrapingTopic) -> (Result);
   deleteTopic: (text) -> (Result_1);
-  getAIConfig: () -> (Result_3);
+  getAIConfig: () -> (Result_4);
   getConfig: () -> (TaskConfig) query;
+  getScrapedData: (opt text) -> (Result_3);
   getTasks: (nat) -> (vec Task);
   getTopics: () -> (vec ScrapingTopic) query;
   getUsers: () -> (vec User);

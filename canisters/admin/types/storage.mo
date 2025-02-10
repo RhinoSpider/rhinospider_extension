@@ -44,6 +44,16 @@ module {
         createdAt: Int;
     };
 
+    public type ScrapedData = {
+        id: Text;
+        url: Text;
+        topic: Text;
+        source: Text;
+        content: Text;
+        timestamp: Int;
+        client_id: Principal;
+    };
+
     public type Storage = actor {
         storeRequest : shared ({
             id: Text;
@@ -64,5 +74,6 @@ module {
 
         getAIConfig : shared query () -> async Result.Result<AIConfig, Text>;
         updateAIConfig : shared (AIConfig) -> async Result.Result<(), Text>;
+        getScrapedData: shared query (topicId: ?Text) -> async [ScrapedData];
     };
 };

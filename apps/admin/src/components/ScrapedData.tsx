@@ -1,11 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { getAdminActor } from '../lib/admin';
-import type { ScrapedData as ScrapedDataType, ScrapingTopic } from '../types';
+import { _SERVICE as AdminService } from '../../../declarations/admin/admin.did';
+import type { ScrapingTopic } from '../../../declarations/admin/admin.did';
+
+type ScrapedData = {
+  id: string;
+  url: string;
+  topic: string;
+  source: string;
+  content: string;
+  timestamp: bigint;
+  client_id: string;
+};
 
 const ITEMS_PER_PAGE = 10;
 
 export const ScrapedData: React.FC = () => {
-  const [data, setData] = useState<ScrapedDataType[]>([]);
+  const [data, setData] = useState<ScrapedData[]>([]);
   const [topics, setTopics] = useState<ScrapingTopic[]>([]);
   const [selectedTopic, setSelectedTopic] = useState<string>('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -21,8 +32,8 @@ export const ScrapedData: React.FC = () => {
     try {
       const actor = await getAdminActor();
       const result = await actor.getTopics();
-      if ('Ok' in result) {
-        setTopics(result.Ok);
+      if ('ok' in result) {
+        setTopics(result.ok);
       }
     } catch (error) {
       console.error('Failed to load topics:', error);
@@ -33,10 +44,12 @@ export const ScrapedData: React.FC = () => {
     try {
       setLoading(true);
       const actor = await getAdminActor();
-      const result = await actor.getScrapedData(selectedTopic || null);
-      if ('Ok' in result) {
+      // Pass [] for no filter, [selectedTopic] for filtering by topic
+      const result = await actor.getScrapedData(selectedTopic ? [selectedTopic] : []);
+      
+      if ('ok' in result) {
         // Sort by timestamp descending
-        const sortedData = result.Ok.sort((a, b) => 
+        const sortedData = result.ok.sort((a, b) => 
           Number(b.timestamp - a.timestamp)
         );
         setTotalItems(sortedData.length);
@@ -45,6 +58,8 @@ export const ScrapedData: React.FC = () => {
         const start = (currentPage - 1) * ITEMS_PER_PAGE;
         const paginatedData = sortedData.slice(start, start + ITEMS_PER_PAGE);
         setData(paginatedData);
+      } else {
+        console.error('Failed to load data:', result.err);
       }
     } catch (error) {
       console.error('Failed to load data:', error);
@@ -97,7 +112,7 @@ export const ScrapedData: React.FC = () => {
       ) : (
         <div className="space-y-4">
           {data.map((item) => {
-            const topic = getTopic(item.topicId);
+            const topic = getTopic(item.topic);
             return (
               <div
                 key={item.id}
@@ -121,31 +136,17 @@ export const ScrapedData: React.FC = () => {
                     <div className="text-sm text-gray-400">
                       {formatDate(item.timestamp)}
                     </div>
-                    <div className="text-sm">
-                      Quality: {(item.quality.score * 100).toFixed(1)}%
-                    </div>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                  {Object.entries(item.data).map(([key, value]) => (
+                  {Object.entries(item).map(([key, value]) => (
                     <div key={key} className="space-y-1">
                       <div className="text-sm text-[#B692F6]">{key}</div>
                       <div className="text-white break-words">{value}</div>
                     </div>
                   ))}
                 </div>
-
-                {item.quality.issues && item.quality.issues.length > 0 && (
-                  <div className="mt-2">
-                    <div className="text-sm text-red-400">Issues:</div>
-                    <ul className="list-disc list-inside text-sm text-red-400">
-                      {item.quality.issues.map((issue, index) => (
-                        <li key={index}>{issue}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
               </div>
             );
           })}

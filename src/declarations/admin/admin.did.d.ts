@@ -18,10 +18,21 @@ export type Result_1 = { 'ok' : null } |
   { 'err' : string };
 export type Result_2 = { 'ok' : { 'data' : Array<[string, string]> } } |
   { 'err' : string };
-export type Result_3 = { 'ok' : AIConfig } |
+export type Result_3 = { 'ok' : Array<ScrapedData> } |
   { 'err' : string };
-export type Result_4 = { 'ok' : bigint } |
+export type Result_4 = { 'ok' : AIConfig } |
   { 'err' : string };
+export type Result_5 = { 'ok' : bigint } |
+  { 'err' : string };
+export interface ScrapedData {
+  'id' : string,
+  'url' : string,
+  'topic' : string,
+  'content' : string,
+  'source' : string,
+  'timestamp' : bigint,
+  'client_id' : Principal,
+}
 export interface ScrapingField {
   'name' : string,
   'description' : [] | [string],
@@ -80,13 +91,14 @@ export type UserRole = { 'Operator' : null } |
   { 'SuperAdmin' : null } |
   { 'Admin' : null };
 export interface _SERVICE {
-  'addTasks' : ActorMethod<[Array<Task>], Result_4>,
+  'addTasks' : ActorMethod<[Array<Task>], Result_5>,
   'addUser' : ActorMethod<[Principal, UserRole], Result_1>,
   'clearAllData' : ActorMethod<[], string>,
   'createTopic' : ActorMethod<[ScrapingTopic], Result>,
   'deleteTopic' : ActorMethod<[string], Result_1>,
-  'getAIConfig' : ActorMethod<[], Result_3>,
+  'getAIConfig' : ActorMethod<[], Result_4>,
   'getConfig' : ActorMethod<[], TaskConfig>,
+  'getScrapedData' : ActorMethod<[[] | [string]], Result_3>,
   'getTasks' : ActorMethod<[bigint], Array<Task>>,
   'getTopics' : ActorMethod<[], Array<ScrapingTopic>>,
   'getUsers' : ActorMethod<[], Array<User>>,
