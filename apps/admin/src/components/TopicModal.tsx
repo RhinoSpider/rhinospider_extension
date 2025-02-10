@@ -3,7 +3,8 @@ import { Dialog } from '@headlessui/react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { getAdminActor } from '../lib/admin';
 import type { ScrapingTopic, ExtractionField } from '../types';
-import { validateUrlPattern, validateRateLimit } from '../lib/validation';
+import { validateUrlPattern } from '../lib/validation';
+import { ExtractionTester } from './ExtractionTester';
 
 interface TopicModalProps {
   isOpen: boolean;
@@ -27,21 +28,25 @@ const DEFAULT_FIELD: ExtractionField = {
   }
 };
 
-const DEFAULT_RATE_LIMIT = {
-  requestsPerHour: 60,
-  maxConcurrent: 5
-};
-
 export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, onSave }) => {
   const [name, setName] = useState(topic?.name || '');
   const [description, setDescription] = useState(topic?.description || '');
   const [urlPatterns, setUrlPatterns] = useState<string[]>(topic?.urlPatterns || ['']);
   const [fields, setFields] = useState<ExtractionField[]>(
-    topic?.extractionRules?.fields || [{ ...DEFAULT_FIELD }]
+    topic?.extractionRules?.fields || [{ 
+      name: '',
+      description: [],
+      example: [],
+      aiPrompt: '',
+      required: true,
+      fieldType: 'text',
+      validation: {
+        minLength: 1,
+        maxLength: 1000
+      }
+    }]
   );
-  const [rateLimit, setRateLimit] = useState(topic?.rateLimit || DEFAULT_RATE_LIMIT);
   const [urlErrors, setUrlErrors] = useState<{ [key: number]: string[] }>({});
-  const [rateLimitErrors, setRateLimitErrors] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
@@ -53,13 +58,22 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
       setDescription(topic.description);
       setUrlPatterns(topic.urlPatterns);
       setFields(topic.extractionRules.fields);
-      setRateLimit(topic.rateLimit || DEFAULT_RATE_LIMIT);
     } else {
       setName('');
       setDescription('');
       setUrlPatterns(['']);
-      setFields([{ ...DEFAULT_FIELD }]);
-      setRateLimit(DEFAULT_RATE_LIMIT);
+      setFields([{ 
+        name: '',
+        description: [],
+        example: [],
+        aiPrompt: '',
+        required: true,
+        fieldType: 'text',
+        validation: {
+          minLength: 1,
+          maxLength: 1000
+        }
+      }]);
     }
     setError(null);
     setSaveStatus('idle');
@@ -84,14 +98,8 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
     return !hasErrors;
   };
 
-  const validateRateLimits = () => {
-    const result = validateRateLimit(rateLimit.requestsPerHour, rateLimit.maxConcurrent);
-    setRateLimitErrors(result.errors);
-    return result.isValid;
-  };
-
   const handleSave = async () => {
-    if (!validateUrlPatterns() || !validateRateLimits()) {
+    if (!validateUrlPatterns()) {
       return;
     }
 
@@ -110,7 +118,6 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
           fields,
           customPrompt: topic?.extractionRules?.customPrompt || []
         },
-        rateLimit: [rateLimit],
         validation: topic?.validation || []
       };
 
@@ -227,42 +234,13 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
               </div>
             </div>
 
-            {/* Rate Limiting */}
-            <div>
-              <label className="block text-sm font-medium mb-2">Rate Limiting</label>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Requests per Hour</label>
-                  <input
-                    type="number"
-                    value={rateLimit.requestsPerHour}
-                    onChange={(e) => setRateLimit({ ...rateLimit, requestsPerHour: parseInt(e.target.value) })}
-                    className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
-                    min="0"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Max Concurrent</label>
-                  <input
-                    type="number"
-                    value={rateLimit.maxConcurrent}
-                    onChange={(e) => setRateLimit({ ...rateLimit, maxConcurrent: parseInt(e.target.value) })}
-                    className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
-                    min="0"
-                  />
-                </div>
-              </div>
-              {rateLimitErrors.map((error, i) => (
-                <p key={i} className="text-xs mt-1 text-red-400">
-                  {error}
-                </p>
-              ))}
-            </div>
-
             {/* Extraction Rules */}
             <div>
               <div className="flex justify-between items-center mb-2">
-                <label className="block text-sm font-medium">Extraction Rules</label>
+                <div>
+                  <label className="block text-sm font-medium">Fields to Extract</label>
+                  <p className="text-xs text-gray-400">Define what data should be extracted from each webpage</p>
+                </div>
                 <div className="space-x-4">
                   <button
                     onClick={() => setShowTester(true)}
@@ -274,11 +252,119 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
                     onClick={() => setFields([...fields, { ...DEFAULT_FIELD }])}
                     className="text-[#B692F6] hover:text-white transition-colors text-sm"
                   >
-                    Add Field
+                    Add New Field
                   </button>
                 </div>
               </div>
-              {/* ... rest of the extraction rules UI ... */}
+              <div className="space-y-4">
+                {fields.map((field, index) => (
+                  <div key={index} className="bg-[#131217] border border-[#2C2B33] rounded-lg p-4">
+                    <div className="flex justify-between items-start mb-4">
+                      <div className="flex-1">
+                        <input
+                          type="text"
+                          value={field.name}
+                          onChange={(e) => {
+                            const newFields = [...fields];
+                            newFields[index] = { ...field, name: e.target.value };
+                            setFields(newFields);
+                          }}
+                          className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white mb-2"
+                          placeholder="Field name"
+                        />
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs text-gray-400 mb-1">Type</label>
+                            <select
+                              value={field.fieldType}
+                              onChange={(e) => {
+                                const newFields = [...fields];
+                                newFields[index] = { ...field, fieldType: e.target.value as any };
+                                setFields(newFields);
+                              }}
+                              className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
+                            >
+                              {FIELD_TYPES.map((type) => (
+                                <option key={type} value={type}>
+                                  {type.charAt(0).toUpperCase() + type.slice(1)}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-400 mb-1">Required</label>
+                            <div className="flex items-center h-[38px]">
+                              <input
+                                type="checkbox"
+                                checked={field.required}
+                                onChange={(e) => {
+                                  const newFields = [...fields];
+                                  newFields[index] = { ...field, required: e.target.checked };
+                                  setFields(newFields);
+                                }}
+                                className="mr-2"
+                              />
+                              <span className="text-sm text-gray-400">Required field</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      {fields.length > 1 && (
+                        <button
+                          onClick={() => {
+                            const newFields = fields.filter((_, i) => i !== index);
+                            setFields(newFields);
+                          }}
+                          className="text-red-400 hover:text-red-300 transition-colors ml-4"
+                        >
+                          <XMarkIcon className="h-5 w-5" />
+                        </button>
+                      )}
+                    </div>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-xs text-gray-400 mb-1">Description</label>
+                        <textarea
+                          value={field.description.join('\n')}
+                          onChange={(e) => {
+                            const newFields = [...fields];
+                            newFields[index] = { ...field, description: e.target.value.split('\n') };
+                            setFields(newFields);
+                          }}
+                          className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white h-20"
+                          placeholder="Enter field description"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-400 mb-1">Example</label>
+                        <textarea
+                          value={field.example.join('\n')}
+                          onChange={(e) => {
+                            const newFields = [...fields];
+                            newFields[index] = { ...field, example: e.target.value.split('\n') };
+                            setFields(newFields);
+                          }}
+                          className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white h-20"
+                          placeholder="Enter example values"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-400 mb-1">AI Prompt</label>
+                        <textarea
+                          value={field.aiPrompt}
+                          onChange={(e) => {
+                            const newFields = [...fields];
+                            newFields[index] = { ...field, aiPrompt: e.target.value };
+                            setFields(newFields);
+                          }}
+                          className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white h-20"
+                          placeholder="Enter AI prompt for this field"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* Error Message */}

@@ -302,7 +302,7 @@ export const ScrapingConfig: React.FC = () => {
           </div>
           <button
             onClick={() => setIsTopicModalOpen(true)}
-            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+            className="px-4 py-2 bg-[#B692F6] text-[#131217] rounded-lg hover:opacity-90 transition-opacity"
           >
             Add Topic
           </button>
