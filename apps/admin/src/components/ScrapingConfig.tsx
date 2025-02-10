@@ -28,8 +28,23 @@ export const ScrapingConfig: React.FC = () => {
         const actor = await getAdminActor();
         console.log('Fetching topics...');
         const topics = await actor.getTopics();
-        console.log('Fetched topics:', topics);
-        setTopics(topics);
+        // Ensure optional fields are arrays
+        const processedTopics = topics.map(topic => ({
+          ...topic,
+          validation: topic.validation || [],
+          rateLimit: topic.rateLimit || [],
+          extractionRules: {
+            ...topic.extractionRules,
+            fields: topic.extractionRules.fields.map(f => ({
+              ...f,
+              description: f.description || [],
+              example: f.example || [],
+            })),
+            customPrompt: topic.extractionRules.customPrompt || [],
+          },
+        }));
+        console.log('Fetched topics:', processedTopics);
+        setTopics(processedTopics);
       } catch (error) {
         console.error('Failed to fetch topics:', error);
         setTopicsError('Failed to fetch topics');
@@ -76,10 +91,17 @@ export const ScrapingConfig: React.FC = () => {
     try {
       setUpdating(true);
       const actor = await getAdminActor();
-      const result = await actor.createTopic(topic);
+      
+      // If topic exists, update it, otherwise create new
+      const result = topic.id && topics.some(t => t.id === topic.id)
+        ? await actor.updateTopic(topic.id, topic)
+        : await actor.createTopic(topic);
+
       if ('ok' in result) {
-        await loadTopics();
+        // Close modal first to avoid state issues
         setIsTopicModalOpen(false);
+        // Then reload topics
+        await loadTopics();
       } else {
         console.error('Failed to save topic:', result.err);
       }
@@ -244,8 +266,23 @@ export const ScrapingConfig: React.FC = () => {
         const actor = await getAdminActor();
         console.log('Refreshing topics...');
         const topics = await actor.getTopics();
-        console.log('Refreshed topics:', topics);
-        setTopics(topics);
+        // Ensure optional fields are arrays
+        const processedTopics = topics.map(topic => ({
+          ...topic,
+          validation: topic.validation || [],
+          rateLimit: topic.rateLimit || [],
+          extractionRules: {
+            ...topic.extractionRules,
+            fields: topic.extractionRules.fields.map(f => ({
+              ...f,
+              description: f.description || [],
+              example: f.example || [],
+            })),
+            customPrompt: topic.extractionRules.customPrompt || [],
+          },
+        }));
+        console.log('Refreshed topics:', processedTopics);
+        setTopics(processedTopics);
       } catch (error) {
         console.error('Failed to refresh topics:', error);
         setTopicsError('Failed to refresh topics');
@@ -288,8 +325,23 @@ export const ScrapingConfig: React.FC = () => {
       const actor = await getAdminActor();
       console.log('Fetching topics...');
       const topics = await actor.getTopics();
-      console.log('Fetched topics:', topics);
-      setTopics(topics);
+      // Ensure optional fields are arrays
+      const processedTopics = topics.map(topic => ({
+        ...topic,
+        validation: topic.validation || [],
+        rateLimit: topic.rateLimit || [],
+        extractionRules: {
+          ...topic.extractionRules,
+          fields: topic.extractionRules.fields.map(f => ({
+            ...f,
+            description: f.description || [],
+            example: f.example || [],
+          })),
+          customPrompt: topic.extractionRules.customPrompt || [],
+        },
+      }));
+      console.log('Fetched topics:', processedTopics);
+      setTopics(processedTopics);
     } catch (error) {
       console.error('Failed to fetch topics:', error);
       setTopicsError('Failed to fetch topics');

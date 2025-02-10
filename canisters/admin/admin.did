@@ -118,6 +118,11 @@ type Result_3 = variant {
     err: text;
 };
 
+type Result_Topic = variant {
+    ok: ScrapingTopic;
+    err: text;
+};
+
 service : {
     init: () -> ();
     getTasks: (nat) -> (vec Task);
@@ -131,8 +136,8 @@ service : {
     "getAIConfig": () -> (Result_2) query;
     "updateAIConfig": (AIConfig) -> (Result_1);
     getScrapedData: (vec text) -> (Result_3) query;
-    createTopic: (CreateTopicRequest) -> (Result) query;
-    updateTopic: (text, ScrapingTopic) -> (Result_1);
+    createTopic: (ScrapingTopic) -> (Result_Topic);
+    updateTopic: (text, ScrapingTopic) -> (Result_Topic);
     deleteTopic: (text) -> (Result_1);
     getTopics: () -> (vec ScrapingTopic) query;
     testExtraction: (record {

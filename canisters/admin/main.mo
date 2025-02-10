@@ -446,21 +446,35 @@ actor Admin {
     };
 
     // Update an existing topic
-    public shared({ caller }) func updateTopic(id: Text, topic: ScrapingTopic) : async Result.Result<(), Text> {
+    public shared({ caller }) func updateTopic(id: Text, topic: ScrapingTopic) : async Result.Result<ScrapingTopic, Text> {
         if (not hasRole(caller, #Admin) and not hasRole(caller, #SuperAdmin)) {
             return #err("Unauthorized");
         };
 
         switch (topics.get(id)) {
-            case null { #err("Topic not found") };
-            case (?_) {
-                if (_topicNameExists(topic.name, ?id)) {
-                    return #err("Topic with this name already exists");
-                };
-                topics.put(id, topic);
-                #ok()
+            case (null) {
+                return #err("Topic not found");
             };
-        }
+            case (?existingTopic) {
+                // Preserve optional fields if not provided
+                let updatedTopic : ScrapingTopic = {
+                    id = id;
+                    name = topic.name;
+                    description = topic.description;
+                    urlPatterns = topic.urlPatterns;
+                    active = topic.active;
+                    extractionRules = {
+                        fields = topic.extractionRules.fields;
+                        customPrompt = topic.extractionRules.customPrompt;
+                    };
+                    validation = topic.validation;
+                    rateLimit = topic.rateLimit;
+                    createdAt = existingTopic.createdAt;  // Keep original creation time
+                };
+                topics.put(id, updatedTopic);
+                return #ok(updatedTopic);
+            };
+        };
     };
 
     // Delete a topic

@@ -18,8 +18,10 @@ const FIELD_TYPES = ['text', 'number', 'date', 'list', 'boolean'] as const;
 const DEFAULT_FIELD: ExtractionField = {
   name: '',
   fieldType: 'text',
-  required: false,
+  required: true,
   aiPrompt: '',
+  description: [],
+  example: [],
   validation: {
     minLength: 1,
     maxLength: 1000
@@ -36,11 +38,17 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
   const [description, setDescription] = useState(topic?.description || '');
   const [urlPatterns, setUrlPatterns] = useState<string[]>(topic?.urlPatterns || ['']);
   const [fields, setFields] = useState<ExtractionField[]>(
-    topic?.extractionRules?.fields || [{ 
+    topic?.extractionRules?.fields.map(f => ({
+      ...f,
+      description: f.description || [],
+      example: f.example || [],
+    })) || [{ 
       name: '',
       fieldType: 'text',
-      required: false,
+      required: true,
       aiPrompt: '',
+      description: [],
+      example: [],
       validation: {
         minLength: 1,
         maxLength: 1000
@@ -52,13 +60,20 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
   const [showTester, setShowTester] = useState(false);
+  const [customPrompt, setCustomPrompt] = useState<string>(topic?.extractionRules?.customPrompt?.[0] || '');
+  const [useAutoPrompt, setUseAutoPrompt] = useState(false);
 
   useEffect(() => {
     if (topic) {
       setName(topic.name);
       setDescription(topic.description);
       setUrlPatterns(topic.urlPatterns);
-      setFields(topic.extractionRules.fields);
+      setFields(topic.extractionRules.fields.map(f => ({
+        ...f,
+        description: f.description || [],
+        example: f.example || [],
+      })));
+      setCustomPrompt(topic.extractionRules.customPrompt?.[0] || '');
     } else {
       setName('');
       setDescription('');
@@ -66,13 +81,16 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
       setFields([{ 
         name: '',
         fieldType: 'text',
-        required: false,
+        required: true,
         aiPrompt: '',
+        description: [],
+        example: [],
         validation: {
           minLength: 1,
           maxLength: 1000
         }
       }]);
+      setCustomPrompt('');
     }
     setError(null);
     setSaveStatus('idle');
@@ -97,6 +115,17 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
     return !hasErrors;
   };
 
+  const generateCustomPrompt = () => {
+    const prompt = `This webpage contains ${name.toLowerCase()} information. ${description}\n\nPlease extract the requested information from the relevant sections of the webpage. If the information is not found, return "Not found".`;
+    setCustomPrompt(prompt);
+  };
+
+  useEffect(() => {
+    if (useAutoPrompt) {
+      generateCustomPrompt();
+    }
+  }, [name, description, useAutoPrompt]);
+
   const handleSave = () => {
     // Validate required fields
     if (!name) {
@@ -115,7 +144,7 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
 
     // Create a ScrapingTopic with createdAt
     const newTopic: ScrapingTopic = {
-      id: topic?.id || generateId(),
+      id: topic?.id || generateId(),  // Use existing ID when editing, generate new one when creating
       name,
       description: description || '',
       urlPatterns,
@@ -126,15 +155,21 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
           fieldType: f.fieldType,
           required: f.required,
           aiPrompt: f.aiPrompt,
-          description: [],  // Optional field in candid
-          example: [],     // Optional field in candid
+          description: [],  // Empty array for no description
+          example: [],     // Empty array for no example
         })),
-        customPrompt: topic?.extractionRules?.customPrompt ? [topic.extractionRules.customPrompt] : [],
+        customPrompt: customPrompt ? [customPrompt] : [],
       },
-      validation: [],  // Use empty array for optional field
-      rateLimit: [],  // Use empty array for optional field
-      createdAt: BigInt(Date.now()),
+      validation: [],  // Empty array for no validation
+      rateLimit: [],  // Empty array for no rate limit
+      createdAt: topic?.createdAt || BigInt(Date.now()),
     };
+
+    // If editing, preserve existing optional fields
+    if (topic) {
+      newTopic.validation = topic.validation || [];
+      newTopic.rateLimit = topic.rateLimit || [];
+    }
 
     onSave(newTopic);
     onClose();
@@ -209,6 +244,32 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
                 onChange={(e) => setDescription(e.target.value)}
                 className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white h-20"
                 placeholder="Enter topic description"
+              />
+            </div>
+
+            {/* Custom Prompt Section */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium">Custom Prompt</label>
+                <div className="flex items-center">
+                  <label className="text-sm text-gray-400 mr-2">Auto-generate</label>
+                  <input
+                    type="checkbox"
+                    checked={useAutoPrompt}
+                    onChange={(e) => setUseAutoPrompt(e.target.checked)}
+                    className="rounded bg-[#131217] border-[#2C2B33] text-indigo-600 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+              <textarea
+                value={customPrompt}
+                onChange={(e) => {
+                  setUseAutoPrompt(false);
+                  setCustomPrompt(e.target.value);
+                }}
+                className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
+                rows={3}
+                placeholder="Optional: Add context about the webpage structure or specific instructions for all fields"
               />
             </div>
 
