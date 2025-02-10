@@ -126,53 +126,60 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
     }
   }, [name, description, useAutoPrompt]);
 
-  const handleSave = () => {
-    // Validate required fields
-    if (!name) {
+  const handleSave = async () => {
+    if (!name.trim()) {
       setError('Name is required');
       return;
     }
 
-    // Validate URL patterns
-    for (const [index, pattern] of urlPatterns.entries()) {
-      const result = validateUrlPattern(pattern);
-      if (result.errors.length > 0) {
-        setUrlErrors({ ...urlErrors, [index]: result.errors });
-        return;
+    if (urlPatterns.some(pattern => !pattern.trim())) {
+      setError('URL patterns cannot be empty');
+      return;
+    }
+
+    if (fields.some(field => !field.name.trim())) {
+      setError('Field names cannot be empty');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const newTopic: ScrapingTopic = {
+        id: topic?.id || generateId(),
+        name,
+        description: description || '',
+        urlPatterns,
+        active: true,
+        extractionRules: {
+          fields: fields.map(f => ({
+            name: f.name,
+            fieldType: f.fieldType,
+            required: f.required,
+            aiPrompt: f.aiPrompt,
+            description: [],  // Empty array for no description
+            example: [],     // Empty array for no example
+          })),
+          customPrompt: customPrompt ? [customPrompt] : [],
+        },
+        validation: [],  // Empty array for no validation
+        rateLimit: [],  // Empty array for no rate limit
+        createdAt: topic?.createdAt || BigInt(Date.now()),
+      };
+
+      // If editing, preserve existing optional fields
+      if (topic) {
+        newTopic.validation = topic.validation || [];
+        newTopic.rateLimit = topic.rateLimit || [];
       }
+
+      await onSave(newTopic);
+      onClose();
+    } catch (error) {
+      console.error('Error saving topic:', error);
+      setError('Failed to save topic: ' + error);
+    } finally {
+      setSaving(false);
     }
-
-    // Create a ScrapingTopic with createdAt
-    const newTopic: ScrapingTopic = {
-      id: topic?.id || generateId(),  // Use existing ID when editing, generate new one when creating
-      name,
-      description: description || '',
-      urlPatterns,
-      active: true,
-      extractionRules: {
-        fields: fields.map(f => ({
-          name: f.name,
-          fieldType: f.fieldType,
-          required: f.required,
-          aiPrompt: f.aiPrompt,
-          description: [],  // Empty array for no description
-          example: [],     // Empty array for no example
-        })),
-        customPrompt: customPrompt ? [customPrompt] : [],
-      },
-      validation: [],  // Empty array for no validation
-      rateLimit: [],  // Empty array for no rate limit
-      createdAt: topic?.createdAt || BigInt(Date.now()),
-    };
-
-    // If editing, preserve existing optional fields
-    if (topic) {
-      newTopic.validation = topic.validation || [];
-      newTopic.rateLimit = topic.rateLimit || [];
-    }
-
-    onSave(newTopic);
-    onClose();
   };
 
   const handleAddUrlPattern = () => {
@@ -397,6 +404,7 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
               <button
                 onClick={onClose}
                 className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
+                disabled={saving}
               >
                 Cancel
               </button>

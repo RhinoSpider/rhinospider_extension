@@ -8,13 +8,14 @@ import { getAuthClient } from '../lib/auth';
 
 export const ScrapingConfig: React.FC = () => {
   const [topics, setTopics] = useState<ScrapingTopic[]>([]);
-  const [topicsLoading, setTopicsLoading] = useState(true); // Start with loading true
+  const [topicsLoading, setTopicsLoading] = useState(false);
   const [topicsError, setTopicsError] = useState<string | null>(null);
+  const [topicsStatus, setTopicsStatus] = useState<string | null>(null);
   const [aiConfig, setAIConfig] = useState<AIConfig | null>(null);
   const [aiConfigLoading, setAIConfigLoading] = useState(true); // Start with loading true
   const [isTopicModalOpen, setIsTopicModalOpen] = useState(false);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
-  const [selectedTopic, setSelectedTopic] = useState<ScrapingTopic | undefined>();
+  const [selectedTopic, setSelectedTopic] = useState<ScrapingTopic | null>();
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -90,6 +91,7 @@ export const ScrapingConfig: React.FC = () => {
   const handleSaveTopic = async (topic: ScrapingTopic) => {
     try {
       setUpdating(true);
+      setTopicsStatus('Saving topic...');
       const actor = await getAdminActor();
       
       // If topic exists, update it, otherwise create new
@@ -100,15 +102,23 @@ export const ScrapingConfig: React.FC = () => {
       if ('ok' in result) {
         // Close modal first to avoid state issues
         setIsTopicModalOpen(false);
+        setTopicsStatus('Topic saved successfully!');
         // Then reload topics
         await loadTopics();
       } else {
         console.error('Failed to save topic:', result.err);
+        setTopicsError('Failed to save topic: ' + result.err);
       }
     } catch (error) {
       console.error('Failed to save topic:', error);
+      setTopicsError('Failed to save topic: ' + error);
     } finally {
       setUpdating(false);
+      // Clear status after 3 seconds
+      setTimeout(() => {
+        setTopicsStatus(null);
+        setTopicsError(null);
+      }, 3000);
     }
   };
 
@@ -246,7 +256,7 @@ export const ScrapingConfig: React.FC = () => {
   };
 
   const handleCreateTopic = () => {
-    setSelectedTopic(undefined);
+    setSelectedTopic(null);
     setIsTopicModalOpen(true);
   };
 
@@ -257,7 +267,7 @@ export const ScrapingConfig: React.FC = () => {
 
   const handleTopicModalClose = () => {
     setIsTopicModalOpen(false);
-    setSelectedTopic(undefined);
+    setSelectedTopic(null);
     // Refresh topics after modal closes
     const loadData = async () => {
       try {
@@ -354,19 +364,29 @@ export const ScrapingConfig: React.FC = () => {
     <div className="space-y-8">
       {/* Topics Section */}
       <div>
-        <div className="flex justify-between items-center mb-4">
+        <div className="flex justify-between items-center mb-6">
           <div>
-            <h2 className="text-xl font-semibold text-white">Topics</h2>
-            <p className="text-gray-400 text-sm mt-1">
-              Configure scraping topics and their extraction rules
-            </p>
+            <h2 className="text-2xl font-bold text-white">Topics</h2>
+            <p className="text-gray-400">Configure scraping topics and their extraction rules</p>
           </div>
-          <button
-            onClick={() => setIsTopicModalOpen(true)}
-            className="px-4 py-2 bg-[#B692F6] text-[#131217] rounded-lg hover:opacity-90 transition-opacity"
-          >
-            Add Topic
-          </button>
+          <div className="flex items-center gap-4">
+            {topicsStatus && (
+              <span className="text-green-400 text-sm">{topicsStatus}</span>
+            )}
+            {topicsError && (
+              <span className="text-red-400 text-sm">{topicsError}</span>
+            )}
+            <button
+              onClick={() => {
+                setSelectedTopic(null);
+                setIsTopicModalOpen(true);
+              }}
+              className="px-4 py-2 bg-[#B692F6] text-[#131217] rounded-lg hover:opacity-90 transition-opacity"
+              disabled={updating}
+            >
+              {updating ? 'Adding...' : 'Add Topic'}
+            </button>
+          </div>
         </div>
 
         {/* Topics List */}
@@ -450,7 +470,7 @@ export const ScrapingConfig: React.FC = () => {
       {/* AI Configuration Section */}
       <div>
         <div className="mb-4">
-          <h2 className="text-xl font-semibold text-white">AI Configuration</h2>
+          <h2 className="text-2xl font-bold text-white">AI Configuration</h2>
           <p className="text-gray-400 text-sm mt-1">
             Configure AI settings for content extraction
           </p>
