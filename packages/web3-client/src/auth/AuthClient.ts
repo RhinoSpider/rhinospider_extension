@@ -76,6 +76,7 @@ export class AuthClient {
         authClient.login({
           identityProvider: II_URL,
           maxTimeToLive: BigInt(7 * 24 * 60 * 60 * 1000 * 1000 * 1000), // 7 days in nanoseconds
+          windowOpenerFeatures: 'toolbar=0,location=0,menubar=0,width=500,height=500,left=' + (window.screen.width - 500) / 2 + ',top=' + (window.screen.height - 500) / 2,
           onSuccess: async () => {
             try {
               console.log('Login successful, getting identity...');
@@ -89,8 +90,6 @@ export class AuthClient {
                 error: null
               };
 
-              // Force state update by reloading the page
-              window.location.reload();
               resolve();
             } catch (error) {
               console.error('Error in onSuccess:', error);
@@ -98,13 +97,37 @@ export class AuthClient {
             }
           },
           onError: (error) => {
-            console.error('Login error:', error);
-            this.state.error = error instanceof Error ? error : new Error('Login failed');
+            console.log('Login error type:', error);
+            // Handle user interruption (closing the popup) differently
+            if (error === 'UserInterrupt') {
+              this.state = {
+                ...this.state,
+                error: null // Don't set an error for user interruption
+              };
+              resolve(); // Resolve without error
+              return;
+            }
+
+            // For other errors, maintain error state
+            const errorMessage = error === 'UserInterrupt' 
+              ? 'Login cancelled'
+              : error instanceof Error 
+                ? error.message 
+                : 'Login failed';
+            
+            this.state.error = new Error(errorMessage);
             reject(this.state.error);
           }
         });
       });
+
+      // Return immediately after successful login
+      return;
     } catch (error) {
+      // Don't throw for user interruption
+      if (error instanceof Error && error.message === 'Login cancelled') {
+        return;
+      }
       console.error('Login process error:', error);
       this.state.error = error instanceof Error ? error : new Error('Failed to login');
       throw this.state.error;

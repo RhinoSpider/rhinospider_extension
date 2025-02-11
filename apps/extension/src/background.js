@@ -7,18 +7,40 @@ import {
 } from './services/api';
 import { AuthClient } from '@rhinospider/web3-client';
 
+// Auth state management
+let authState = {
+  isAuthenticated: false,
+  identity: null,
+  isInitialized: false,
+  error: null
+};
+
 // Initialize when installed
-chrome.runtime.onInstalled.addListener(async () => {
+chrome.runtime.onInstalled.addListener(() => {
   console.log('Extension installed');
-  await initDB();
-  await initializeAuth();
+  initializeAuth();
+  initDB();
 });
 
-// Listen for messages from content script
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.type === 'SCRAPE_CONTENT') {
-    handleScrapeContent(request.data, sender.tab?.id);
-    // Return true to indicate we'll send response asynchronously
+// Listen for messages
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  console.log('Received message:', message);
+  
+  if (message.type === 'GET_AUTH_STATE') {
+    sendResponse(authState);
+    return true;
+  }
+
+  if (message.type === 'UPDATE_AUTH_STATE') {
+    updateAuthState(message.state);
+    sendResponse({ success: true });
+    return true;
+  }
+
+  if (message.type === 'SCRAPE_CONTENT') {
+    handleScrapeContent(message.data, sender.tab?.id)
+      .then(() => sendResponse({ success: true }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }
 });
@@ -46,33 +68,46 @@ async function handleScrapeContent(data, tabId) {
         error: error.message
       });
     }
+    throw error;
   }
 }
-
-// Auth state management
-let authState = {
-  isAuthenticated: false,
-  identity: null
-};
 
 // Initialize auth state
 async function initializeAuth() {
   try {
-    const authClient = AuthClient.getInstance();
-    const newState = await authClient.initialize();
-    updateAuthState(newState);
+    // Initialize auth state from storage
+    const stored = await chrome.storage.local.get('authState');
+    if (stored.authState) {
+      authState = stored.authState;
+    }
+    authState.isInitialized = true;
+    updateAuthState(authState);
   } catch (error) {
     console.error('Failed to initialize auth:', error);
+    authState.error = error.message;
+    updateAuthState(authState);
   }
 }
 
 // Update auth state
 function updateAuthState(newState) {
-  authState = newState;
+  console.log('Updating auth state:', newState);
+  authState = { ...authState, ...newState };
   chrome.storage.local.set({ authState });
+
+  // Broadcast auth state change to all extension views
+  chrome.runtime.sendMessage({ 
+    type: 'AUTH_STATE_CHANGED', 
+    state: authState 
+  }).catch(error => {
+    // Ignore errors about no receivers
+    if (!error.message.includes('Could not establish connection')) {
+      console.error('Error broadcasting auth state:', error);
+    }
+  });
 }
 
-// Initialize auth when extension loads
+// Initialize auth when service worker starts
 initializeAuth();
 
 // Export functions for popup

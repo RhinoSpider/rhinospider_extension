@@ -20,7 +20,11 @@ const Popup = () => {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [bandwidthSpeed, setBandwidthSpeed] = useState('medium'); // Can be 'low', 'medium', 'high'
   const [currentSpeed, setCurrentSpeed] = useState('2.5 MB/s');
+  const [principal, setPrincipal] = useState(null);
   const userMenuRef = useRef(null);
+
+  // Default avatar data URL (a simple grey circle)
+  const DEFAULT_AVATAR = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIyMCIgY3k9IjIwIiByPSIyMCIgZmlsbD0iI0U1RTdFQiIvPjxwYXRoIGQ9Ik0yMCAxOUMyMi43NjE0IDE5IDI1IDIxLjIzODYgMjUgMjRDMjUgMjYuNzYxNCAyMi43NjE0IDI5IDIwIDI5QzE3LjIzODYgMjkgMTUgMjYuNzYxNCAxNSAyNEMxNSAyMS4yMzg2IDE3LjIzODYgMTkgMjAgMTlaIiBmaWxsPSIjOUVBM0FCIi8+PC9zdmc+';
 
   useEffect(() => {
     const initializeAuth = async () => {
@@ -28,17 +32,17 @@ const Popup = () => {
         setIsLoading(true);
         const authClient = AuthClient.getInstance();
         const state = await authClient.initialize();
-        console.log('Initial auth state:', state);
+        
+        // Update background script with auth state
+        await chrome.runtime.sendMessage({ type: 'UPDATE_AUTH_STATE', state });
         
         if (state.isAuthenticated && state.identity) {
           setIsAuthenticated(true);
-          try {
-            const userData = await authClient.getUserData();
-            if (userData?.avatar) {
-              setAvatar(userData.avatar);
-            }
-          } catch (err) {
-            console.error('Failed to fetch user data:', err);
+          setAvatar(DEFAULT_AVATAR);
+          
+          // Store principal as string
+          if (state.identity.getPrincipal) {
+            setPrincipal(state.identity.getPrincipal().toString());
           }
         }
       } catch (error) {
@@ -50,6 +54,29 @@ const Popup = () => {
     };
 
     initializeAuth();
+
+    // Listen for auth state changes
+    const handleAuthStateChange = (message) => {
+      if (message.type === 'AUTH_STATE_CHANGED') {
+        const newState = message.state;
+        if (newState.isAuthenticated) {
+          setIsAuthenticated(true);
+          setAvatar(DEFAULT_AVATAR);
+          
+          // Store principal as string
+          if (newState.identity?.getPrincipal) {
+            setPrincipal(newState.identity.getPrincipal().toString());
+          }
+        } else {
+          setIsAuthenticated(false);
+          setAvatar(null);
+          setPrincipal(null);
+        }
+      }
+    };
+
+    chrome.runtime.onMessage.addListener(handleAuthStateChange);
+    return () => chrome.runtime.onMessage.removeListener(handleAuthStateChange);
   }, []);
 
   useEffect(() => {
@@ -83,12 +110,34 @@ const Popup = () => {
   const handleLogin = async () => {
     try {
       setIsLoginPending(true);
+      setError(null);
       const authClient = AuthClient.getInstance();
       await authClient.login();
-      setIsAuthenticated(true);
+      const state = authClient.getState();
+      
+      // Update background script with auth state
+      await chrome.runtime.sendMessage({ type: 'UPDATE_AUTH_STATE', state });
+      
+      if (state.isAuthenticated) {
+        setIsAuthenticated(true);
+        setAvatar(DEFAULT_AVATAR);
+        
+        // Store principal as string
+        if (state.identity?.getPrincipal) {
+          setPrincipal(state.identity.getPrincipal().toString());
+        }
+      } else if (state.error) {
+        // Only show error if it's not a user cancellation
+        if (state.error.message !== 'Login cancelled') {
+          setError(state.error.message);
+        }
+      }
     } catch (error) {
       console.error('Login failed:', error);
-      setError('Failed to login');
+      // Only show error if it's not a user cancellation
+      if (error.message !== 'Login cancelled') {
+        setError(error.message || 'Failed to login');
+      }
     } finally {
       setIsLoginPending(false);
     }
@@ -98,9 +147,15 @@ const Popup = () => {
     try {
       const authClient = AuthClient.getInstance();
       await authClient.logout();
+      const state = authClient.getState();
+      
+      // Update background script with auth state
+      await chrome.runtime.sendMessage({ type: 'UPDATE_AUTH_STATE', state });
+      
       setIsAuthenticated(false);
       setAvatar(null);
       setIsUserMenuOpen(false);
+      setPrincipal(null);
     } catch (error) {
       console.error('Logout failed:', error);
       setError('Failed to logout');
@@ -211,7 +266,7 @@ const Popup = () => {
                   <div className="px-4 py-2 text-sm text-gray-300 border-b border-white/10">
                     <div className="font-medium">Your Account</div>
                     <div className="text-xs text-gray-400 truncate">
-                      {AuthClient.getInstance().getState()?.identity?.getPrincipal()}
+                      {principal}
                     </div>
                   </div>
                   <button
