@@ -1,3 +1,8 @@
+type Validation = 
+ opt record {
+       aiValidation: opt text;
+       rules: vec text;
+     };
 type UserRole = 
  variant {
    Admin;
@@ -34,28 +39,16 @@ type ScrapingTopic =
    active: bool;
    createdAt: int;
    description: text;
-   extractionRules:
-    record {
-      customPrompt: opt text;
-      fields: vec ScrapingField;
-    };
+   extractionRules: ExtractionRules;
    id: text;
    name: text;
-   rateLimit: opt record {
-                    maxConcurrent: nat;
-                    requestsPerHour: nat;
-                  };
+   rateLimit: RateLimit;
    urlPatterns: vec text;
-   validation: opt record {
-                     aiValidation: opt text;
-                     rules: vec text;
-                   };
+   validation: Validation;
  };
 type ScrapingField__1 = 
  record {
    aiPrompt: text;
-   description: opt text;
-   example: opt text;
    fieldType: text;
    name: text;
    required: bool;
@@ -63,8 +56,6 @@ type ScrapingField__1 =
 type ScrapingField = 
  record {
    aiPrompt: text;
-   description: opt text;
-   example: opt text;
    fieldType: text;
    name: text;
    required: bool;
@@ -97,10 +88,7 @@ type Result_3 =
 type Result_2 = 
  variant {
    err: text;
-   ok: record {data: vec record {
-                           text;
-                           text;
-                         };};
+   ok: text;
  };
 type Result_1 = 
  variant {
@@ -111,6 +99,16 @@ type Result =
  variant {
    err: text;
    ok: ScrapingTopic;
+ };
+type RateLimit = 
+ opt record {
+       maxConcurrent: nat;
+       requestsPerHour: nat;
+     };
+type ExtractionRules = 
+ record {
+   customPrompt: opt text;
+   fields: vec ScrapingField;
  };
 type CostLimits = 
  record {
@@ -132,11 +130,12 @@ service : {
   deleteTopic: (text) -> (Result_1);
   getAIConfig: () -> (Result_4);
   getConfig: () -> (TaskConfig) query;
-  getScrapedData: (opt text) -> (Result_3);
+  getScrapedData: (vec text) -> (Result_3);
   getTasks: (nat) -> (vec Task);
   getTopics: () -> (vec ScrapingTopic) query;
   getUsers: () -> (vec User);
   removeUser: (principal) -> (Result_1);
+  setTopicActive: (text, bool) -> (Result_1);
   testExtraction:
    (record {
       extraction_rules:

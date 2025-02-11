@@ -12,11 +12,18 @@ export interface CostLimits {
   'dailyUSD' : bigint,
   'monthlyUSD' : bigint,
 }
+export interface ExtractionRules {
+  'fields' : Array<ScrapingField>,
+  'customPrompt' : [] | [string],
+}
+export type RateLimit = [] | [
+  { 'maxConcurrent' : bigint, 'requestsPerHour' : bigint }
+];
 export type Result = { 'ok' : ScrapingTopic } |
   { 'err' : string };
 export type Result_1 = { 'ok' : null } |
   { 'err' : string };
-export type Result_2 = { 'ok' : { 'data' : Array<[string, string]> } } |
+export type Result_2 = { 'ok' : string } |
   { 'err' : string };
 export type Result_3 = { 'ok' : Array<ScrapedData> } |
   { 'err' : string };
@@ -35,16 +42,12 @@ export interface ScrapedData {
 }
 export interface ScrapingField {
   'name' : string,
-  'description' : [] | [string],
-  'example' : [] | [string],
   'aiPrompt' : string,
   'required' : boolean,
   'fieldType' : string,
 }
 export interface ScrapingField__1 {
   'name' : string,
-  'description' : [] | [string],
-  'example' : [] | [string],
   'aiPrompt' : string,
   'required' : boolean,
   'fieldType' : string,
@@ -56,14 +59,9 @@ export interface ScrapingTopic {
   'createdAt' : bigint,
   'description' : string,
   'urlPatterns' : Array<string>,
-  'extractionRules' : {
-    'fields' : Array<ScrapingField>,
-    'customPrompt' : [] | [string],
-  },
-  'rateLimit' : [] | [{ 'maxConcurrent' : bigint, 'requestsPerHour' : bigint }],
-  'validation' : [] | [
-    { 'aiValidation' : [] | [string], 'rules' : Array<string> }
-  ],
+  'extractionRules' : ExtractionRules,
+  'rateLimit' : RateLimit,
+  'validation' : Validation,
 }
 export interface Task {
   'id' : string,
@@ -90,6 +88,9 @@ export interface User {
 export type UserRole = { 'Operator' : null } |
   { 'SuperAdmin' : null } |
   { 'Admin' : null };
+export type Validation = [] | [
+  { 'aiValidation' : [] | [string], 'rules' : Array<string> }
+];
 export interface _SERVICE {
   'addTasks' : ActorMethod<[Array<Task>], Result_5>,
   'addUser' : ActorMethod<[Principal, UserRole], Result_1>,
@@ -98,11 +99,12 @@ export interface _SERVICE {
   'deleteTopic' : ActorMethod<[string], Result_1>,
   'getAIConfig' : ActorMethod<[], Result_4>,
   'getConfig' : ActorMethod<[], TaskConfig>,
-  'getScrapedData' : ActorMethod<[[] | [string]], Result_3>,
+  'getScrapedData' : ActorMethod<[Array<string>], Result_3>,
   'getTasks' : ActorMethod<[bigint], Array<Task>>,
   'getTopics' : ActorMethod<[], Array<ScrapingTopic>>,
   'getUsers' : ActorMethod<[], Array<User>>,
   'removeUser' : ActorMethod<[Principal], Result_1>,
+  'setTopicActive' : ActorMethod<[string, boolean], Result_1>,
   'testExtraction' : ActorMethod<
     [
       {

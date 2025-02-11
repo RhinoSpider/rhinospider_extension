@@ -543,4 +543,38 @@ actor Admin {
             return #err("Failed to test extraction: " # Error.message(err))
         };
     };
+
+    public shared({ caller }) func setTopicActive(id: Text, active: Bool) : async Result.Result<(), Text> {
+        if (not hasRole(caller, #Admin) and not hasRole(caller, #SuperAdmin)) {
+            _Debug.print("Unauthorized caller: " # Principal.toText(caller));
+            return #err("Unauthorized");
+        };
+
+        switch (topics.get(id)) {
+            case (null) {
+                _Debug.print("Topic not found: " # id);
+                #err("Topic not found")
+            };
+            case (?topic) {
+                _Debug.print("Updating topic " # id # " active state to: " # Bool.toText(active));
+                let updatedTopic = {
+                    topic with
+                    active = active;
+                    updatedAt = Int.abs(Time.now());
+                };
+                topics.put(id, updatedTopic);
+
+                // Also update in storage canister
+                try {
+                    _Debug.print("Syncing to storage canister...");
+                    ignore storage.setTopicActive(id, active);
+                    _Debug.print("Successfully synced to storage");
+                } catch (e) {
+                    _Debug.print("Error syncing to storage: " # Error.message(e));
+                };
+
+                #ok(());
+            };
+        };
+    };
 }

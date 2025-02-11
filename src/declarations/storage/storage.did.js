@@ -11,6 +11,7 @@ export const idlFactory = ({ IDL }) => {
   });
   const ScrapingTopic = IDL.Record({
     'id' : IDL.Text,
+    'active' : IDL.Bool,
     'name' : IDL.Text,
     'createdAt' : IDL.Int,
     'description' : IDL.Opt(IDL.Text),
@@ -18,18 +19,7 @@ export const idlFactory = ({ IDL }) => {
     'urlPatterns' : IDL.Vec(IDL.Text),
     'extractionRules' : IDL.Opt(ExtractionRules),
   });
-  const Result = IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text });
-  const CostLimits = IDL.Record({
-    'maxConcurrent' : IDL.Nat,
-    'dailyUSD' : IDL.Nat,
-    'monthlyUSD' : IDL.Nat,
-  });
-  const AIConfig = IDL.Record({
-    'model' : IDL.Text,
-    'costLimits' : CostLimits,
-    'apiKey' : IDL.Text,
-  });
-  const Result_5 = IDL.Variant({ 'ok' : AIConfig, 'err' : IDL.Text });
+  const Result_1 = IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text });
   const ScrapedData = IDL.Record({
     'id' : IDL.Text,
     'url' : IDL.Text,
@@ -87,14 +77,13 @@ export const idlFactory = ({ IDL }) => {
     'ok' : IDL.Vec(IDL.Tuple(IDL.Text, IDL.Text)),
     'err' : IDL.Text,
   });
-  const Result_1 = IDL.Variant({
+  const Result = IDL.Variant({
     'ok' : IDL.Record({ 'data' : IDL.Vec(IDL.Tuple(IDL.Text, IDL.Text)) }),
     'err' : IDL.Text,
   });
   const Storage = IDL.Service({
-    'createTopic' : IDL.Func([ScrapingTopic], [Result], []),
-    'deleteTopic' : IDL.Func([IDL.Text], [Result], []),
-    'getAIConfig' : IDL.Func([], [Result_5], ['query']),
+    'createTopic' : IDL.Func([ScrapingTopic], [Result_1], []),
+    'deleteTopic' : IDL.Func([IDL.Text], [Result_1], []),
     'getBySource' : IDL.Func([IDL.Text], [IDL.Vec(ScrapedData)], ['query']),
     'getContent' : IDL.Func([IDL.Text], [Result_4], ['query']),
     'getContentBySource' : IDL.Func([IDL.Text], [Result_3], ['query']),
@@ -109,15 +98,17 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(ScrapedData)],
         ['query'],
       ),
+    'getTopic' : IDL.Func([IDL.Text], [IDL.Opt(ScrapingTopic)], ['query']),
     'getTopics' : IDL.Func([], [IDL.Vec(ScrapingTopic)], ['query']),
     'processWithAI' : IDL.Func([Request], [Result_2], []),
-    'queueUrlForProcessing' : IDL.Func([IDL.Text, IDL.Text], [Result], []),
-    'storeContent' : IDL.Func([ScrapedContent], [Result], []),
+    'queueUrlForProcessing' : IDL.Func([IDL.Text, IDL.Text], [Result_1], []),
+    'setTopicActive' : IDL.Func([IDL.Text, IDL.Bool], [Result_1], []),
+    'storeContent' : IDL.Func([ScrapedContent], [Result_1], []),
     'storeHtmlContent' : IDL.Func([IDL.Text, IDL.Text], [], []),
-    'storeRequest' : IDL.Func([Request], [Result], []),
+    'storeRequest' : IDL.Func([Request], [Result_1], []),
     'testExtraction' : IDL.Func(
         [IDL.Record({ 'url' : IDL.Text, 'extractionRules' : ExtractionRules })],
-        [Result_1],
+        [Result],
         [],
       ),
     'testExtractionLocal' : IDL.Func(
@@ -127,11 +118,9 @@ export const idlFactory = ({ IDL }) => {
             'extractionRules' : ExtractionRules,
           }),
         ],
-        [Result_1],
+        [Result],
         [],
       ),
-    'updateAIConfig' : IDL.Func([AIConfig], [Result], []),
-    'updateTopic' : IDL.Func([ScrapingTopic], [Result], []),
   });
   return Storage;
 };

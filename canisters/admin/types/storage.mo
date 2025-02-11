@@ -97,5 +97,6 @@ module {
 
         getAIConfig : shared query () -> async Result.Result<AIConfig, Text>;
         updateAIConfig : shared (AIConfig) -> async Result.Result<(), Text>;
+        setTopicActive : shared (Text, Bool) -> async Result.Result<(), Text>;
     };
 };

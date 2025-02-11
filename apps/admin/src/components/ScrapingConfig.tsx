@@ -5,6 +5,7 @@ import { TopicModal } from './TopicModal';
 import { AIConfigModal } from './AIConfigModal';
 import { getAdminActor } from '../lib/admin';
 import { getAuthClient } from '../lib/auth';
+import { getStorageActor } from '../lib/storage'; // Import getStorageActor
 
 export const ScrapingConfig: React.FC = () => {
   const [topics, setTopics] = useState<ScrapingTopic[]>([]);
@@ -12,13 +13,14 @@ export const ScrapingConfig: React.FC = () => {
   const [topicsError, setTopicsError] = useState<string | null>(null);
   const [topicsStatus, setTopicsStatus] = useState<string | null>(null);
   const [aiConfig, setAIConfig] = useState<AIConfig | null>(null);
-  const [aiConfigLoading, setAIConfigLoading] = useState(true); // Start with loading true
+  const [aiConfigLoading, setAIConfigLoading] = useState(true);
   const [isTopicModalOpen, setIsTopicModalOpen] = useState(false);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [selectedTopic, setSelectedTopic] = useState<ScrapingTopic | null>();
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [updatingTopics, setUpdatingTopics] = useState<{ [key: string]: boolean }>({});
 
   // Fetch topics on mount
   useEffect(() => {
@@ -422,7 +424,22 @@ export const ScrapingConfig: React.FC = () => {
                   key={topic.id}
                   className="bg-[#1C1B23] rounded-lg p-4 hover:bg-[#2C2B33] transition-colors"
                 >
-                  <h3 className="text-lg font-medium text-white mb-2">{topic.name}</h3>
+                  <div className="flex justify-between items-start mb-2">
+                    <h3 className="text-lg font-medium text-white">{topic.name}</h3>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm('Are you sure you want to delete this topic?')) {
+                            handleDeleteTopic(topic.id);
+                          }
+                        }}
+                        className="text-sm text-red-500 hover:text-red-400"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
                   <p className="text-gray-400 text-sm mb-4">{topic.description}</p>
                   <div className="space-y-2 mb-4">
                     <div className="text-sm text-gray-400">
@@ -436,18 +453,49 @@ export const ScrapingConfig: React.FC = () => {
                   </div>
                   <div className="flex justify-between items-center">
                     <div className="text-xs text-gray-500">
-                      Created {new Date(Number(topic.createdAt)).toLocaleDateString()}
+                      Created {new Date(Number(topic.createdAt) / 1_000_000).toLocaleDateString()}
                     </div>
-                    <div className="flex gap-2">
-                      <div
-                        className={`px-2 py-1 rounded text-xs ${
-                          topic.active
-                            ? 'bg-green-900/20 text-green-400'
-                            : 'bg-red-900/20 text-red-400'
-                        }`}
-                      >
-                        {topic.active ? 'Active' : 'Inactive'}
-                      </div>
+                    <div className="flex gap-2 items-center">
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="sr-only peer"
+                          checked={topic.active}
+                          disabled={updatingTopics[topic.id]}
+                          onChange={async (e) => {
+                            e.stopPropagation();
+                            try {
+                              const newActive = e.target.checked;
+                              console.log(`Toggling topic ${topic.id} to ${newActive}`);
+                              setUpdatingTopics(prev => ({ ...prev, [topic.id]: true }));
+                              
+                              const actor = await getAdminActor();
+                              console.log('Got admin actor, calling setTopicActive...');
+                              const result = await actor.setTopicActive(topic.id, newActive);
+                              console.log('setTopicActive result:', result);
+                              
+                              if ('err' in result) {
+                                console.error('Failed to update topic status:', result.err);
+                                setTopicsError('Failed to update topic status: ' + result.err);
+                                return;
+                              }
+
+                              console.log('Successfully updated topic, refreshing list...');
+                              // Refresh topics list
+                              const updatedTopics = await actor.getTopics();
+                              console.log('Got updated topics:', updatedTopics);
+                              setTopics(updatedTopics);
+                              console.log('Updated topics state');
+                            } catch (error) {
+                              console.error('Failed to update topic status:', error);
+                              setTopicsError('Failed to update topic status');
+                            } finally {
+                              setUpdatingTopics(prev => ({ ...prev, [topic.id]: false }));
+                            }
+                          }}
+                        />
+                        <div className={`w-9 h-5 ${updatingTopics[topic.id] ? 'opacity-50' : ''} bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#B692F6]`}></div>
+                      </label>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();

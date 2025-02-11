@@ -14,6 +14,8 @@ import Blob "mo:base/Blob";
 import Error "mo:base/Error";
 import AIHandler "./ai/handler";
 import Nat "mo:base/Nat";
+import Time "mo:base/Time";
+import Debug "mo:base/Debug";
 
 actor class Storage() = this {
     type ICManagement = actor {
@@ -449,66 +451,63 @@ actor class Storage() = this {
     };
 
     // Topic management
-    private var _topics = HashMap.HashMap<Text, Types.ScrapingTopic>(0, Text.equal, Text.hash);
-    private var _aiConfig : ?Types.AIConfig = ?{
-        apiKey = "";
-        model = "gpt-3.5-turbo";
-        costLimits = {
-            dailyUSD = 10;
-            monthlyUSD = 100;
-            maxConcurrent = 5
-        }
-    };
+    private stable var _topics : [(Text, Types.ScrapingTopic)] = [];
+    private var topics = HashMap.fromIter<Text, Types.ScrapingTopic>(_topics.vals(), 0, Text.equal, Text.hash);
 
-    public query func getTopics() : async [Types.ScrapingTopic] {
-        var result : Buffer.Buffer<Types.ScrapingTopic> = Buffer.Buffer(0);
-        for ((_, topic) in _topics.entries()) {
-            result.add(topic);
-        };
-        Buffer.toArray(result)
-    };
-
-    public shared({ caller }) func createTopic(topic: Types.ScrapingTopic) : async Result.Result<(), Text> {
-        if (not isAuthorized(caller)) {
-            return #err("Unauthorized");
-        };
-        _topics.put(topic.id, topic);
+    public shared({ caller = _ }) func createTopic(topic : Types.ScrapingTopic) : async Result.Result<(), Text> {
+        topics.put(topic.id, { topic with active = true }); // New topics are active by default
         #ok(());
     };
 
-    public shared({ caller }) func updateTopic(topic: Types.ScrapingTopic) : async Result.Result<(), Text> {
-        if (not isAuthorized(caller)) {
-            return #err("Unauthorized");
-        };
-        _topics.put(topic.id, topic);
-        #ok()
-    };
-
-    public shared({ caller }) func deleteTopic(id: Text) : async Result.Result<(), Text> {
-        if (not isAuthorized(caller)) {
-            return #err("Unauthorized");
-        };
-        _topics.delete(id);
-        #ok()
-    };
-
-    public query func getAIConfig() : async Result.Result<Types.AIConfig, Text> {
-        switch (_aiConfig) {
-            case (?config) {
-                #ok(config)
+    public shared({ caller = _ }) func deleteTopic(id : Text) : async Result.Result<(), Text> {
+        switch (topics.get(id)) {
+            case (null) { #err("Topic not found") };
+            case (?_) { 
+                topics.delete(id);
+                #ok(());
             };
-            case null {
-                #err("AI config not found")
-            };
-        }
+        };
     };
 
-    public shared({ caller }) func updateAIConfig(config: Types.AIConfig) : async Result.Result<(), Text> {
-        if (not isAuthorized(caller)) {
-            return #err("Unauthorized");
+    public shared({ caller = _ }) func setTopicActive(id : Text, active : Bool) : async Result.Result<(), Text> {
+        Debug.print("Storage: Setting topic " # id # " active state to: " # Bool.toText(active));
+        switch (topics.get(id)) {
+            case (null) { 
+                Debug.print("Storage: Topic not found: " # id);
+                #err("Topic not found") 
+            };
+            case (?topic) {
+                let updatedTopic = {
+                    topic with
+                    active = active;
+                    updatedAt = Int.abs(Time.now());
+                };
+                Debug.print("Storage: Updating topic...");
+                topics.put(id, updatedTopic);
+                Debug.print("Storage: Topic updated successfully");
+                #ok(());
+            };
         };
-        _aiConfig := ?config;
-        #ok()
+    };
+
+    public query func getTopics() : async [Types.ScrapingTopic] {
+        let buffer = Buffer.Buffer<Types.ScrapingTopic>(0);
+        for ((_, topic) in topics.entries()) {
+            buffer.add(topic);
+        };
+        Buffer.toArray(buffer);
+    };
+
+    public query func getTopic(id : Text) : async ?Types.ScrapingTopic {
+        topics.get(id);
+    };
+
+    // Update the scraping process to only use active topics
+    private func _isTopicActive(topicId : Text) : Bool {
+        switch (topics.get(topicId)) {
+            case (null) { false };
+            case (?topic) { topic.active };
+        };
     };
 
     // State

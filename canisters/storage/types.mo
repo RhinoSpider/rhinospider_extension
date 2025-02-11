@@ -76,6 +76,7 @@ module {
         extractionRules : ?ExtractionRules;
         createdAt : Int;
         updatedAt : Int;
+        active : Bool;
     };
 
     public type Request = {

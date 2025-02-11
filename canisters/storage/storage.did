@@ -92,6 +92,7 @@ type ScrapingTopic = record {
     extractionRules: opt ExtractionRules;
     createdAt: int;
     updatedAt: int;
+    active: bool;
 };
 
 service : {
@@ -106,11 +107,12 @@ service : {
     storeContent: (ScrapedContent) -> (Result);
     getContentByTopic: (text, nat) -> (vec ScrapedContent) query;
     getDailyStats: () -> (StorageStats) query;
-    "testExtraction": (ExtractionRequest) -> (variant { ok: ExtractionResult; err: text });
-    "testExtractionLocal": (LocalExtractionRequest) -> (variant { ok: ExtractionResult; err: text });
-    "createTopic": (ScrapingTopic) -> (Result);
-    "updateTopic": (ScrapingTopic) -> (Result);
-    "getTopic": (text) -> (opt ScrapingTopic) query;
-    "getTopics": () -> (vec ScrapingTopic) query;
-    "deleteTopic": (text) -> (Result);
+    testExtraction: (ExtractionRequest) -> (variant { ok: ExtractionResult; err: text });
+    testExtractionLocal: (LocalExtractionRequest) -> (variant { ok: ExtractionResult; err: text });
+    createTopic: (ScrapingTopic) -> (Result);
+    updateTopic: (ScrapingTopic) -> (Result);
+    getTopic: (text) -> (opt ScrapingTopic) query;
+    getTopics: () -> (vec ScrapingTopic) query;
+    deleteTopic: (text) -> (Result);
+    setTopicActive: (text, bool) -> (Result);
 };

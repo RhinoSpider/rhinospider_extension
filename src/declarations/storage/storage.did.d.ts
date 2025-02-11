@@ -2,16 +2,6 @@ import type { Principal } from '@dfinity/principal';
 import type { ActorMethod } from '@dfinity/agent';
 import type { IDL } from '@dfinity/candid';
 
-export interface AIConfig {
-  'model' : string,
-  'costLimits' : CostLimits,
-  'apiKey' : string,
-}
-export interface CostLimits {
-  'maxConcurrent' : bigint,
-  'dailyUSD' : bigint,
-  'monthlyUSD' : bigint,
-}
 export interface ExtractionField {
   'name' : string,
   'aiPrompt' : string,
@@ -30,17 +20,15 @@ export interface Request {
   'timestamp' : bigint,
   'extraction_rules' : ExtractionRules,
 }
-export type Result = { 'ok' : null } |
+export type Result = { 'ok' : { 'data' : Array<[string, string]> } } |
   { 'err' : string };
-export type Result_1 = { 'ok' : { 'data' : Array<[string, string]> } } |
+export type Result_1 = { 'ok' : null } |
   { 'err' : string };
 export type Result_2 = { 'ok' : Array<[string, string]> } |
   { 'err' : string };
 export type Result_3 = { 'ok' : Array<ScrapedContent> } |
   { 'err' : string };
 export type Result_4 = { 'ok' : ScrapedContent } |
-  { 'err' : string };
-export type Result_5 = { 'ok' : AIConfig } |
   { 'err' : string };
 export interface ScrapedContent {
   'id' : string,
@@ -82,6 +70,7 @@ export interface ScrapedData {
 }
 export interface ScrapingTopic {
   'id' : string,
+  'active' : boolean,
   'name' : string,
   'createdAt' : bigint,
   'description' : [] | [string],
@@ -90,9 +79,8 @@ export interface ScrapingTopic {
   'extractionRules' : [] | [ExtractionRules],
 }
 export interface Storage {
-  'createTopic' : ActorMethod<[ScrapingTopic], Result>,
-  'deleteTopic' : ActorMethod<[string], Result>,
-  'getAIConfig' : ActorMethod<[], Result_5>,
+  'createTopic' : ActorMethod<[ScrapingTopic], Result_1>,
+  'deleteTopic' : ActorMethod<[string], Result_1>,
   'getBySource' : ActorMethod<[string], Array<ScrapedData>>,
   'getContent' : ActorMethod<[string], Result_4>,
   'getContentBySource' : ActorMethod<[string], Result_3>,
@@ -102,22 +90,22 @@ export interface Storage {
     [] | [{ 'id' : string, 'url' : string }]
   >,
   'getScrapedData' : ActorMethod<[Array<string>], Array<ScrapedData>>,
+  'getTopic' : ActorMethod<[string], [] | [ScrapingTopic]>,
   'getTopics' : ActorMethod<[], Array<ScrapingTopic>>,
   'processWithAI' : ActorMethod<[Request], Result_2>,
-  'queueUrlForProcessing' : ActorMethod<[string, string], Result>,
-  'storeContent' : ActorMethod<[ScrapedContent], Result>,
+  'queueUrlForProcessing' : ActorMethod<[string, string], Result_1>,
+  'setTopicActive' : ActorMethod<[string, boolean], Result_1>,
+  'storeContent' : ActorMethod<[ScrapedContent], Result_1>,
   'storeHtmlContent' : ActorMethod<[string, string], undefined>,
-  'storeRequest' : ActorMethod<[Request], Result>,
+  'storeRequest' : ActorMethod<[Request], Result_1>,
   'testExtraction' : ActorMethod<
     [{ 'url' : string, 'extractionRules' : ExtractionRules }],
-    Result_1
+    Result
   >,
   'testExtractionLocal' : ActorMethod<
     [{ 'htmlContent' : string, 'extractionRules' : ExtractionRules }],
-    Result_1
+    Result
   >,
-  'updateAIConfig' : ActorMethod<[AIConfig], Result>,
-  'updateTopic' : ActorMethod<[ScrapingTopic], Result>,
 }
 export interface _SERVICE extends Storage {}
 export declare const idlFactory: IDL.InterfaceFactory;

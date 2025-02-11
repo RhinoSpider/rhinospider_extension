@@ -1,8 +1,7 @@
 type Storage = 
  service {
-   createTopic: (ScrapingTopic) -> (Result);
-   deleteTopic: (text) -> (Result);
-   getAIConfig: () -> (Result_5) query;
+   createTopic: (ScrapingTopic) -> (Result_1);
+   deleteTopic: (text) -> (Result_1);
    getBySource: (text) -> (vec ScrapedData) query;
    getContent: (text) -> (Result_4) query;
    getContentBySource: (text) -> (Result_3) query;
@@ -12,26 +11,27 @@ type Storage =
                                    url: text;
                                  });
    getScrapedData: (vec text) -> (vec ScrapedData) query;
+   getTopic: (text) -> (opt ScrapingTopic) query;
    getTopics: () -> (vec ScrapingTopic) query;
    processWithAI: (Request) -> (Result_2);
-   queueUrlForProcessing: (text, text) -> (Result);
-   storeContent: (ScrapedContent) -> (Result);
+   queueUrlForProcessing: (text, text) -> (Result_1);
+   setTopicActive: (text, bool) -> (Result_1);
+   storeContent: (ScrapedContent) -> (Result_1);
    storeHtmlContent: (text, text) -> ();
-   storeRequest: (Request) -> (Result);
+   storeRequest: (Request) -> (Result_1);
    testExtraction: (record {
                       extractionRules: ExtractionRules;
                       url: text;
-                    }) -> (Result_1);
+                    }) -> (Result);
    testExtractionLocal:
     (record {
        extractionRules: ExtractionRules;
        htmlContent: text;
-     }) -> (Result_1);
-   updateAIConfig: (AIConfig) -> (Result);
-   updateTopic: (ScrapingTopic) -> (Result);
+     }) -> (Result);
  };
 type ScrapingTopic = 
  record {
+   active: bool;
    createdAt: int;
    description: opt text;
    extractionRules: opt ExtractionRules;
@@ -86,11 +86,6 @@ type ScrapedContent =
    update_date: int;
    url: text;
  };
-type Result_5 = 
- variant {
-   err: text;
-   ok: AIConfig;
- };
 type Result_4 = 
  variant {
    err: text;
@@ -112,15 +107,15 @@ type Result_2 =
 type Result_1 = 
  variant {
    err: text;
-   ok: record {data: vec record {
-                           text;
-                           text;
-                         };};
+   ok;
  };
 type Result = 
  variant {
    err: text;
-   ok;
+   ok: record {data: vec record {
+                           text;
+                           text;
+                         };};
  };
 type Request = 
  record {
@@ -142,17 +137,5 @@ type ExtractionField =
    fieldType: text;
    name: text;
    required: bool;
- };
-type CostLimits = 
- record {
-   dailyUSD: nat;
-   maxConcurrent: nat;
-   monthlyUSD: nat;
- };
-type AIConfig = 
- record {
-   apiKey: text;
-   costLimits: CostLimits;
-   model: text;
  };
 service : () -> Storage

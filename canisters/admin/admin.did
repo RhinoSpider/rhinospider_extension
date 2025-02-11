@@ -123,28 +123,48 @@ type Result_Topic = variant {
     err: text;
 };
 
+type User = record {
+    principal: principal;
+    role: UserRole;
+};
+
+type UserRole = variant {
+    admin;
+    user;
+};
+
+type Result = variant {
+    ok;
+    err: text;
+};
+
 service : {
-    init: () -> ();
-    getTasks: (nat) -> (vec Task);
-    addTasks: (vec Task) -> (Result);
-    updateTaskStatus: (text, text) -> (Result_1);
-    getConfig: () -> (TaskConfig) query;
-    updateConfig: (TaskConfig) -> (Result_1);
-    getAIConfig: () -> (Result_2) query;
-    updateAIConfig: (AIConfig) -> (Result_1);
-    processWithAI: (Request) -> (variant { ok: text; err: text; });
-    "getAIConfig": () -> (Result_2) query;
-    "updateAIConfig": (AIConfig) -> (Result_1);
-    getScrapedData: (vec text) -> (Result_3) query;
-    createTopic: (ScrapingTopic) -> (Result_Topic);
-    updateTopic: (text, ScrapingTopic) -> (Result_Topic);
-    deleteTopic: (text) -> (Result_1);
+    // User management
+    addUser: (principal, text) -> (Result);
+    removeUser: (principal) -> (Result);
+    getUsers: () -> (vec User) query;
+    hasRole: (principal, UserRole) -> (bool) query;
+    
+    // Topic management
+    createTopic: (ScrapingTopic) -> (Result);
+    updateTopic: (text, ScrapingTopic) -> (variant { ok: ScrapingTopic; err: text });
+    getTopic: (text) -> (opt ScrapingTopic) query;
     getTopics: () -> (vec ScrapingTopic) query;
-    testExtraction: (record {
-        url: text;
-        extraction_rules: record {
-            fields: vec ExtractionField;
-            custom_prompt: opt text;
-        };
-    }) -> (Result_2) query;
+    deleteTopic: (text) -> (Result);
+    setTopicActive: (text, bool) -> (Result);
+    
+    // Task management
+    addTasks: (vec Task) -> (variant { ok: nat; err: text });
+    getTasks: () -> (vec Task) query;
+    getTasksByTopic: (text) -> (vec Task) query;
+    getTasksByStatus: (text) -> (vec Task) query;
+    assignTask: (text, principal) -> (Result);
+    updateTaskStatus: (text, text) -> (Result);
+    
+    // AI configuration
+    getAIConfiguration: () -> (AIConfig) query;
+    updateAIConfiguration: (AIConfig) -> (Result);
+    
+    // System
+    getCycles: () -> (nat) query;
 };
