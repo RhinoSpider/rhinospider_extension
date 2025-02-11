@@ -42,6 +42,20 @@ module {
         customPrompt: ?Text;
     };
 
+    public type ExtractionResult = {
+        data: [(Text, Text)];
+    };
+
+    public type ExtractionRequest = {
+        url: Text;
+        extractionRules: ExtractionRules;
+    };
+
+    public type LocalExtractionRequest = {
+        htmlContent: Text;
+        extractionRules: ExtractionRules;
+    };
+
     public type CostLimits = {
         dailyUSD: Nat;
         monthlyUSD: Nat;

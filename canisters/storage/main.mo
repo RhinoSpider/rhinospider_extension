@@ -400,96 +400,15 @@ actor class Storage() = this {
     // Simple test endpoint that only tests extraction rules
     public shared({ caller = _ }) func testExtraction(request: {
         url: Text;
-        extraction_rules: {
-            fields: [Types.ExtractionField];
-            custom_prompt: ?Text;
-        };
+        extractionRules: Types.ExtractionRules;
     }) : async Result.Result<{data: [(Text, Text)]}, Text> {
         try {
-            // Make HTTP request directly using IC management canister
-            let ic : actor {
-                http_request : shared {
-                    url : Text;
-                    max_response_bytes : ?Nat64;
-                    headers : [Types.HttpHeader];
-                    body : ?[Nat8];
-                    method : { #get };
-                    transform : ?Types.TransformContext;
-                } -> async {
-                    status : Nat;
-                    headers : [Types.HttpHeader];
-                    body : [Nat8];
-                };
-            } = actor("aaaaa-aa");
-
-            let response = await ic.http_request({
-                url = request.url;
-                max_response_bytes = null;
-                headers = [];
-                method = #get;
-                body = null;
-                transform = null;
-            });
-
-            if (response.status >= 200 and response.status < 300) {
-                switch (Text.decodeUtf8(Blob.fromArray(response.body))) {
-                    case (?content) {
-                        let result = Buffer.Buffer<(Text, Text)>(0);
-                        
-                        for (field in request.extraction_rules.fields.vals()) {
-                            let prompt = switch (request.extraction_rules.custom_prompt) {
-                                case (?custom) { custom # "\n" # field.aiPrompt };
-                                case null { field.aiPrompt };
-                            };
-
-                            let extractionResult = await AIHandler.extractField(content, prompt);
-                            switch (extractionResult) {
-                                case (#ok(value)) {
-                                    result.add((field.name, value));
-                                };
-                                case (#err(e)) {
-                                    if (field.required) {
-                                        return #err("Failed to extract required field '" # field.name # "': " # e);
-                                    };
-                                };
-                            };
-                        };
-                        
-                        #ok({ data = Buffer.toArray(result) })
-                    };
-                    case null {
-                        #err("Failed to decode response body")
-                    };
-                }
-            } else {
-                #err("HTTP request failed with status code: " # Nat.toText(response.status))
-            };
-        } catch (e) {
-            #err("Error during extraction: " # Error.message(e))
-        }
-    };
-
-    // Test endpoint for local development that bypasses HTTP request
-    public shared({ caller = _ }) func testExtractionLocal(request: {
-        html_content: Text;
-        extraction_rules: {
-            fields: [Types.ExtractionField];
-            custom_prompt: ?Text;
-        };
-    }) : async Result.Result<{data: [(Text, Text)]}, Text> {
-        try {
-            let result = Buffer.Buffer<(Text, Text)>(0);
-            
-            for (field in request.extraction_rules.fields.vals()) {
-                let prompt = switch (request.extraction_rules.custom_prompt) {
-                    case (?custom) { custom # "\n" # field.aiPrompt };
-                    case null { field.aiPrompt };
-                };
-
-                let extractionResult = await AIHandler.extractField(request.html_content, prompt);
+            let mockData = Buffer.Buffer<(Text, Text)>(0);
+            for (field in request.extractionRules.fields.vals()) {
+                let extractionResult = await AIHandler.extractField(request.url, field.aiPrompt);
                 switch (extractionResult) {
                     case (#ok(value)) {
-                        result.add((field.name, value));
+                        mockData.add((field.name, value));
                     };
                     case (#err(e)) {
                         if (field.required) {
@@ -498,11 +417,35 @@ actor class Storage() = this {
                     };
                 };
             };
-            
-            #ok({ data = Buffer.toArray(result) })
+            #ok({ data = Buffer.toArray(mockData) });
         } catch (e) {
-            #err("Error during extraction: " # Error.message(e))
-        }
+            #err("Error during extraction: " # Error.message(e));
+        };
+    };
+
+    public shared({ caller = _ }) func testExtractionLocal(request: {
+        htmlContent: Text;
+        extractionRules: Types.ExtractionRules;
+    }) : async Result.Result<{data: [(Text, Text)]}, Text> {
+        try {
+            let mockData = Buffer.Buffer<(Text, Text)>(0);
+            for (field in request.extractionRules.fields.vals()) {
+                let extractionResult = await AIHandler.extractField(request.htmlContent, field.aiPrompt);
+                switch (extractionResult) {
+                    case (#ok(value)) {
+                        mockData.add((field.name, value));
+                    };
+                    case (#err(e)) {
+                        if (field.required) {
+                            return #err("Failed to extract required field '" # field.name # "': " # e);
+                        };
+                    };
+                };
+            };
+            #ok({ data = Buffer.toArray(mockData) });
+        } catch (e) {
+            #err("Error during local extraction: " # Error.message(e));
+        };
     };
 
     // Topic management
@@ -530,7 +473,7 @@ actor class Storage() = this {
             return #err("Unauthorized");
         };
         _topics.put(topic.id, topic);
-        #ok()
+        #ok(());
     };
 
     public shared({ caller }) func updateTopic(topic: Types.ScrapingTopic) : async Result.Result<(), Text> {

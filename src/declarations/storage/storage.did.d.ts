@@ -109,15 +109,11 @@ export interface Storage {
   'storeHtmlContent' : ActorMethod<[string, string], undefined>,
   'storeRequest' : ActorMethod<[Request], Result>,
   'testExtraction' : ActorMethod<
-    [
-      {
-        'url' : string,
-        'extraction_rules' : {
-          'custom_prompt' : [] | [string],
-          'fields' : Array<ExtractionField>,
-        },
-      },
-    ],
+    [{ 'url' : string, 'extractionRules' : ExtractionRules }],
+    Result_1
+  >,
+  'testExtractionLocal' : ActorMethod<
+    [{ 'htmlContent' : string, 'extractionRules' : ExtractionRules }],
     Result_1
   >,
   'updateAIConfig' : ActorMethod<[AIConfig], Result>,

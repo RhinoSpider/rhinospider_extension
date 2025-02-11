@@ -18,14 +18,14 @@ type Storage =
    storeContent: (ScrapedContent) -> (Result);
    storeHtmlContent: (text, text) -> ();
    storeRequest: (Request) -> (Result);
-   testExtraction:
+   testExtraction: (record {
+                      extractionRules: ExtractionRules;
+                      url: text;
+                    }) -> (Result_1);
+   testExtractionLocal:
     (record {
-       extraction_rules:
-        record {
-          custom_prompt: opt text;
-          fields: vec ExtractionField;
-        };
-       url: text;
+       extractionRules: ExtractionRules;
+       htmlContent: text;
      }) -> (Result_1);
    updateAIConfig: (AIConfig) -> (Result);
    updateTopic: (ScrapingTopic) -> (Result);

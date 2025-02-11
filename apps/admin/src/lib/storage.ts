@@ -5,16 +5,20 @@ const _global = typeof window !== 'undefined' ? window : typeof global !== 'unde
 import { Actor, HttpAgent, AnonymousIdentity } from '@dfinity/agent';
 import { idlFactory } from '@declarations/storage/storage.did.js';
 
+// Environment configuration
+export const IS_LOCAL = process.env.NODE_ENV !== 'production';
+export const HOST = IS_LOCAL ? 'http://127.0.0.1:8000' : import.meta.env.VITE_IC_HOST || 'http://127.0.0.1:8000';
+
 let actor: any = null;
 
 export const getStorageActor = async () => {
   try {
     // For local development, use anonymous identity
-    if (process.env.NODE_ENV !== 'production') {
+    if (IS_LOCAL) {
       if (!actor) {
         const agent = new HttpAgent({ 
           identity: new AnonymousIdentity(),
-          host: 'http://127.0.0.1:8000'
+          host: HOST
         });
         
         await agent.fetchRootKey();
@@ -40,7 +44,7 @@ export const getStorageActor = async () => {
       const identity = state.identity;
       const agent = new HttpAgent({ 
         identity,
-        host: import.meta.env.VITE_IC_HOST || 'http://127.0.0.1:8000'
+        host: HOST
       });
 
       actor = Actor.createActor(idlFactory, {

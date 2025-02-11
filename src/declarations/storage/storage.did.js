@@ -116,13 +116,15 @@ export const idlFactory = ({ IDL }) => {
     'storeHtmlContent' : IDL.Func([IDL.Text, IDL.Text], [], []),
     'storeRequest' : IDL.Func([Request], [Result], []),
     'testExtraction' : IDL.Func(
+        [IDL.Record({ 'url' : IDL.Text, 'extractionRules' : ExtractionRules })],
+        [Result_1],
+        [],
+      ),
+    'testExtractionLocal' : IDL.Func(
         [
           IDL.Record({
-            'url' : IDL.Text,
-            'extraction_rules' : IDL.Record({
-              'custom_prompt' : IDL.Opt(IDL.Text),
-              'fields' : IDL.Vec(ExtractionField),
-            }),
+            'htmlContent' : IDL.Text,
+            'extractionRules' : ExtractionRules,
           }),
         ],
         [Result_1],

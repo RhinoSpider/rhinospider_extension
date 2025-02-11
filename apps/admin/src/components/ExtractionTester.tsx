@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ScrapingTopic } from '../types';
-import { getStorageActor } from '../lib/storage';
+import { getStorageActor, IS_LOCAL } from '../lib/storage';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 
 interface ExtractionTesterProps {
@@ -46,19 +46,27 @@ export const ExtractionTester: React.FC<ExtractionTesterProps> = ({ topic, onClo
         fieldType: f.fieldType,
         required: f.required,
         aiPrompt: f.aiPrompt,
-        description: [],  // Empty array for opt text
-        example: [],     // Empty array for opt text
       }));
 
       console.log('Testing extraction with fields:', fields);
 
-      const result = await actor.testExtraction({
-        url: testUrl,
-        extraction_rules: {
-          fields,
-          custom_prompt: customPrompt,
-        },
-      });
+      // Use testExtractionLocal for local development
+      const extractionRules = {
+        fields,
+        customPrompt: customPrompt.length > 0 ? [customPrompt[0]] : [],
+      };
+
+      console.log('Sending extraction rules:', extractionRules);
+
+      const result = IS_LOCAL 
+        ? await actor.testExtractionLocal({
+            htmlContent: testUrl,
+            extractionRules: extractionRules,
+          })
+        : await actor.testExtraction({
+            url: testUrl,
+            extractionRules: extractionRules,
+          });
 
       if ('ok' in result) {
         // Result is a data array
@@ -83,7 +91,15 @@ export const ExtractionTester: React.FC<ExtractionTesterProps> = ({ topic, onClo
     <div className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50">
       <div className="relative top-20 mx-auto p-6 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-lg bg-[#1C1B23] text-white">
         <div className="flex justify-between items-center mb-6">
-          <h3 className="text-lg font-medium">Test Extraction Rules</h3>
+          <div>
+            <h3 className="text-lg font-medium">Test Extraction Rules</h3>
+            <div className="flex items-center mt-1">
+              <div className={`h-2 w-2 rounded-full mr-2 ${IS_LOCAL ? 'bg-yellow-400' : 'bg-green-400'}`} />
+              <span className="text-sm text-gray-400">
+                {IS_LOCAL ? 'Local Testing Mode' : 'Production Mode'}
+              </span>
+            </div>
+          </div>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-white transition-colors"
@@ -93,21 +109,35 @@ export const ExtractionTester: React.FC<ExtractionTesterProps> = ({ topic, onClo
         </div>
 
         <div className="space-y-6">
-          {/* URL Input */}
+          {/* Mode Info */}
+          {IS_LOCAL && (
+            <div className="text-sm bg-yellow-500/10 border border-yellow-500/20 rounded-md p-3">
+              <strong>Local Testing Mode:</strong>
+              <ul className="list-disc list-inside mt-1 space-y-1">
+                <li>Enter a URL to test with mock data</li>
+                <li>Or paste HTML content directly to test extraction rules</li>
+                <li>No cycles required for testing</li>
+              </ul>
+            </div>
+          )}
+
+          {/* URL/HTML Input */}
           <div>
-            <label className="block text-sm font-medium mb-2">Test URL</label>
+            <label className="block text-sm font-medium mb-2">
+              {IS_LOCAL ? 'Test URL or HTML Content' : 'Test URL'}
+            </label>
             <div className="flex gap-4">
               <input
-                type="url"
+                type={IS_LOCAL ? 'text' : 'url'}
                 value={testUrl}
                 onChange={(e) => setTestUrl(e.target.value)}
-                className="flex-1 bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
-                placeholder="Enter URL to test extraction rules"
+                placeholder={IS_LOCAL ? 'Enter URL or paste HTML content' : 'Enter URL to test'}
+                className="flex-1 bg-gray-800 rounded px-3 py-2 text-white placeholder-gray-400"
               />
               <button
                 onClick={handleTest}
                 disabled={loading}
-                className="px-4 py-2 bg-[#B692F6] text-[#131217] rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
               >
                 {loading ? 'Testing...' : 'Test'}
               </button>
