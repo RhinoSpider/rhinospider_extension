@@ -136,6 +136,10 @@ graph TD
 - Basic canister setup
 - Frontend development
 - Testing infrastructure
+- Cycles for HTTP outbound calls (1.6B cycles per call)
+  - Local development: Use mock endpoints for testing
+  - Production: Convert ICP to cycles using dfx cycles convert
+  - Estimate cycles based on expected HTTP call volume
 
 ### Phase 2:
 - Token economics design
