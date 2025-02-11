@@ -236,7 +236,7 @@ actor Admin {
         if (not hasRole(caller, #Admin) and not hasRole(caller, #SuperAdmin)) {
             return #err("Unauthorized");
         };
-        #ok(_aiConfig)
+        return #ok(_aiConfig)
     };
 
     public shared({ caller }) func updateAIConfig(config: AIConfig) : async Result.Result<(), Text> {
@@ -245,7 +245,7 @@ actor Admin {
         };
 
         _aiConfig := config;
-        #ok()
+        return #ok()
     };
 
     // For development only - clear all data
@@ -300,7 +300,7 @@ actor Admin {
             };
         };
 
-        Buffer.toArray(buffer)
+        return Buffer.toArray(buffer)
     };
 
     public shared({ caller }) func addTasks(newTasks: [Task]) : async Result.Result<Nat, Text> {
@@ -314,7 +314,7 @@ actor Admin {
             added += 1;
         };
 
-        #ok(added)
+        return #ok(added)
     };
 
     public shared({ caller }) func updateTaskStatus(taskId: Text, status: Text) : async Result.Result<(), Text> {
@@ -323,7 +323,7 @@ actor Admin {
         };
 
         switch (tasks.get(taskId)) {
-            case (null) { #err("Task not found") };
+            case (null) { return #err("Task not found") };
             case (?task) {
                 if (task.assignedTo != ?caller and not hasRole(caller, #SuperAdmin)) {
                     return #err("Unauthorized");
@@ -338,7 +338,7 @@ actor Admin {
                     assignedTo = task.assignedTo;
                     status = status;
                 });
-                #ok(())
+                return #ok(())
             };
         }
     };
@@ -349,7 +349,7 @@ actor Admin {
         };
 
         config.put("default", newConfig);
-        #ok(())
+        return #ok(())
     };
 
     public shared({ caller }) func addUser(principal: Principal, role: UserRole) : async Result.Result<(), Text> {
@@ -364,7 +364,7 @@ actor Admin {
             addedAt = Time.now();
         });
 
-        #ok()
+        return #ok()
     };
 
     public shared({ caller }) func removeUser(principal: Principal) : async Result.Result<(), Text> {
@@ -373,10 +373,10 @@ actor Admin {
         };
 
         switch (users.get(principal)) {
-            case null #err("User not found");
+            case null return #err("User not found");
             case (?_) {
                 users.delete(principal);
-                #ok()
+                return #ok()
             };
         }
     };
@@ -399,7 +399,7 @@ actor Admin {
         for ((_, topic) in topics.entries()) {
             buffer.add(topic);
         };
-        Buffer.toArray(buffer)
+        return Buffer.toArray(buffer)
     };
 
     // Helper function to check if a topic name exists
@@ -502,9 +502,9 @@ actor Admin {
 
         try {
             let result = await storage.getScrapedData(topicIds);
-            #ok(result)
+            return #ok(result)
         } catch (err) {
-            #err("Failed to get scraped data: " # Error.message(err))
+            return #err("Failed to get scraped data: " # Error.message(err))
         }
     };
 
@@ -515,7 +515,7 @@ actor Admin {
             fields: [ScrapingField];
             custom_prompt: ?Text;
         };
-    }) : async Result.Result<{data: [(Text, Text)]}, Text> {
+    }) : async Result.Result<Text, Text> {
         if (not hasRole(caller, #Admin) and not hasRole(caller, #SuperAdmin)) {
             return #err("Unauthorized");
         };
@@ -528,9 +528,19 @@ actor Admin {
                     custom_prompt = request.extraction_rules.custom_prompt;
                 };
             });
-            result
-        } catch (e) {
-            #err("Failed to test extraction: " # Error.message(e))
-        }
+            switch (result) {
+                case (#ok(data)) {
+                    // Convert the data array to a formatted string
+                    var output = "\nExtracted Data:\n";
+                    for ((key, value) in data.data.vals()) {
+                        output := output # key # ": " # value # "\n";
+                    };
+                    return #ok(output)
+                };
+                case (#err(e)) return #err(e);
+            }
+        } catch (err) {
+            return #err("Failed to test extraction: " # Error.message(err))
+        };
     };
 }

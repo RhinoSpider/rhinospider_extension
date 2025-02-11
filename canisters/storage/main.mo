@@ -5,7 +5,6 @@ import HashMap "mo:base/HashMap";
 import Nat32 "mo:base/Nat32";
 import Nat64 "mo:base/Nat64";
 import Int "mo:base/Int";
-import IC "./ic";
 import Types "./types";
 import Nat8 "mo:base/Nat8";
 import Float "mo:base/Float";
@@ -13,10 +12,8 @@ import Char "mo:base/Char";
 import Principal "mo:base/Principal";
 import Blob "mo:base/Blob";
 import Error "mo:base/Error";
-import _Time "mo:base/Time";
-import HttpLib "./http/lib";
-import HttpHandler "./http/handler";
 import AIHandler "./ai/handler";
+import Nat "mo:base/Nat";
 
 actor class Storage() = this {
     type ICManagement = actor {
@@ -27,6 +24,15 @@ actor class Storage() = this {
             body : ?[Nat8];
             method : Types.HttpMethod;
             transform : ?Types.TransformContext;
+        } -> async Types.HttpResponse;
+        http_request_with_cycles : {
+            url : Text;
+            max_response_bytes : ?Nat64;
+            headers : [Types.HttpHeader];
+            body : ?[Nat8];
+            method : Types.HttpMethod;
+            transform : ?Types.TransformContext;
+            cycles : Nat64;
         } -> async Types.HttpResponse;
     };
 
@@ -392,7 +398,7 @@ actor class Storage() = this {
     };
 
     // Simple test endpoint that only tests extraction rules
-    public shared(_msg) func testExtraction(request: {
+    public shared({ caller = _ }) func testExtraction(request: {
         url: Text;
         extraction_rules: {
             fields: [Types.ExtractionField];
@@ -400,37 +406,100 @@ actor class Storage() = this {
         };
     }) : async Result.Result<{data: [(Text, Text)]}, Text> {
         try {
-            let response = await HttpHandler.get(request.url, null);
-            
-            switch(response) {
-                case (#ok(content)) {
-                    let result = Buffer.Buffer<(Text, Text)>(0);
-                    
-                    for (field in request.extraction_rules.fields.vals()) {
-                        let prompt = switch (request.extraction_rules.custom_prompt) {
-                            case (?custom) { custom # "\n" # field.aiPrompt };
-                            case null { field.aiPrompt };
-                        };
+            // Make HTTP request directly using IC management canister
+            let ic : actor {
+                http_request : shared {
+                    url : Text;
+                    max_response_bytes : ?Nat64;
+                    headers : [Types.HttpHeader];
+                    body : ?[Nat8];
+                    method : { #get };
+                    transform : ?Types.TransformContext;
+                } -> async {
+                    status : Nat;
+                    headers : [Types.HttpHeader];
+                    body : [Nat8];
+                };
+            } = actor("aaaaa-aa");
 
-                        let extractionResult = await AIHandler.extractField(content, prompt);
-                        switch (extractionResult) {
-                            case (#ok(value)) {
-                                result.add((field.name, value));
+            let response = await ic.http_request({
+                url = request.url;
+                max_response_bytes = null;
+                headers = [];
+                method = #get;
+                body = null;
+                transform = null;
+            });
+
+            if (response.status >= 200 and response.status < 300) {
+                switch (Text.decodeUtf8(Blob.fromArray(response.body))) {
+                    case (?content) {
+                        let result = Buffer.Buffer<(Text, Text)>(0);
+                        
+                        for (field in request.extraction_rules.fields.vals()) {
+                            let prompt = switch (request.extraction_rules.custom_prompt) {
+                                case (?custom) { custom # "\n" # field.aiPrompt };
+                                case null { field.aiPrompt };
                             };
-                            case (#err(e)) {
-                                if (field.required) {
-                                    return #err("Failed to extract required field '" # field.name # "': " # e);
+
+                            let extractionResult = await AIHandler.extractField(content, prompt);
+                            switch (extractionResult) {
+                                case (#ok(value)) {
+                                    result.add((field.name, value));
+                                };
+                                case (#err(e)) {
+                                    if (field.required) {
+                                        return #err("Failed to extract required field '" # field.name # "': " # e);
+                                    };
                                 };
                             };
                         };
+                        
+                        #ok({ data = Buffer.toArray(result) })
                     };
-                    
-                    #ok({ data = Buffer.toArray(result) })
+                    case null {
+                        #err("Failed to decode response body")
+                    };
+                }
+            } else {
+                #err("HTTP request failed with status code: " # Nat.toText(response.status))
+            };
+        } catch (e) {
+            #err("Error during extraction: " # Error.message(e))
+        }
+    };
+
+    // Test endpoint for local development that bypasses HTTP request
+    public shared({ caller = _ }) func testExtractionLocal(request: {
+        html_content: Text;
+        extraction_rules: {
+            fields: [Types.ExtractionField];
+            custom_prompt: ?Text;
+        };
+    }) : async Result.Result<{data: [(Text, Text)]}, Text> {
+        try {
+            let result = Buffer.Buffer<(Text, Text)>(0);
+            
+            for (field in request.extraction_rules.fields.vals()) {
+                let prompt = switch (request.extraction_rules.custom_prompt) {
+                    case (?custom) { custom # "\n" # field.aiPrompt };
+                    case null { field.aiPrompt };
                 };
-                case (#err(e)) {
-                    #err("Failed to fetch URL: " # e)
+
+                let extractionResult = await AIHandler.extractField(request.html_content, prompt);
+                switch (extractionResult) {
+                    case (#ok(value)) {
+                        result.add((field.name, value));
+                    };
+                    case (#err(e)) {
+                        if (field.required) {
+                            return #err("Failed to extract required field '" # field.name # "': " # e);
+                        };
+                    };
                 };
-            }
+            };
+            
+            #ok({ data = Buffer.toArray(result) })
         } catch (e) {
             #err("Error during extraction: " # Error.message(e))
         }

@@ -71,4 +71,29 @@ module {
             #ok();
         };
     };
+
+    public type HeaderField = (Text, Text);
+
+    public type HttpResponse = {
+        status : Nat;
+        headers : [HeaderField];
+        body : [Nat8];
+    };
+
+    public type HttpRequest = {
+        url : Text;
+        max_response_bytes : ?Nat64;
+        headers : [HeaderField];
+        body : ?[Nat8];
+        method : { #get; #post; #head };
+        transform : ?{ function : shared { context : Text; response : HttpResponse; } -> async HttpResponse };
+    };
+
+    let ic : actor {
+        http_request : HttpRequest -> async HttpResponse;
+    } = actor("aaaaa-aa");
+
+    public func httpRequest(request: HttpRequest) : async HttpResponse {
+        await ic.http_request(request)
+    };
 }

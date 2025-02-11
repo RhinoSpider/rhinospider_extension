@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ScrapingTopic } from '../types';
-import { getAdminActor } from '../lib/admin';
+import { getStorageActor } from '../lib/storage';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 
 interface ExtractionTesterProps {
@@ -20,23 +20,60 @@ export const ExtractionTester: React.FC<ExtractionTesterProps> = ({ topic, onClo
       return;
     }
 
+    if (!topic.extractionRules?.fields?.length) {
+      setError('No extraction fields defined');
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
       
-      const actor = await getAdminActor();
+      const actor = await getStorageActor();
+      if (!actor) {
+        setError('Failed to initialize storage actor');
+        return;
+      }
+
+      // Convert the custom prompt to proper optional format
+      const customPrompt = topic.extractionRules.customPrompt?.[0] 
+        ? [topic.extractionRules.customPrompt[0]]
+        : [];
+
+      // Only include fields that are marked as required
+      const fields = topic.extractionRules.fields.map(f => ({
+        name: f.name,
+        fieldType: f.fieldType,
+        required: f.required,
+        aiPrompt: f.aiPrompt,
+        description: [],  // Empty array for opt text
+        example: [],     // Empty array for opt text
+      }));
+
+      console.log('Testing extraction with fields:', fields);
+
       const result = await actor.testExtraction({
         url: testUrl,
-        extractionRules: topic.extractionRules,
+        extraction_rules: {
+          fields,
+          custom_prompt: customPrompt,
+        },
       });
 
       if ('ok' in result) {
-        setResults(result.ok);
+        // Result is a data array
+        const extractedData = result.ok.data;
+        const formattedResults = extractedData.map(([key, value]) => `${key}: ${value}`).join('\n');
+        setResults(formattedResults);
+        setError(null);
       } else {
         setError(result.err);
+        setResults(null);
       }
     } catch (err) {
+      console.error('Test extraction error:', err);
       setError(err instanceof Error ? err.message : 'Failed to test extraction');
+      setResults(null);
     } finally {
       setLoading(false);
     }
@@ -90,7 +127,7 @@ export const ExtractionTester: React.FC<ExtractionTesterProps> = ({ topic, onClo
               <h4 className="text-sm font-medium mb-2">Extraction Results</h4>
               <div className="bg-[#131217] border border-[#2C2B33] rounded-lg p-4">
                 <pre className="text-sm overflow-auto whitespace-pre-wrap">
-                  {JSON.stringify(results, null, 2)}
+                  {results}
                 </pre>
               </div>
             </div>
