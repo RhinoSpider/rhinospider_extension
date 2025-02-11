@@ -460,10 +460,16 @@ actor class Storage() = this {
     };
 
     public shared({ caller = _ }) func deleteTopic(id : Text) : async Result.Result<(), Text> {
+        Debug.print("Storage: Attempting to delete topic: " # id);
         switch (topics.get(id)) {
-            case (null) { #err("Topic not found") };
-            case (?_) { 
+            case (null) { 
+                Debug.print("Storage: Topic not found: " # id);
+                #err("Topic not found") 
+            };
+            case (?topic) {
+                Debug.print("Storage: Deleting topic...");
                 topics.delete(id);
+                Debug.print("Storage: Topic deleted successfully");
                 #ok(());
             };
         };

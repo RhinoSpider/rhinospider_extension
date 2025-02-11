@@ -20,7 +20,8 @@ export const ScrapingConfig: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [updatingTopics, setUpdatingTopics] = useState<{ [key: string]: boolean }>({});
+  const [togglingTopics, setTogglingTopics] = useState<{ [key: string]: boolean }>({});
+  const [deletingTopics, setDeletingTopics] = useState<{ [key: string]: boolean }>({});
 
   // Fetch topics on mount
   useEffect(() => {
@@ -126,18 +127,34 @@ export const ScrapingConfig: React.FC = () => {
 
   const handleDeleteTopic = async (id: string) => {
     try {
-      setUpdating(true);
+      console.log(`Deleting topic ${id}...`);
+      setDeletingTopics(prev => ({ ...prev, [id]: true }));
       const actor = await getAdminActor();
-      await actor.deleteTopic(id);
+      const result = await actor.deleteTopic(id);
+      console.log('Delete result:', result);
 
+      if ('err' in result) {
+        console.error('Failed to delete topic:', result.err);
+        setTopicsError('Failed to delete topic: ' + result.err);
+        return;
+      }
+
+      console.log('Successfully deleted topic, refreshing list...');
       // Refresh topics list
-      const topics = await actor.getTopics();
-      setTopics(topics);
+      const updatedTopics = await actor.getTopics();
+      console.log('Got updated topics:', updatedTopics);
+      setTopics(updatedTopics);
+      setTopicsStatus('Topic deleted successfully!');
     } catch (error) {
       console.error('Failed to delete topic:', error);
-      // TODO: Show error to user
+      setTopicsError('Failed to delete topic');
     } finally {
-      setUpdating(false);
+      setDeletingTopics(prev => ({ ...prev, [id]: false }));
+      // Clear status after 3 seconds
+      setTimeout(() => {
+        setTopicsStatus(null);
+        setTopicsError(null);
+      }, 3000);
     }
   };
 
@@ -434,9 +451,10 @@ export const ScrapingConfig: React.FC = () => {
                             handleDeleteTopic(topic.id);
                           }
                         }}
-                        className="text-sm text-red-500 hover:text-red-400"
+                        disabled={deletingTopics[topic.id]}
+                        className={`text-sm text-red-500 hover:text-red-400 ${deletingTopics[topic.id] ? 'opacity-50 cursor-not-allowed' : ''}`}
                       >
-                        Delete
+                        {deletingTopics[topic.id] ? 'Deleting...' : 'Delete'}
                       </button>
                     </div>
                   </div>
@@ -461,13 +479,13 @@ export const ScrapingConfig: React.FC = () => {
                           type="checkbox"
                           className="sr-only peer"
                           checked={topic.active}
-                          disabled={updatingTopics[topic.id]}
+                          disabled={togglingTopics[topic.id]}
                           onChange={async (e) => {
                             e.stopPropagation();
                             try {
                               const newActive = e.target.checked;
                               console.log(`Toggling topic ${topic.id} to ${newActive}`);
-                              setUpdatingTopics(prev => ({ ...prev, [topic.id]: true }));
+                              setTogglingTopics(prev => ({ ...prev, [topic.id]: true }));
                               
                               const actor = await getAdminActor();
                               console.log('Got admin actor, calling setTopicActive...');
@@ -490,11 +508,11 @@ export const ScrapingConfig: React.FC = () => {
                               console.error('Failed to update topic status:', error);
                               setTopicsError('Failed to update topic status');
                             } finally {
-                              setUpdatingTopics(prev => ({ ...prev, [topic.id]: false }));
+                              setTogglingTopics(prev => ({ ...prev, [topic.id]: false }));
                             }
                           }}
                         />
-                        <div className={`w-9 h-5 ${updatingTopics[topic.id] ? 'opacity-50' : ''} bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#B692F6]`}></div>
+                        <div className={`w-9 h-5 ${togglingTopics[topic.id] ? 'opacity-50' : ''} bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#B692F6]`}></div>
                       </label>
                       <button
                         onClick={(e) => {

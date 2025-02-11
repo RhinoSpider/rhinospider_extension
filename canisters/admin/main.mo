@@ -479,19 +479,33 @@ actor Admin {
 
     // Delete a topic
     public shared({ caller }) func deleteTopic(id: Text) : async Result.Result<(), Text> {
+        _Debug.print("Admin: Attempting to delete topic: " # id);
         if (not hasRole(caller, #Admin) and not hasRole(caller, #SuperAdmin)) {
+            _Debug.print("Admin: Unauthorized caller: " # Principal.toText(caller));
             return #err("Unauthorized");
         };
 
         switch (topics.get(id)) {
-            case null {
-                return #err("Topic not found");
+            case (null) {
+                _Debug.print("Admin: Topic not found: " # id);
+                #err("Topic not found")
             };
-            case (?_) {
+            case (?topic) {
+                _Debug.print("Admin: Deleting topic from admin canister...");
                 topics.delete(id);
-                return #ok();
+
+                // Also delete from storage canister
+                try {
+                    _Debug.print("Admin: Syncing delete to storage canister...");
+                    let result = await storage.deleteTopic(id);
+                    _Debug.print("Admin: Successfully synced delete to storage");
+                    #ok(())
+                } catch (e) {
+                    _Debug.print("Admin: Error syncing delete to storage: " # Error.message(e));
+                    #err("Failed to delete topic from storage: " # Error.message(e))
+                }
             };
-        }
+        };
     };
 
     // Get scraped data with optional topic filter
