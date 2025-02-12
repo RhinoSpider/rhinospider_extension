@@ -1,5 +1,6 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { ScrapingConfig, ScrapingStats, ScrapedData, ClientInfo } from '../types';
+import { PointsCalculation, DailyPoints } from '../points/PointsCalculator';
 
 interface RhinoSpiderDB extends DBSchema {
   scrapingStats: {
@@ -18,6 +19,11 @@ interface RhinoSpiderDB extends DBSchema {
   clientInfo: {
     key: 'current';
     value: ClientInfo;
+  };
+  points: {
+    key: string;
+    value: DailyPoints;
+    indexes: { 'by-date': string };
   };
 }
 
@@ -43,6 +49,10 @@ export class StorageManager {
         }
         if (!db.objectStoreNames.contains('clientInfo')) {
           db.createObjectStore('clientInfo');
+        }
+        if (!db.objectStoreNames.contains('points')) {
+          const store = db.createObjectStore('points', { keyPath: 'date' });
+          store.createIndex('by-date', 'date');
         }
       },
     });
@@ -120,5 +130,36 @@ export class StorageManager {
   async updateClientInfo(info: ClientInfo): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
     await this.db.put('clientInfo', info, 'current');
+  }
+
+  async getDailyPoints(date: string): Promise<DailyPoints | null> {
+    if (!this.db) throw new Error('Database not initialized');
+    const points = await this.db.get('points', date);
+    return points || null;
+  }
+
+  async updateDailyPoints(points: DailyPoints): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    await this.db.put('points', points);
+  }
+
+  async getPointsStreak(): Promise<number> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    const today = new Date().toISOString().split('T')[0];
+    let streak = 0;
+    let currentDate = new Date(today);
+
+    while (true) {
+      const dateStr = currentDate.toISOString().split('T')[0];
+      const points = await this.getDailyPoints(dateStr);
+      
+      if (!points || points.points.total === 0) break;
+      
+      streak++;
+      currentDate.setDate(currentDate.getDate() - 1);
+    }
+
+    return streak;
   }
 }

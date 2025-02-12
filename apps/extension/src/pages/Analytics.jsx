@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { useAuth } from '@rhinospider/web3-client';
+import { StorageManager, PointsCalculator } from '@rhinospider/scraping-core';
 
 const Analytics = () => {
   const navigate = useNavigate();
@@ -14,77 +15,124 @@ const Analytics = () => {
   });
 
   useEffect(() => {
-    // TODO: Fetch analytics data
-    setStats({
-      totalPoints: 15420,
-      totalRequests: 1205,
-      totalBandwidth: 2.5, // GB
-      dailyStats: [
-        { date: '2025-02-04', points: 150, requests: 45, bandwidth: 0.3 },
-        { date: '2025-02-03', points: 200, requests: 60, bandwidth: 0.4 },
-        { date: '2025-02-02', points: 180, requests: 55, bandwidth: 0.35 },
-        { date: '2025-02-01', points: 160, requests: 50, bandwidth: 0.32 },
-      ],
-    });
+    const fetchStats = async () => {
+      const storage = new StorageManager();
+      await storage.init();
+      
+      // Get last 7 days of stats
+      const dailyStats = [];
+      let totalPoints = 0;
+      let totalRequests = 0;
+      let totalBandwidth = 0;
+
+      // Get current streak
+      const streak = await storage.getPointsStreak();
+
+      for (let i = 0; i < 7; i++) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        const dateStr = date.toISOString().split('T')[0];
+        
+        const scrapingStats = await storage.getStats(dateStr);
+        const points = await storage.getDailyPoints(dateStr) || {
+          points: PointsCalculator.calculatePoints(scrapingStats, streak),
+          date: dateStr,
+          streak: streak - i,
+          achievements: PointsCalculator.getAchievements(scrapingStats, streak - i)
+        };
+
+        totalPoints += points.points.total;
+        totalRequests += scrapingStats.requestCount;
+        totalBandwidth += (scrapingStats.bytesDownloaded + scrapingStats.bytesUploaded) / (1024 * 1024 * 1024);
+
+        dailyStats.push({
+          date: dateStr,
+          points: points.points.total,
+          requests: scrapingStats.requestCount,
+          bandwidth: (scrapingStats.bytesDownloaded + scrapingStats.bytesUploaded) / (1024 * 1024 * 1024),
+          achievements: points.achievements
+        });
+
+        if (!await storage.getDailyPoints(dateStr)) {
+          await storage.updateDailyPoints(points);
+        }
+      }
+
+      setStats({
+        totalPoints,
+        totalRequests,
+        totalBandwidth,
+        dailyStats: dailyStats.reverse()
+      });
+    };
+
+    fetchStats();
   }, []);
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-7xl">
+    <div className="popup-content" style={{ width: '360px', height: '600px', overflow: 'auto' }}>
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="header">
         <div className="flex items-center space-x-4">
           <button
-            onClick={() => window.close()}
+            onClick={() => navigate('/')}
             className="p-2 hover:bg-white/10 rounded-lg transition-colors"
           >
-            <ArrowLeft className="w-6 h-6" />
+            <ArrowLeft className="w-5 h-5" />
           </button>
-          <h1 className="text-2xl font-bold">Analytics Dashboard</h1>
+          <h1 className="text-xl font-semibold">Analytics</h1>
         </div>
-        <div className="text-sm text-gray-400">
-          Welcome back, {user?.principal?.toString()}
+        <div className="text-xs text-secondary mt-1">
+          {user?.principal?.toString()}
         </div>
       </div>
 
       {/* Stats Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-white/5 rounded-xl p-6">
-          <h3 className="text-gray-400 text-sm mb-2">Total Points Earned</h3>
-          <div className="text-3xl font-bold">{stats.totalPoints.toLocaleString()}</div>
-          <div className="text-green-400 text-sm mt-2">+150 points today</div>
+      <div className="stats-grid">
+        <div className="stat">
+          <h3 className="stat-label">Points</h3>
+          <div className="stat-value">{stats.totalPoints.toLocaleString()}</div>
+          <div className="stat-change">+{stats.dailyStats[0]?.points || 0} today</div>
         </div>
-        <div className="bg-white/5 rounded-xl p-6">
-          <h3 className="text-gray-400 text-sm mb-2">Total Requests</h3>
-          <div className="text-3xl font-bold">{stats.totalRequests.toLocaleString()}</div>
-          <div className="text-green-400 text-sm mt-2">+45 requests today</div>
+        <div className="stat">
+          <h3 className="stat-label">Requests</h3>
+          <div className="stat-value">{stats.totalRequests.toLocaleString()}</div>
+          <div className="stat-change">+{stats.dailyStats[0]?.requests || 0} today</div>
         </div>
-        <div className="bg-white/5 rounded-xl p-6">
-          <h3 className="text-gray-400 text-sm mb-2">Total Bandwidth</h3>
-          <div className="text-3xl font-bold">{stats.totalBandwidth.toFixed(1)} GB</div>
-          <div className="text-green-400 text-sm mt-2">+0.3 GB today</div>
+        <div className="stat">
+          <h3 className="stat-label">Bandwidth</h3>
+          <div className="stat-value">{stats.totalBandwidth.toFixed(1)} GB</div>
+          <div className="stat-change">+{stats.dailyStats[0]?.bandwidth.toFixed(2) || 0} GB today</div>
         </div>
       </div>
 
-      {/* Daily Stats Table */}
-      <div className="bg-white/5 rounded-xl p-6">
-        <h2 className="text-xl font-semibold mb-4">Daily Statistics</h2>
+      {/* Daily Stats */}
+      <div className="stats-table">
+        <h2 className="text-sm font-semibold mb-2">Daily Activity</h2>
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-gray-400 text-sm">
-                <th className="pb-4">Date</th>
-                <th className="pb-4">Points Earned</th>
-                <th className="pb-4">Requests Made</th>
-                <th className="pb-4">Bandwidth Used</th>
+              <tr className="text-left text-secondary">
+                <th className="pb-2">Date</th>
+                <th className="pb-2">Points</th>
+                <th className="pb-2">Requests</th>
+                <th className="pb-2">GB</th>
               </tr>
             </thead>
             <tbody>
               {stats.dailyStats.map((day) => (
-                <tr key={day.date} className="border-t border-white/10">
-                  <td className="py-4">{day.date}</td>
-                  <td className="py-4">{day.points} points</td>
-                  <td className="py-4">{day.requests} requests</td>
-                  <td className="py-4">{day.bandwidth.toFixed(2)} GB</td>
+                <tr key={day.date} className="border-t border-divider">
+                  <td className="py-2 text-xs">{day.date.split('-').slice(1).join('/')}</td>
+                  <td className="py-2">
+                    <div className="flex items-center">
+                      <span>{day.points}</span>
+                      {day.achievements?.length > 0 && (
+                        <span className="ml-1 text-xs text-yellow-400">🏆</span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="py-2">{day.requests}</td>
+                  <td className="py-2">{day.bandwidth.toFixed(1)}</td>
                 </tr>
               ))}
             </tbody>
@@ -92,21 +140,19 @@ const Analytics = () => {
         </div>
       </div>
 
-      {/* Performance Chart */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
-        <div className="bg-white/5 rounded-xl p-6">
-          <h2 className="text-xl font-semibold mb-4">Points Trend</h2>
-          <div className="h-64 flex items-center justify-center text-gray-400">
-            Chart coming soon...
+      {/* Achievements Section */}
+      {stats.dailyStats[0]?.achievements?.length > 0 && (
+        <div className="achievements mt-4">
+          <h2 className="text-sm font-semibold mb-2">Recent Achievements</h2>
+          <div className="flex flex-wrap gap-2">
+            {stats.dailyStats[0].achievements.map((achievement) => (
+              <div key={achievement} className="achievement-badge">
+                🏆 {achievement}
+              </div>
+            ))}
           </div>
         </div>
-        <div className="bg-white/5 rounded-xl p-6">
-          <h2 className="text-xl font-semibold mb-4">Request Distribution</h2>
-          <div className="h-64 flex items-center justify-center text-gray-400">
-            Chart coming soon...
-          </div>
-        </div>
-      </div>
+      )}
     </div>
   );
 };

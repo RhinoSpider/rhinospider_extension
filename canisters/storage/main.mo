@@ -16,6 +16,7 @@ import AIHandler "./ai/handler";
 import Nat "mo:base/Nat";
 import Time "mo:base/Time";
 import Debug "mo:base/Debug";
+import Bool "mo:base/Bool";
 
 actor class Storage() = this {
     type ICManagement = actor {
@@ -225,15 +226,18 @@ actor class Storage() = this {
     };
 
     // Add URL to processing queue
-    public shared({ caller }) func queueUrlForProcessing(id: Text, url: Text) : async Result.Result<(), Text> {
+    public shared({ caller = _ }) func queueUrlForProcessing(id: Text, url: Text) : async Result.Result<(), Text> {
+        if (not isAuthorized(Principal.fromActor(this))) {
+            return #err("Unauthorized");
+        };
+
         _pendingUrls.add((id, url));
         #ok(())
     };
 
     // Store a request for processing
-    public shared({ caller }) func storeRequest(request: Request) : async Result.Result<(), Text> {
-        // Verify caller is authorized
-        if (not isAuthorized(caller)) {
+    public shared({ caller = _ }) func storeRequest(request: Request) : async Result.Result<(), Text> {
+        if (not isAuthorized(Principal.fromActor(this))) {
             return #err("Unauthorized");
         };
 
@@ -243,7 +247,6 @@ actor class Storage() = this {
 
     // Store scraped content
     public shared({ caller = _ }) func storeContent(data: ScrapedContent) : async Result.Result<(), Text> {
-        // Verify caller is authorized
         if (not isAuthorized(Principal.fromActor(this))) {
             return #err("Unauthorized");
         };
@@ -402,11 +405,11 @@ actor class Storage() = this {
     // Simple test endpoint that only tests extraction rules
     public shared({ caller = _ }) func testExtraction(request: {
         url: Text;
-        extractionRules: Types.ExtractionRules;
+        extraction_rules: ExtractionRules;
     }) : async Result.Result<{data: [(Text, Text)]}, Text> {
         try {
             let mockData = Buffer.Buffer<(Text, Text)>(0);
-            for (field in request.extractionRules.fields.vals()) {
+            for (field in request.extraction_rules.fields.vals()) {
                 let extractionResult = await AIHandler.extractField(request.url, field.aiPrompt);
                 switch (extractionResult) {
                     case (#ok(value)) {
@@ -427,11 +430,11 @@ actor class Storage() = this {
 
     public shared({ caller = _ }) func testExtractionLocal(request: {
         htmlContent: Text;
-        extractionRules: Types.ExtractionRules;
+        extraction_rules: ExtractionRules;
     }) : async Result.Result<{data: [(Text, Text)]}, Text> {
         try {
             let mockData = Buffer.Buffer<(Text, Text)>(0);
-            for (field in request.extractionRules.fields.vals()) {
+            for (field in request.extraction_rules.fields.vals()) {
                 let extractionResult = await AIHandler.extractField(request.htmlContent, field.aiPrompt);
                 switch (extractionResult) {
                     case (#ok(value)) {
@@ -466,7 +469,7 @@ actor class Storage() = this {
                 Debug.print("Storage: Topic not found: " # id);
                 #err("Topic not found") 
             };
-            case (?topic) {
+            case (?_topic) {
                 Debug.print("Storage: Deleting topic...");
                 topics.delete(id);
                 Debug.print("Storage: Topic deleted successfully");
@@ -482,9 +485,9 @@ actor class Storage() = this {
                 Debug.print("Storage: Topic not found: " # id);
                 #err("Topic not found") 
             };
-            case (?topic) {
+            case (?_topic) {
                 let updatedTopic = {
-                    topic with
+                    _topic with
                     active = active;
                     updatedAt = Int.abs(Time.now());
                 };
