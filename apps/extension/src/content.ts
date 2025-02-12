@@ -1,32 +1,5 @@
-// Listen for messages from the extension
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === 'CHECK_II_STATUS') {
-    // Check if we're on the II page and if it's loaded
-    if (document.readyState === 'complete') {
-      // Send back the current page status
-      sendResponse({ status: 'ready' });
-    }
-  }
-});
-
-// Watch for changes in the page that indicate successful login
-const observer = new MutationObserver((mutations) => {
-  for (const mutation of mutations) {
-    // Look for successful login indicators
-    if (mutation.type === 'childList' && document.querySelector('.success-message')) {
-      // Notify the extension that login was successful
-      chrome.runtime.sendMessage({ type: 'II_LOGIN_SUCCESS' });
-    }
-  }
-});
-
-// Start observing the document body for changes
-observer.observe(document.body, {
-  childList: true,
-  subtree: true
-});
-
 import { ScrapingTopic } from '../../admin/src/types';
+import { apiConfig } from './utils/apiConfig';
 
 // Helper to clean HTML string
 function cleanHTML(html: string): string {
@@ -49,51 +22,91 @@ function extractRelevantHTML(topic: ScrapingTopic): string {
       title: ['h1', '[class*="title"]', '[id*="title"]', '[class*="product-name"]'],
       price: ['[class*="price"]', '[id*="price"]', '.amount', '[itemprop="price"]'],
       description: ['[class*="description"]', '[id*="description"]', '[class*="product-info"]'],
-      features: ['[class*="features"]', '[class*="specs"]', 'ul.product-features'],
-      images: ['[class*="gallery"]', '[class*="product-image"]', '[itemprop="image"]']
+      author: ['[class*="author"]', '[rel="author"]', '[itemprop="author"]'],
+      date: ['[class*="date"]', '[class*="time"]', '[itemprop="datePublished"]'],
+      content: ['article', '.post-content', '.article-content', '.entry-content']
     };
 
-    // Get relevant selectors based on field name
-    const fieldSelectors = selectors[rule.name.toLowerCase() as keyof typeof selectors] || [];
+    // Get relevant selectors for this field
+    const fieldSelectors = selectors[rule.fieldType as keyof typeof selectors] || [];
     
-    // Try each selector
+    // Find elements matching selectors
     fieldSelectors.forEach(selector => {
-      document.querySelectorAll(selector).forEach(element => {
-        relevantElements.add(element);
-        // Also include parent for context
-        if (element.parentElement) {
-          relevantElements.add(element.parentElement);
-        }
+      document.querySelectorAll(selector).forEach(el => {
+        relevantElements.add(el);
       });
     });
   });
 
-  // Create a temporary container
-  const container = document.createElement('div');
-  
-  // Clone and append relevant elements
-  relevantElements.forEach(element => {
-    container.appendChild(element.cloneNode(true));
-  });
+  // Convert elements to array and get their HTML
+  const html = Array.from(relevantElements)
+    .map(el => el.outerHTML)
+    .join('\n');
 
-  // Clean and return the HTML
-  return cleanHTML(container.innerHTML);
+  return cleanHTML(html);
+}
+
+// Send data to DO scraper service
+async function sendToScraper(url: string, html: string, topic: ScrapingTopic) {
+  try {
+    const scraperUrl = await apiConfig.getScraperUrl();
+    const response = await fetch(`${scraperUrl}/scrape`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        url,
+        html,
+        extractionRules: topic.extractionRules
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Scraper service error: ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    return { success: true, jobId: result.jobId };
+  } catch (error) {
+    console.error('Error sending to scraper:', error);
+    return { success: false, error: error.message };
+  }
 }
 
 // Listen for scraping requests
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'SCRAPE_PAGE') {
     const { topic } = message;
-    const relevantHTML = extractRelevantHTML(topic);
     
-    // Send back only the relevant HTML
-    sendResponse({ 
-      html: relevantHTML,
-      url: window.location.href,
-      timestamp: new Date().toISOString()
-    });
+    // Get relevant HTML
+    const html = extractRelevantHTML(topic);
+    
+    // Send to scraper service
+    sendToScraper(window.location.href, html, topic)
+      .then(result => {
+        if (result.success) {
+          // Notify extension popup of success
+          chrome.runtime.sendMessage({ 
+            type: 'SCRAPE_SUCCESS',
+            jobId: result.jobId
+          });
+        } else {
+          // Notify extension popup of failure
+          chrome.runtime.sendMessage({ 
+            type: 'SCRAPE_ERROR',
+            error: result.error
+          });
+        }
+      });
+
+    // Indicate we'll respond asynchronously
+    return true;
   }
-  
+});
+
+// Listen for II login status
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'CHECK_II_STATUS') {
     if (document.readyState === 'complete') {
       sendResponse({ status: 'ready' });
@@ -101,7 +114,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
-// Watch for changes in the page that indicate successful login
+// Watch for II login success
 const observer = new MutationObserver((mutations) => {
   for (const mutation of mutations) {
     if (mutation.type === 'childList' && document.querySelector('.success-message')) {

@@ -12,9 +12,21 @@ export default defineConfig({
       output: {
         entryFileNames: '[name].js',
         chunkFileNames: '[name].js',
-        assetFileNames: 'assets/[name].[ext]'
+        assetFileNames: 'assets/[name].[ext]',
+        format: 'es'
       }
     },
-    outDir: 'build'
+    outDir: 'build',
+    target: 'es2020',
+    minify: false, // Helps with debugging
+    sourcemap: true,
+    modulePreload: false,
+    cssCodeSplit: false,
+    assetsInlineLimit: 0
+  },
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, 'src')
+    }
   }
 });

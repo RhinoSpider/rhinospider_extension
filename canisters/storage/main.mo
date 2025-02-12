@@ -1,41 +1,36 @@
+import Array "mo:base/Array";
 import Buffer "mo:base/Buffer";
+import Debug "mo:base/Debug";
+import Error "mo:base/Error";
+import HashMap "mo:base/HashMap";
+import Hash "mo:base/Hash";
+import Iter "mo:base/Iter";
+import Int "mo:base/Int";
+import Nat "mo:base/Nat";
+import Nat8 "mo:base/Nat8";
+import Nat32 "mo:base/Nat32";
+import Principal "mo:base/Principal";
 import Result "mo:base/Result";
 import Text "mo:base/Text";
-import HashMap "mo:base/HashMap";
-import Nat32 "mo:base/Nat32";
-import Nat64 "mo:base/Nat64";
-import Int "mo:base/Int";
-import Types "./types";
-import Nat8 "mo:base/Nat8";
-import Float "mo:base/Float";
-import Char "mo:base/Char";
-import Principal "mo:base/Principal";
-import Blob "mo:base/Blob";
-import Error "mo:base/Error";
-import AIHandler "./ai/handler";
-import Nat "mo:base/Nat";
 import Time "mo:base/Time";
-import Debug "mo:base/Debug";
+import Char "mo:base/Char";
+import Float "mo:base/Float";
+import Blob "mo:base/Blob";
 import Bool "mo:base/Bool";
+import AIHandler "./ai/handler";
+import Types "./types";
+import ExperimentalCycles "mo:base/ExperimentalCycles";
+import TrieMap "mo:base/TrieMap";
 
 actor class Storage() = this {
     type ICManagement = actor {
-        http_request : {
+        http_request : shared {
             url : Text;
             max_response_bytes : ?Nat64;
             headers : [Types.HttpHeader];
             body : ?[Nat8];
             method : Types.HttpMethod;
             transform : ?Types.TransformContext;
-        } -> async Types.HttpResponse;
-        http_request_with_cycles : {
-            url : Text;
-            max_response_bytes : ?Nat64;
-            headers : [Types.HttpHeader];
-            body : ?[Nat8];
-            method : Types.HttpMethod;
-            transform : ?Types.TransformContext;
-            cycles : Nat64;
         } -> async Types.HttpResponse;
     };
 
@@ -114,7 +109,7 @@ actor class Storage() = this {
 
     // Extraction rules type
     type ExtractionRules = Types.ExtractionRules;
-    type ScrapingField = Types.ExtractionField;
+    type ScrapingField = Types.ScrapingField;
 
     private let _admin : AdminCanister = actor "bkyz2-fmaaa-aaaaa-qaaaq-cai";
 
@@ -124,7 +119,7 @@ actor class Storage() = this {
         for (byte in arr.vals()) {
             buffer.add(Char.fromNat32(Nat32.fromNat(Nat8.toNat(byte))));
         };
-        Text.fromIter(buffer.vals());
+        Text.fromIter(buffer.vals())
     };
 
     // Helper function to encode URL
@@ -159,34 +154,118 @@ actor class Storage() = this {
         encoded
     };
 
+    // Cache entry type
+    type CacheEntry = {
+        content: Text;
+        timestamp: Int;
+        headers: [Types.HttpHeader];
+    };
+
+    // Cache duration in nanoseconds (1 hour)
+    private let CACHE_DURATION_NS = 3_600_000_000_000;
+    
+    // URL content cache
+    private var urlCache = TrieMap.TrieMap<Text, CacheEntry>(Text.equal, Text.hash);
+
+    // Transform function to normalize HTML
+    private func transform_html(raw: Types.TransformArgs) : Types.HttpResponse {
+        let transformed = {
+            status = raw.response.status;
+            body = raw.response.body;
+            headers = Array.filter<Types.HttpHeader>(raw.response.headers, func(h) {
+                // Only keep essential headers
+                switch(h.name) {
+                    case("content-type") true;
+                    case("content-length") true;
+                    case _ false;
+                }
+            });
+        };
+        transformed
+    };
+
     // Helper function to make HTTP request through proxy
     private func _makeHttpRequest(request: Types.HttpRequestArgs) : async Result.Result<Types.HttpResponse, Text> {
         try {
+            // Check cache first
+            switch (urlCache.get(request.url)) {
+                case (?entry) {
+                    let currentTime = Time.now();
+                    if (currentTime - entry.timestamp < CACHE_DURATION_NS) {
+                        // Cache hit - return cached content
+                        let bodyBlob = Text.encodeUtf8(entry.content);
+                        let bodyArray = Blob.toArray(bodyBlob);
+                        return #ok({
+                            status = 200;
+                            headers = entry.headers;
+                            body = bodyArray;
+                        });
+                    };
+                    // Cache expired - remove it
+                    urlCache.delete(request.url);
+                };
+                case null {};
+            };
+
             let ic : ICManagement = actor("aaaaa-aa");
             
-            // Use local proxy
-            let requestBody = "{ \"url\": \"" # request.url # "\" }";
-            let requestBodyBytes = Blob.toArray(Text.encodeUtf8(requestBody));
+            // Add cycles for HTTP outcall
+            let cycles = 200_000_000_000;
+            ExperimentalCycles.add(cycles);
             
+            // Make request with minimal headers
             let response = await ic.http_request({
-                url = "http://127.0.0.1:3000/fetch";
-                method = #post;
-                body = ?requestBodyBytes;
+                url = request.url;
+                max_response_bytes = ?500_000;
                 headers = [
-                    { name = "Content-Type"; value = "application/json" }
+                    { name = "User-Agent"; value = "Mozilla/5.0 (compatible; RhinoSpider/1.0)" }
                 ];
+                body = null;
+                method = #get;
                 transform = null;
-                max_response_bytes = null;
             });
 
-            #ok({
-                status = response.status;
-                headers = response.headers;
-                body = response.body;
-            });
+            // Cache successful responses with normalized headers
+            switch (response) {
+                case ({ status; headers; body }) {
+                    if (status == 200) {
+                        let bodyBlob = Blob.fromArray(body);
+                        let content = switch (Text.decodeUtf8(bodyBlob)) {
+                            case (?text) text;
+                            case null return #err("Failed to decode response body");
+                        };
+                        
+                        // Only cache essential headers
+                        let essentialHeaders = Array.filter<Types.HttpHeader>(headers, func(h) {
+                            switch(h.name) {
+                                case("content-type") true;
+                                case("content-length") true;
+                                case _ false;
+                            }
+                        });
+                        
+                        urlCache.put(request.url, {
+                            content = content;
+                            timestamp = Time.now();
+                            headers = essentialHeaders;
+                        });
+                    };
+                };
+            };
+
+            #ok(response)
         } catch (e) {
-            #err("HTTP request failed: " # Error.message(e));
+            #err(Error.message(e))
         };
+    };
+
+    // Function to convert bytes to text
+    private func bytesToText(bytes: [Nat8]) : Text {
+        let chars = Array.map<Nat8, Char>(
+            bytes,
+            func(n) { Char.fromNat32(Nat32.fromNat(Nat8.toNat(n))) }
+        );
+        Text.fromIter(chars.vals())
     };
 
     // Queue for URLs to be processed
@@ -402,15 +481,92 @@ actor class Storage() = this {
         Buffer.toArray(buffer)
     };
 
+    // Function to handle extraction
+    private func handleExtraction(content: Text, rules: Types.ExtractionRules) : async Result.Result<[(Text, Text)], Text> {
+        let buffer = Buffer.Buffer<(Text, Text)>(0);
+        
+        for (field in rules.fields.vals()) {
+            switch (await AIHandler.extractField(content, field, rules.customPrompt)) {
+                case (#ok(value)) {
+                    buffer.add((field.name, value));
+                };
+                case (#err(e)) {
+                    return #err("Failed to extract field '" # field.name # "': " # e);
+                };
+            };
+        };
+
+        #ok(Buffer.toArray(buffer))
+    };
+
     // Simple test endpoint that only tests extraction rules
-    public shared({ caller = _ }) func testExtraction(request: {
-        url: Text;
-        extraction_rules: ExtractionRules;
+    public shared({ caller }) func testExtraction(request: Types.ExtractionRequest) : async Result.Result<Types.ExtractionResult, Text> {
+        if (not isAuthorized(caller)) {
+            return #err("Unauthorized");
+        };
+
+        try {
+            switch (await handleExtraction("Mock content for testing", request.extractionRules)) {
+                case (#ok(data)) {
+                    #ok({
+                        url = request.url;
+                        data = data;
+                        timestamp = Time.now();
+                    })
+                };
+                case (#err(e)) { #err(e) };
+            };
+        } catch (e) {
+            #err("Error during extraction: " # Error.message(e))
+        };
+    };
+
+    public shared({ caller }) func extract(request: Types.ExtractionRequest) : async Result.Result<Types.ExtractionResult, Text> {
+        if (not isAuthorized(caller)) {
+            return #err("Unauthorized");
+        };
+
+        try {
+            let response = await _makeHttpRequest({
+                url = request.url;
+                method = #get;
+                headers = [];
+                body = null;
+                max_response_bytes = null;
+                transform = null;
+            });
+
+            switch (response) {
+                case (#ok(httpResponse)) {
+                    let content = bytesToText(httpResponse.body);
+                    switch (await handleExtraction(content, request.extractionRules)) {
+                        case (#ok(data)) {
+                            #ok({
+                                url = request.url;
+                                data = data;
+                                timestamp = Time.now();
+                            })
+                        };
+                        case (#err(e)) { #err(e) };
+                    };
+                };
+                case (#err(e)) {
+                    #err("Failed to fetch URL: " # e)
+                };
+            };
+        } catch (e) {
+            #err("Error during extraction: " # Error.message(e))
+        };
+    };
+
+    public shared({ caller = _ }) func testLocalExtraction(request: {
+        htmlContent: Text;
+        extraction_rules: Types.ExtractionRules;
     }) : async Result.Result<{data: [(Text, Text)]}, Text> {
         try {
             let mockData = Buffer.Buffer<(Text, Text)>(0);
             for (field in request.extraction_rules.fields.vals()) {
-                let extractionResult = await AIHandler.extractField(request.url, field.aiPrompt);
+                let extractionResult = await AIHandler.extractField(request.htmlContent, field, request.extraction_rules.customPrompt);
                 switch (extractionResult) {
                     case (#ok(value)) {
                         mockData.add((field.name, value));
@@ -424,18 +580,18 @@ actor class Storage() = this {
             };
             #ok({ data = Buffer.toArray(mockData) });
         } catch (e) {
-            #err("Error during extraction: " # Error.message(e));
+            #err("Error during local extraction: " # Error.message(e));
         };
     };
 
     public shared({ caller = _ }) func testExtractionLocal(request: {
         htmlContent: Text;
-        extraction_rules: ExtractionRules;
+        extraction_rules: Types.ExtractionRules;
     }) : async Result.Result<{data: [(Text, Text)]}, Text> {
         try {
             let mockData = Buffer.Buffer<(Text, Text)>(0);
             for (field in request.extraction_rules.fields.vals()) {
-                let extractionResult = await AIHandler.extractField(request.htmlContent, field.aiPrompt);
+                let extractionResult = await AIHandler.extractField(request.htmlContent, field, request.extraction_rules.customPrompt);
                 switch (extractionResult) {
                     case (#ok(value)) {
                         mockData.add((field.name, value));
@@ -517,6 +673,34 @@ actor class Storage() = this {
             case (null) { false };
             case (?topic) { topic.active };
         };
+    };
+
+    // Function to validate extraction rules
+    private func validateExtractionRules(rules: Types.ExtractionRules) : Bool {
+        if (rules.fields.size() == 0) {
+            return false;
+        };
+
+        for (field in rules.fields.vals()) {
+            if (Text.size(field.name) == 0 or Text.size(field.aiPrompt) == 0) {
+                return false;
+            };
+        };
+
+        true
+    };
+
+    // Function to validate topic
+    private func validateTopic(topic: Types.ScrapingTopic) : Bool {
+        if (Text.size(topic.name) == 0 or Text.size(topic.description) == 0) {
+            return false;
+        };
+
+        if (topic.urlPatterns.size() == 0) {
+            return false;
+        };
+
+        validateExtractionRules(topic.extractionRules)
     };
 
     // State

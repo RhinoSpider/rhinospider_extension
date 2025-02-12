@@ -2,164 +2,147 @@
 
 ## Overview
 
-RhinoSpider implements a distributed web scraping system where users share their bandwidth to help collect data. The system is designed to be:
-- Seamless and unobtrusive to users
-- Bandwidth-conscious
-- Privacy-respecting
-- Scalable across many users
+RhinoSpider implements a distributed web scraping system with a hybrid architecture combining Internet Computer (IC) canisters and a Digital Ocean (DO) intermediate service. This design solves several key challenges:
+- Consensus issues in IC HTTP outcalls
+- Reliable web scraping of modern websites
+- Consistent data collection
+- Scalable processing
 
 ## System Components
 
-### 1. Background Service Worker
-The core of the scraping functionality runs in a Chrome Extension Service Worker (`background.js`), allowing it to operate even when the extension popup is closed.
+### 1. Admin Portal (IC Canister)
+- Manages scraping topics and rules
+- Defines extraction patterns
+- Views and analyzes collected data
+- Handles user permissions
+- Monitors system health
 
-```javascript
-// Background operation lifecycle
-chrome.runtime.onInstalled -> initDB() -> startScrapingScheduler()
-```
+### 2. Extension
+- Chrome extension for user interaction
+- Sends scraping requests to DO service
+- Communicates with IC canisters for:
+  - Topic rules
+  - Data storage
+  - User authentication
 
-### 2. Data Storage
-- Uses Internet Computer canisters for decentralized storage
-- Local IndexedDB for temporary storage and caching
-- Efficient data structures for quick access and updates
+### 3. Digital Ocean Scraping Service
+- Intermediate layer for reliable web scraping
+- Features:
+  - Uses Puppeteer for modern web compatibility
+  - Handles rate limiting
+  - Manages request queuing
+  - Provides consistent responses
+- Components:
+  - Express.js server
+  - Redis for queue management
+  - Docker containers for isolation
 
-### 3. Scraping Engine
-- Distributed scraping across user base
-- Rate limiting and bandwidth management
-- Smart retry and error handling
-- Proxy support for reliability
-
-## Topic Management
-
-### Current Focus: AI/ML Topic
-
-#### Target Resources
-
-1. **GitHub Repositories**
-   - API Endpoint: `https://api.github.com/search/repositories`
-   - Search Parameters:
-     ```json
-     {
-       "q": "topic:artificial-intelligence topic:machine-learning",
-       "sort": "updated",
-       "per_page": 100
-     }
-     ```
-   - Data to Extract:
-     - Repository name
-     - Description
-     - Stars/Forks
-     - Last update
-     - Topics
-     - README content
-
-2. **Research Papers**
-   - Sources: arXiv, Papers with Code
-   - Data to Extract:
-     - Title
-     - Authors
-     - Abstract
-     - Publication date
-     - Citations
-     - Code links
-
-### Topic Configuration
-```typescript
-interface Topic {
-    id: string;
-    name: string;
-    description: string;
-    sources: Source[];
-    extractionRules: ExtractionRule[];
-}
-```
+### 4. Storage Canister (IC)
+- Stores scraped content
+- Manages data persistence
+- Handles access control
+- Provides data to admin portal
 
 ## Data Flow
 
-### 1. Content Discovery
 ```mermaid
-graph TD
-    A[Topic Config] --> B[URL Discovery]
-    B --> C[URL Queue]
-    C --> D[Priority Manager]
-    D --> E[Scraping Worker]
-```
+sequenceDiagram
+    participant User
+    participant Extension
+    participant DO as DO Scraper
+    participant IC as IC Canisters
+    participant Web as Website
 
-### 2. Content Processing
-```mermaid
-graph TD
-    A[Raw Content] --> B[AI Analysis]
-    B --> C[Data Extraction]
-    C --> D[Validation]
-    D --> E[Storage]
+    User->>Extension: Select content/URL
+    Extension->>IC: Get topic rules
+    IC-->>Extension: Return rules
+    Extension->>DO: Send scraping request
+    DO->>Web: Fetch content
+    Web-->>DO: Return HTML
+    DO->>IC: Store scraped content
+    IC-->>Extension: Confirm storage
+    Extension->>User: Show success
 ```
 
 ## Implementation Details
 
-### 1. Rate Limiting
-- Per-domain rate limits
-- Global rate limiting
-- User-specific quotas
-- Adaptive rate adjustment
+### 1. Digital Ocean Setup
+```bash
+# Server Requirements
+- Ubuntu 22.04 LTS
+- Docker & Docker Compose
+- Node.js 18+
+- 1GB RAM minimum
+- 25GB SSD
 
-### 2. Error Handling
-- Retry with exponential backoff
-- Circuit breaker for failing domains
-- Error logging and monitoring
-- Graceful degradation
-
-### 3. Data Validation
-- Schema validation
-- Content quality checks
-- Duplicate detection
-- Data normalization
-
-## Local Development
-
-### Testing
-1. Use mock responses for external APIs
-2. Test with sample HTML content
-3. Validate extraction rules
-4. Check rate limiting behavior
-
-### Configuration
-```javascript
-{
-  "development": {
-    "mockResponses": true,
-    "localStorage": true,
-    "bypassRateLimits": true
-  }
-}
+# Key Components
+/opt/rhinospider-scraper/
+├── docker-compose.yml    # Service orchestration
+├── Dockerfile           # Node.js & Chrome setup
+├── src/
+│   └── index.js        # Main scraping service
+└── package.json        # Dependencies
 ```
 
-## Production Deployment
+### 2. Security Considerations
+- DO service only accepts requests from authenticated extensions
+- All sensitive data stored in IC canisters
+- DO service acts as stateless proxy
+- Regular security updates for DO service
 
-### Requirements
-1. IC canister deployment
-2. Cycles for HTTP outbound calls (1.6B per call)
-3. Rate limit configuration
-4. Monitoring setup
+### 3. Error Handling
+- Automatic retries for failed requests
+- Queue-based processing
+- Error reporting to IC canister
+- Monitoring and alerts
 
-### Monitoring
-- Success/failure rates
-- Response times
-- Data quality metrics
-- Resource usage
+### 4. Scaling
+- Horizontal scaling via DO droplets
+- Redis for queue management
+- Load balancing if needed
+- Resource monitoring
 
-## Future Improvements
+## Deployment
 
-1. **Content Discovery**
-   - ML-based URL prioritization
-   - Content similarity detection
-   - Automated source discovery
+### 1. Digital Ocean Service
+```bash
+# Initial setup
+ssh root@<droplet-ip>
+cd /opt/rhinospider-scraper
+docker compose up -d
 
-2. **Performance**
-   - Distributed processing
-   - Caching optimization
-   - Resource pooling
+# Monitoring
+docker compose logs -f
+curl http://localhost:3000/health
+```
 
-3. **Data Quality**
-   - Enhanced validation
-   - Cross-source verification
-   - Automated quality scoring
+### 2. Extension Configuration
+```typescript
+// Update extension config to use DO service
+const SCRAPER_SERVICE_URL = 'http://<droplet-ip>:3000';
+```
+
+### 3. IC Canister Updates
+- Modified to receive data from DO service
+- Enhanced error handling
+- Improved data validation
+
+## Maintenance
+
+### 1. Regular Tasks
+- Monitor DO service health
+- Update dependencies
+- Backup Redis data
+- Review error logs
+
+### 2. Performance Monitoring
+- Track response times
+- Monitor queue length
+- Check resource usage
+- Analyze error rates
+
+### 3. Updates
+- Regular security patches
+- Dependency updates
+- Feature enhancements
+- Performance optimizations

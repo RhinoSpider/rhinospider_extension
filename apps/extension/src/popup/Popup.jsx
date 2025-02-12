@@ -5,6 +5,7 @@ import Settings from '../pages/Settings';
 import Profile from '../pages/Profile';
 import Referrals from '../pages/Referrals';
 import Home from './Home';
+import Analytics from './Analytics';
 import './Popup.css';
 
 const Popup = () => {
@@ -276,7 +277,7 @@ const Popup = () => {
                     Profile
                   </button>
                   <button
-                    onClick={() => window.open(chrome.runtime.getURL('pages/analytics.html'), '_blank')}
+                    onClick={() => navigateToPage('analytics')}
                     className="w-full text-left px-4 py-2 text-sm text-white hover:bg-white/10"
                   >
                     Analytics
@@ -313,6 +314,7 @@ const Popup = () => {
           <Route path="/settings" element={<Settings />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/referrals" element={<Referrals />} />
+          <Route path="/analytics" element={<Analytics />} />
         </Routes>
       </div>
     </AuthProvider>

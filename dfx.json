@@ -1,5 +1,28 @@
 {
   "canisters": {
+    "admin": {
+      "main": "canisters/admin/main.mo",
+      "type": "motoko",
+      "dependencies": ["auth"],
+      "frontend": {
+        "entrypoint": "apps/admin/dist/index.html"
+      },
+      "source": ["apps/admin/dist/"],
+      "type": "assets",
+      "declarations": {
+        "node_compatibility": true
+      }
+    },
+    "auth": {
+      "main": "canisters/auth/main.mo",
+      "type": "motoko",
+      "dependencies": ["internet_identity"]
+    },
+    "storage": {
+      "main": "canisters/storage/main.mo",
+      "type": "motoko",
+      "dependencies": ["auth"]
+    },
     "internet_identity": {
       "type": "custom",
       "candid": "https://github.com/dfinity/internet-identity/releases/latest/download/internet_identity.did",
@@ -9,34 +32,20 @@
           "ic": "rdmx6-jaaaa-aaaaa-aaadq-cai"
         }
       }
-    },
-    "storage": {
-      "main": "canisters/storage/main.mo",
-      "type": "motoko",
-      "dependencies": []
-    },
-    "auth": {
-      "main": "canisters/auth/main.mo",
-      "type": "motoko",
-      "dependencies": []
-    },
-    "admin": {
-      "main": "canisters/admin/main.mo",
-      "type": "motoko",
-      "dependencies": ["storage", "auth"]
     }
   },
   "defaults": {
     "build": {
-      "packtool": "vessel sources",
-      "args": ""
+      "args": "",
+      "packtool": "vessel sources"
     }
   },
+  "version": 1,
+  "dfx": "0.15.1",
   "networks": {
     "local": {
       "bind": "127.0.0.1:8000",
       "type": "ephemeral"
     }
-  },
-  "version": 1
+  }
 }

@@ -20,6 +20,32 @@ Deployment and operations documentation:
 - Production deployment guides
 - Monitoring and maintenance
 
+## Project Structure
+rhinospider/
+├── apps/
+│   ├── admin/        # Admin portal (ICP-based)
+│   └── extension/    # Chrome extension
+├── docs/            # Documentation
+└── packages/        # Shared packages
+
+## Environment Setup
+
+### Production Environment
+Production environment files (`.env`) are configured for IC mainnet:
+```
+apps/admin/.env
+apps/extension/.env
+.env (root)
+```
+
+### Local Development
+Local development environment files (`.env.local`) are configured for local testing:
+```
+apps/admin/.env.local
+apps/extension/.env.local
+```
+Note: `.env.local` files are gitignored and should be created based on the production `.env` files.
+
 ## Documentation Standards
 
 1. **File Names**

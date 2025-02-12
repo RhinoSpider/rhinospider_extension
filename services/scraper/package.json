@@ -1,0 +1,21 @@
+{
+  "name": "rhinospider-scraper",
+  "version": "1.0.0",
+  "description": "RhinoSpider Scraping Service",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "puppeteer": "^21.0.0",
+    "bull": "^4.11.0",
+    "@dfinity/agent": "^0.20.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.0.3"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.22"
+  }
+}
