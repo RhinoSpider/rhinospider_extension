@@ -32,6 +32,7 @@ export const useAuth = () => {
           error: null,
           isLoading: false,
         }));
+        return true;
       } else {
         setState(prev => ({
           ...prev,
@@ -41,6 +42,7 @@ export const useAuth = () => {
           error: null,
           isLoading: false,
         }));
+        return false;
       }
     } catch (error) {
       console.error('Auth check error:', error);
@@ -50,6 +52,7 @@ export const useAuth = () => {
         isLoading: false,
         isInitialized: true,
       }));
+      return false;
     }
   }, []);
 
@@ -77,8 +80,7 @@ export const useAuth = () => {
     try {
       setState(prev => ({ ...prev, isLoading: true, error: null }));
       await authLogin();
-      // Immediately check auth state after login
-      await checkAuthState();
+      // Note: We don't need to check auth state here because we're forcing a page reload
     } catch (error) {
       console.error('Login error:', error);
       setState(prev => ({
@@ -87,23 +89,13 @@ export const useAuth = () => {
         isLoading: false,
       }));
     }
-  }, [checkAuthState]);
+  }, []);
 
   const logout = useCallback(async () => {
     try {
       setState(prev => ({ ...prev, isLoading: true, error: null }));
-      // Add a small delay to ensure the loading state is visible
-      await new Promise(resolve => setTimeout(resolve, 100));
       await authLogout();
-      setState({
-        isAuthenticated: false,
-        identity: null,
-        isInitialized: true,
-        error: null,
-        isLoading: false,
-      });
-      // Force page reload after logout to clear any cached state
-      window.location.reload();
+      // Note: We don't need to update state here because we're forcing a page reload
     } catch (error) {
       console.error('Logout error:', error);
       setState(prev => ({

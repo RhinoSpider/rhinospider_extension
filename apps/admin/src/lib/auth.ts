@@ -30,8 +30,10 @@ export const login = async (): Promise<void> => {
     client.login({
       identityProvider: identityProviderUrl,
       maxTimeToLive: BigInt(7 * 24 * 60 * 60 * 1000 * 1000 * 1000), // 7 days in nanoseconds
-      onSuccess: () => {
+      onSuccess: async () => {
         console.log('Login successful');
+        // Force a page reload to ensure all state is updated
+        window.location.reload();
         resolve();
       },
       onError: (error) => {
@@ -46,6 +48,8 @@ export const logout = async (): Promise<void> => {
   const client = await initAuthClient();
   await client.logout();
   authClient = null;
+  // Force a page reload to clear state
+  window.location.reload();
 };
 
 export const getIdentity = async (): Promise<Identity | null> => {
