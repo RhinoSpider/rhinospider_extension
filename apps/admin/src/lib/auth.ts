@@ -15,7 +15,7 @@ export const initAuthClient = async (): Promise<AuthClient> => {
 export const isAuthenticated = async (): Promise<boolean> => {
   try {
     const client = await initAuthClient();
-    return client.isAuthenticated();
+    return await client.isAuthenticated();
   } catch (error) {
     console.error('Failed to check auth:', error);
     return false;
@@ -45,8 +45,11 @@ export const login = async (): Promise<void> => {
 };
 
 export const logout = async (): Promise<void> => {
-  const client = await initAuthClient();
-  await client.logout();
+  if (!authClient) {
+    console.warn('No auth client to logout from');
+    return;
+  }
+  await authClient.logout();
   authClient = null;
   // Force a page reload to clear state
   window.location.reload();
@@ -54,7 +57,7 @@ export const logout = async (): Promise<void> => {
 
 export const getIdentity = async (): Promise<Identity | null> => {
   const client = await initAuthClient();
-  if (await client.isAuthenticated()) {
+  if (await isAuthenticated()) {
     return client.getIdentity();
   }
   return null;

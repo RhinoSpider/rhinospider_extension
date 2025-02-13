@@ -5,14 +5,13 @@ module {
     public type AIConfig = {
         apiKey: Text;
         model: Text;
-        temperature: Float;
-        maxTokens: Nat;
         costLimits: CostLimits;
     };
 
     public type CostLimits = {
         maxDailyCost: Float;
         maxMonthlyCost: Float;
+        maxConcurrent: Nat;
     };
 
     public type ScrapingField = {

@@ -6,7 +6,7 @@ import { TopicModal } from './TopicModal';
 import { AIConfigModal } from './AIConfigModal';
 import { getAdminActor } from '../lib/admin';
 import { initAuthClient } from '../lib/auth';
-import { getStorageActor } from '../lib/storage'; // Import getStorageActor
+import { getStorageActor } from '../lib/storage';
 
 export const ScrapingConfig: React.FC = () => {
   const { isAuthenticated } = useAuth();
@@ -33,27 +33,27 @@ export const ScrapingConfig: React.FC = () => {
         setTopicsError(null);
         const actor = await getAdminActor();
         console.log('Fetching topics...');
-        const topics = await actor.getTopics();
-        // Ensure optional fields are arrays
-        const processedTopics = topics.map(topic => ({
+        const result = await actor.getTopics();
+        if ('err' in result) {
+          throw new Error(result.err);
+        }
+        const processedTopics = result.ok.map(topic => ({
           ...topic,
-          validation: topic.validation || [],
-          rateLimit: topic.rateLimit || [],
           extractionRules: {
             ...topic.extractionRules,
             fields: topic.extractionRules.fields.map(f => ({
               ...f,
-              description: f.description || [],
-              example: f.example || [],
+              description: f.description || '',
+              type: f.type || 'text',
             })),
-            customPrompt: topic.extractionRules.customPrompt || [],
+            customPrompt: topic.extractionRules.customPrompt || '',
           },
         }));
         console.log('Fetched topics:', processedTopics);
         setTopics(processedTopics);
       } catch (error) {
         console.error('Failed to fetch topics:', error);
-        setTopicsError('Failed to fetch topics');
+        setTopicsError(error instanceof Error ? error.message : 'Failed to fetch topics');
       } finally {
         setTopicsLoading(false);
       }
@@ -62,36 +62,38 @@ export const ScrapingConfig: React.FC = () => {
     loadData();
   }, []);
 
-  // Fetch AI config on mount
+  // Fetch AI config on mount and when modal closes
   useEffect(() => {
     const loadAIConfig = async () => {
       try {
         setAIConfigLoading(true);
         const actor = await getAdminActor();
         const result = await actor.getAIConfig();
-        if ('ok' in result) {
-          // Convert BigInt to Number for the frontend
-          const config = result.ok;
-          setAIConfig({
-            ...config,
-            costLimits: {
-              ...config.costLimits,
-              dailyUSD: Number(config.costLimits.dailyUSD),
-              monthlyUSD: Number(config.costLimits.monthlyUSD),
-              maxConcurrent: Number(config.costLimits.maxConcurrent)
-            }
-          });
+        if ('err' in result) {
+          throw new Error(result.err);
         }
+        const config = result.ok;
+        setAIConfig({
+          apiKey: config.apiKey,
+          model: config.model,
+          costLimits: {
+            maxDailyCost: Number(config.costLimits.maxDailyCost) || 0,
+            maxMonthlyCost: Number(config.costLimits.maxMonthlyCost) || 0,
+            maxConcurrent: Number(config.costLimits.maxConcurrent) || 0
+          }
+        });
       } catch (error) {
         console.error('Failed to load AI config:', error);
-        setError('Failed to load AI configuration');
+        setError(error instanceof Error ? error.message : 'Failed to load AI configuration');
       } finally {
         setAIConfigLoading(false);
       }
     };
 
-    loadAIConfig();
-  }, [isAIModalOpen]); // Reload when modal closes
+    if (isAuthenticated) {
+      loadAIConfig();
+    }
+  }, [isAuthenticated, isAIModalOpen]); // Reload when modal closes or auth state changes
 
   const handleSaveTopic = async (topic: ScrapingTopic) => {
     try {
@@ -99,468 +101,247 @@ export const ScrapingConfig: React.FC = () => {
       setTopicsStatus('Saving topic...');
       const actor = await getAdminActor();
       
-      // If topic exists, update it, otherwise create new
-      const result = topic.id && topics.some(t => t.id === topic.id)
-        ? await actor.updateTopic(topic.id, topic)
-        : await actor.createTopic(topic);
-
-      if ('ok' in result) {
-        // Close modal first to avoid state issues
-        setIsTopicModalOpen(false);
-        setTopicsStatus('Topic saved successfully!');
-        // Then reload topics
-        await loadTopics();
+      if (selectedTopic) {
+        // Update existing topic
+        const result = await actor.updateTopic(topic.id, {
+          name: [topic.name],
+          description: [topic.description],
+          url: [topic.url],
+          status: [topic.status],
+          extractionRules: [topic.extractionRules],
+        });
+        if ('err' in result) {
+          throw new Error(result.err);
+        }
+        setTopics(prev => prev.map(t => t.id === topic.id ? result.ok : t));
       } else {
-        console.error('Failed to save topic:', result.err);
-        setTopicsError('Failed to save topic: ' + result.err);
+        // Create new topic
+        const result = await actor.createTopic({
+          id: '', // Will be generated by backend
+          name: topic.name,
+          description: topic.description,
+          url: topic.url,
+          status: topic.status,
+          extractionRules: topic.extractionRules,
+        });
+        if ('err' in result) {
+          throw new Error(result.err);
+        }
+        setTopics(prev => [...prev, result.ok]);
       }
+      setTopicsStatus('Topic saved successfully');
+      setIsTopicModalOpen(false);
     } catch (error) {
       console.error('Failed to save topic:', error);
-      setTopicsError('Failed to save topic: ' + error);
+      setTopicsError(error instanceof Error ? error.message : 'Failed to save topic');
     } finally {
       setUpdating(false);
-      // Clear status after 3 seconds
-      setTimeout(() => {
-        setTopicsStatus(null);
-        setTopicsError(null);
-      }, 3000);
     }
   };
 
   const handleDeleteTopic = async (id: string) => {
     try {
-      console.log(`Deleting topic ${id}...`);
       setDeletingTopics(prev => ({ ...prev, [id]: true }));
       const actor = await getAdminActor();
       const result = await actor.deleteTopic(id);
-      console.log('Delete result:', result);
-
       if ('err' in result) {
-        console.error('Failed to delete topic:', result.err);
-        setTopicsError('Failed to delete topic: ' + result.err);
-        return;
+        throw new Error(result.err);
       }
-
-      console.log('Successfully deleted topic, refreshing list...');
-      // Refresh topics list
-      const updatedTopics = await actor.getTopics();
-      console.log('Got updated topics:', updatedTopics);
-      setTopics(updatedTopics);
-      setTopicsStatus('Topic deleted successfully!');
+      setTopics(prev => prev.filter(t => t.id !== id));
+      setTopicsStatus('Topic deleted successfully');
     } catch (error) {
       console.error('Failed to delete topic:', error);
-      setTopicsError('Failed to delete topic');
+      setTopicsError(error instanceof Error ? error.message : 'Failed to delete topic');
     } finally {
       setDeletingTopics(prev => ({ ...prev, [id]: false }));
-      // Clear status after 3 seconds
-      setTimeout(() => {
-        setTopicsStatus(null);
-        setTopicsError(null);
-      }, 3000);
     }
   };
 
-  const handleSaveAIConfig = async (newConfig: AIConfig) => {
+  const handleToggleTopic = async (id: string, active: boolean) => {
     try {
-      setAIConfigLoading(true);
+      setTogglingTopics(prev => ({ ...prev, [id]: true }));
       const actor = await getAdminActor();
-      const result = await actor.updateAIConfig(newConfig);
+      const result = await actor.setTopicActive(id, active);
       if ('err' in result) {
-        setError(result.err);
-      } else {
-        setAIConfig(newConfig);
+        throw new Error(result.err);
       }
+      setTopics(prev => prev.map(t => t.id === id ? { ...t, status: active ? 'active' : 'inactive' } : t));
+      setTopicsStatus(`Topic ${active ? 'activated' : 'deactivated'} successfully`);
     } catch (error) {
-      console.error('Failed to save AI config:', error);
-      setError('Failed to save AI configuration');
+      console.error('Failed to toggle topic:', error);
+      setTopicsError(error instanceof Error ? error.message : 'Failed to toggle topic');
     } finally {
-      setAIConfigLoading(false);
-    }
-  };
-
-  const renderAIConfig = () => {
-    if (aiConfigLoading) {
-      return (
-        <div className="bg-[#1C1B23] rounded-lg p-6">
-          <div className="animate-pulse space-y-4">
-            <div className="h-4 bg-[#2C2B33] rounded w-1/4"></div>
-            <div className="space-y-3">
-              <div className="h-4 bg-[#2C2B33] rounded w-1/2"></div>
-              <div className="h-4 bg-[#2C2B33] rounded w-1/3"></div>
-              <div className="h-4 bg-[#2C2B33] rounded w-2/5"></div>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    if (!aiConfig) {
-      return (
-        <div className="bg-[#1C1B23] rounded-lg p-6">
-          <div className="flex justify-between items-start mb-6">
-            <div>
-              <h2 className="text-lg font-medium text-white mb-1">AI Configuration</h2>
-              <p className="text-sm text-gray-400">OpenAI API settings and cost limits</p>
-            </div>
-            <button
-              onClick={() => setIsAIModalOpen(true)}
-              className="px-4 py-2 bg-[#B692F6] text-[#131217] rounded-lg hover:opacity-90 transition-opacity"
-              disabled={aiConfigLoading}
-            >
-              Configure
-            </button>
-          </div>
-          <p className="text-gray-400">No AI configuration found. Click Configure to set one up.</p>
-        </div>
-      );
-    }
-
-    return (
-      <div className="bg-[#1C1B23] rounded-lg p-6">
-        <div className="flex justify-between items-start mb-6">
-          <div>
-            <h2 className="text-lg font-medium text-white mb-1">AI Configuration</h2>
-            <p className="text-sm text-gray-400">OpenAI API settings and cost limits</p>
-          </div>
-          <button
-            onClick={() => setIsAIModalOpen(true)}
-            className="px-4 py-2 bg-[#B692F6] text-[#131217] rounded-lg hover:opacity-90 transition-opacity"
-            disabled={aiConfigLoading}
-          >
-            Configure
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <h3 className="text-sm font-medium text-gray-200 mb-4">API Settings</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="text-gray-400">API Key</label>
-                <div className="text-white font-mono">
-                  {aiConfig.apiKey ? '••••••••' : 'Not set'}
-                </div>
-              </div>
-              <div>
-                <label className="text-gray-400">Model</label>
-                <div className="text-white">{aiConfig.model}</div>
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <h3 className="text-sm font-medium text-gray-200 mb-4">Cost Limits</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="text-gray-400">Daily Limit</label>
-                <div className="text-white">${typeof aiConfig.costLimits.dailyUSD === 'number' ? aiConfig.costLimits.dailyUSD.toFixed(2) : '0.00'} USD</div>
-              </div>
-              <div>
-                <label className="text-gray-400">Monthly Limit</label>
-                <div className="text-white">${typeof aiConfig.costLimits.monthlyUSD === 'number' ? aiConfig.costLimits.monthlyUSD.toFixed(2) : '0.00'} USD</div>
-              </div>
-              <div>
-                <label className="text-gray-400">Max Concurrent</label>
-                <div className="text-white">{aiConfig.costLimits.maxConcurrent}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {error && (
-          <div className="mt-4 bg-red-900/20 border border-red-400 text-red-400 px-4 py-3 rounded">
-            {error}
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const handleCreateTopic = () => {
-    setSelectedTopic(null);
-    setIsTopicModalOpen(true);
-  };
-
-  const handleEditTopic = (topic: ScrapingTopic) => {
-    setSelectedTopic(topic);
-    setIsTopicModalOpen(true);
-  };
-
-  const handleTopicModalClose = () => {
-    setIsTopicModalOpen(false);
-    setSelectedTopic(null);
-    // Refresh topics after modal closes
-    const loadData = async () => {
-      try {
-        setTopicsLoading(true);
-        setTopicsError(null);
-        const actor = await getAdminActor();
-        console.log('Refreshing topics...');
-        const topics = await actor.getTopics();
-        // Ensure optional fields are arrays
-        const processedTopics = topics.map(topic => ({
-          ...topic,
-          validation: topic.validation || [],
-          rateLimit: topic.rateLimit || [],
-          extractionRules: {
-            ...topic.extractionRules,
-            fields: topic.extractionRules.fields.map(f => ({
-              ...f,
-              description: f.description || [],
-              example: f.example || [],
-            })),
-            customPrompt: topic.extractionRules.customPrompt || [],
-          },
-        }));
-        console.log('Refreshed topics:', processedTopics);
-        setTopics(processedTopics);
-      } catch (error) {
-        console.error('Failed to refresh topics:', error);
-        setTopicsError('Failed to refresh topics');
-      } finally {
-        setTopicsLoading(false);
-      }
-    };
-    loadData();
-  };
-
-  // Check authentication
-  useEffect(() => {
-    const init = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-
-        const authClient = initAuthClient();
-        const isAuth = await authClient.isAuthenticated();
-        
-        if (!isAuth) {
-          setError('Please log in to view the configuration');
-          await authClient.login();
-        }
-      } catch (error) {
-        console.error('Failed to check auth:', error);
-        setError(error instanceof Error ? error.message : 'Failed to check authentication');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    init();
-  }, []);
-
-  const loadTopics = async () => {
-    try {
-      setTopicsLoading(true);
-      setTopicsError(null);
-      const actor = await getAdminActor();
-      console.log('Fetching topics...');
-      const topics = await actor.getTopics();
-      // Ensure optional fields are arrays
-      const processedTopics = topics.map(topic => ({
-        ...topic,
-        validation: topic.validation || [],
-        rateLimit: topic.rateLimit || [],
-        extractionRules: {
-          ...topic.extractionRules,
-          fields: topic.extractionRules.fields.map(f => ({
-            ...f,
-            description: f.description || [],
-            example: f.example || [],
-          })),
-          customPrompt: topic.extractionRules.customPrompt || [],
-        },
-      }));
-      console.log('Fetched topics:', processedTopics);
-      setTopics(processedTopics);
-    } catch (error) {
-      console.error('Failed to fetch topics:', error);
-      setTopicsError('Failed to fetch topics');
-    } finally {
-      setTopicsLoading(false);
+      setTogglingTopics(prev => ({ ...prev, [id]: false }));
     }
   };
 
   return (
-    <div className="space-y-8">
-      {/* Topics Section */}
-      <div>
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <h2 className="text-2xl font-bold text-white">Topics</h2>
-            <p className="text-gray-400">Configure scraping topics and their extraction rules</p>
-          </div>
-          <div className="flex items-center gap-4">
-            {topicsStatus && (
-              <span className="text-green-400 text-sm">{topicsStatus}</span>
-            )}
-            {topicsError && (
-              <span className="text-red-400 text-sm">{topicsError}</span>
-            )}
-            <button
-              onClick={() => {
-                setSelectedTopic(null);
-                setIsTopicModalOpen(true);
-              }}
-              className="px-4 py-2 bg-[#B692F6] text-[#131217] rounded-lg hover:opacity-90 transition-opacity"
-              disabled={updating}
-            >
-              {updating ? 'Adding...' : 'Add Topic'}
-            </button>
-          </div>
-        </div>
+    <div className="container mx-auto px-4 py-8">
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-3xl font-bold text-white">Scraping Configuration</h1>
+        <button
+          onClick={() => {
+            setSelectedTopic(null);
+            setIsTopicModalOpen(true);
+          }}
+          className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700"
+        >
+          Add Topic
+        </button>
+      </div>
 
-        {/* Topics List */}
-        <div className="space-y-4">
-          {topicsLoading ? (
-            <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#B692F6] mx-auto"></div>
-              <p className="text-gray-400 mt-2">Loading topics...</p>
-            </div>
-          ) : topicsError ? (
-            <div className="text-red-500 text-center py-8">
-              <p>{topicsError}</p>
+      {/* Status Messages */}
+      {topicsError && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+          {topicsError}
+        </div>
+      )}
+      {topicsStatus && (
+        <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
+          {topicsStatus}
+        </div>
+      )}
+
+      {/* Topics List */}
+      {topicsLoading ? (
+        <div className="text-center py-8 text-gray-400">Loading topics...</div>
+      ) : (
+        <div className="mb-8">
+          {topics.length === 0 ? (
+            <div className="bg-[#1C1B23] rounded-lg shadow-md p-8 text-center">
+              <p className="text-gray-400 mb-4">No topics have been created yet.</p>
               <button
                 onClick={() => {
-                  setTopicsLoading(true);
-                  setTopicsError(null);
-                  loadTopics();
+                  setSelectedTopic(null);
+                  setIsTopicModalOpen(true);
                 }}
-                className="mt-2 text-[#B692F6] hover:text-white transition-colors"
+                className="text-purple-400 hover:text-purple-300"
               >
-                Try Again
+                Create your first topic
               </button>
             </div>
-          ) : topics.length === 0 ? (
-            <div className="text-center py-8 text-gray-400">
-              <p>No topics created yet.</p>
-              <p className="mt-2">Click the button above to create your first topic.</p>
-            </div>
           ) : (
-            <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-              {topics.map((topic) => (
-                <div
-                  key={topic.id}
-                  className="bg-[#1C1B23] rounded-lg p-4 hover:bg-[#2C2B33] transition-colors"
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <h3 className="text-lg font-medium text-white">{topic.name}</h3>
-                    <div className="flex gap-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {topics.map(topic => (
+                <div key={topic.id} className="bg-[#1C1B23] rounded-lg shadow-md p-6">
+                  <div className="flex justify-between items-start mb-4">
+                    <h2 className="text-xl font-semibold text-white">{topic.name}</h2>
+                    <div className="space-x-2">
                       <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (confirm('Are you sure you want to delete this topic?')) {
-                            handleDeleteTopic(topic.id);
-                          }
+                        onClick={() => {
+                          setSelectedTopic(topic);
+                          setIsTopicModalOpen(true);
                         }}
+                        className="text-purple-400 hover:text-purple-300"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDeleteTopic(topic.id)}
                         disabled={deletingTopics[topic.id]}
-                        className={`text-sm text-red-500 hover:text-red-400 ${deletingTopics[topic.id] ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        className="text-red-400 hover:text-red-300"
                       >
                         {deletingTopics[topic.id] ? 'Deleting...' : 'Delete'}
                       </button>
                     </div>
                   </div>
-                  <p className="text-gray-400 text-sm mb-4">{topic.description}</p>
-                  <div className="space-y-2 mb-4">
-                    <div className="text-sm text-gray-400">
-                      <span className="font-medium">URL Patterns:</span>{' '}
-                      {topic.urlPatterns.length}
-                    </div>
-                    <div className="text-sm text-gray-400">
-                      <span className="font-medium">Fields:</span>{' '}
-                      {topic.extractionRules.fields.length}
-                    </div>
-                  </div>
+                  <p className="text-gray-400 mb-4">{topic.description}</p>
                   <div className="flex justify-between items-center">
-                    <div className="text-xs text-gray-500">
-                      Created {new Date(Number(topic.createdAt) / 1_000_000).toLocaleDateString()}
-                    </div>
-                    <div className="flex gap-2 items-center">
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          className="sr-only peer"
-                          checked={topic.active}
-                          disabled={togglingTopics[topic.id]}
-                          onChange={async (e) => {
-                            e.stopPropagation();
-                            try {
-                              const newActive = e.target.checked;
-                              console.log(`Toggling topic ${topic.id} to ${newActive}`);
-                              setTogglingTopics(prev => ({ ...prev, [topic.id]: true }));
-                              
-                              const actor = await getAdminActor();
-                              console.log('Got admin actor, calling setTopicActive...');
-                              const result = await actor.setTopicActive(topic.id, newActive);
-                              console.log('setTopicActive result:', result);
-                              
-                              if ('err' in result) {
-                                console.error('Failed to update topic status:', result.err);
-                                setTopicsError('Failed to update topic status: ' + result.err);
-                                return;
-                              }
-
-                              console.log('Successfully updated topic, refreshing list...');
-                              // Refresh topics list
-                              const updatedTopics = await actor.getTopics();
-                              console.log('Got updated topics:', updatedTopics);
-                              setTopics(updatedTopics);
-                              console.log('Updated topics state');
-                            } catch (error) {
-                              console.error('Failed to update topic status:', error);
-                              setTopicsError('Failed to update topic status');
-                            } finally {
-                              setTogglingTopics(prev => ({ ...prev, [topic.id]: false }));
-                            }
-                          }}
-                        />
-                        <div className={`w-9 h-5 ${togglingTopics[topic.id] ? 'opacity-50' : ''} bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#B692F6]`}></div>
-                      </label>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedTopic(topic);
-                          setIsTopicModalOpen(true);
-                        }}
-                        className="text-sm text-blue-500 hover:text-blue-400"
-                      >
-                        Edit
-                      </button>
-                    </div>
+                    <span className={`px-2 py-1 rounded text-sm ${
+                      topic.status === 'active' ? 'bg-purple-900 text-purple-200' : 'bg-gray-800 text-gray-300'
+                    }`}>
+                      {topic.status}
+                    </span>
+                    <button
+                      onClick={() => handleToggleTopic(topic.id, topic.status !== 'active')}
+                      disabled={togglingTopics[topic.id]}
+                      className={`text-sm ${
+                        topic.status === 'active'
+                          ? 'text-red-400 hover:text-red-300'
+                          : 'text-purple-400 hover:text-purple-300'
+                      }`}
+                    >
+                      {togglingTopics[topic.id]
+                        ? 'Updating...'
+                        : topic.status === 'active'
+                        ? 'Deactivate'
+                        : 'Activate'}
+                    </button>
                   </div>
                 </div>
               ))}
             </div>
           )}
         </div>
-      </div>
+      )}
 
-      {/* AI Configuration Section */}
-      <div>
-        <div className="mb-4">
-          <h2 className="text-2xl font-bold text-white">AI Configuration</h2>
-          <p className="text-gray-400 text-sm mt-1">
-            Configure AI settings for content extraction
-          </p>
+      {/* AI Configuration Box */}
+      <div className="p-6 bg-gray-800 rounded-lg">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-lg font-semibold text-white">AI Configuration</h2>
+          <button
+            onClick={() => setIsAIModalOpen(true)}
+            className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          >
+            Configure
+          </button>
         </div>
-
-        {renderAIConfig()}
+        {aiConfigLoading ? (
+          <div className="text-gray-400 mt-4">Loading AI configuration...</div>
+        ) : aiConfig ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-4">
+              <div className="flex flex-col">
+                <span className="text-sm font-medium text-gray-400">Model</span>
+                <span className="text-base text-white mt-1">{aiConfig.model}</span>
+              </div>
+              <div className="flex flex-col">
+                <span className="text-sm font-medium text-gray-400">Daily Cost Limit</span>
+                <span className="text-base text-white mt-1">${aiConfig.costLimits.maxDailyCost || 0}</span>
+              </div>
+            </div>
+            <div className="space-y-4">
+              <div className="flex flex-col">
+                <span className="text-sm font-medium text-gray-400">Monthly Cost Limit</span>
+                <span className="text-base text-white mt-1">${aiConfig.costLimits.maxMonthlyCost || 0}</span>
+              </div>
+              <div className="flex flex-col">
+                <span className="text-sm font-medium text-gray-400">Max Concurrent API Calls</span>
+                <span className="text-base text-white mt-1">{aiConfig.costLimits.maxConcurrent || 0}</span>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="text-gray-400 mt-4">No AI configuration found</div>
+        )}
       </div>
 
-      {/* Modals */}
-      <TopicModal
-        isOpen={isTopicModalOpen}
-        onClose={handleTopicModalClose}
-        topic={selectedTopic}
-        onSave={handleSaveTopic}
-      />
+      {/* Topic Modal */}
+      {isTopicModalOpen && (
+        <TopicModal
+          isOpen={isTopicModalOpen}
+          topic={selectedTopic}
+          onSave={handleSaveTopic}
+          onClose={() => {
+            setIsTopicModalOpen(false);
+            setSelectedTopic(null);
+          }}
+          saving={updating}
+        />
+      )}
 
-      <AIConfigModal
-        isOpen={isAIModalOpen}
-        onClose={() => setIsAIModalOpen(false)}
-        config={aiConfig}
-        onSave={handleSaveAIConfig}
-      />
+      {/* AI Config Modal */}
+      {isAIModalOpen && (
+        <AIConfigModal
+          isOpen={isAIModalOpen}
+          config={aiConfig}
+          onClose={() => setIsAIModalOpen(false)}
+          onSave={(config) => {
+            setAIConfig(config);
+            setIsAIModalOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 };

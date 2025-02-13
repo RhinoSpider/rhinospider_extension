@@ -10,6 +10,7 @@ import Buffer "mo:base/Buffer";
 import StorageTypes "./types/storage";
 import Iter "mo:base/Iter";
 import Option "mo:base/Option";
+import Debug "mo:base/Debug";
 
 actor Admin {
     // Types
@@ -57,11 +58,10 @@ actor Admin {
     private stable var stableAIConfig : AIConfig = {
         apiKey = "";
         model = "gpt-3.5-turbo";
-        maxTokens = 1000;
-        temperature = 0.7;
         costLimits = {
             maxDailyCost = 1.0;
             maxMonthlyCost = 10.0;
+            maxConcurrent = 10;
         };
     };
 
@@ -84,14 +84,14 @@ actor Admin {
         topics := HashMap.fromIter<Text, ScrapingTopic>(stableTopics.vals(), 1, Text.equal, Text.hash);
         _aiConfig := stableAIConfig;
         
-        if (users.size() == 0) {
-            initializeAdmin();
-        };
+        // Always initialize admin
+        initializeAdmin();
+        Debug.print("Admin initialized");
     };
 
     // Initialize admin
     private func initializeAdmin() {
-        let adminPrincipal = Principal.fromText("p6gaf-qjt3x-6q6ci-ro7nd-aklhp-6hgfo-4dljo-busl6-3ftgp-iliyi-zqe");
+        let adminPrincipal = Principal.fromText("t52au-jmmys-xpd7e-f2cc7-xgsya-2ajbl-22leo-e7hep-kclwp-kqzoq-jae");
         let admin : User = {
             principal = adminPrincipal;
             role = #SuperAdmin;
@@ -104,9 +104,23 @@ actor Admin {
 
     // Authorization check
     private func _isAuthorized(caller: Principal) : Bool {
+        let callerStr = Principal.toText(caller);
+        if (Principal.isAnonymous(caller)) {
+            return true; // Allow anonymous access for local development
+        };
         switch (users.get(caller)) {
-            case (?_) { true };
-            case null { admins.get(caller) == ?true };
+            case (?user) {
+                Debug.print("User found: " # Principal.toText(user.principal));
+                switch (user.role) {
+                    case (#SuperAdmin) { true };
+                    case (#Admin) { true };
+                    case (#Operator) { false };
+                }
+            };
+            case null { 
+                Debug.print("User not found: " # callerStr);
+                admins.get(caller) == ?true 
+            };
         }
     };
 

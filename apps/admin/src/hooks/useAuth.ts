@@ -16,7 +16,7 @@ export const useAuth = () => {
     identity: null,
     isInitialized: false,
     error: null,
-    isLoading: false,
+    isLoading: true,
   });
 
   const checkAuthState = useCallback(async () => {
@@ -59,7 +59,6 @@ export const useAuth = () => {
   useEffect(() => {
     const initAuth = async () => {
       try {
-        setState(prev => ({ ...prev, isLoading: true }));
         await initAuthClient();
         await checkAuthState();
       } catch (error) {
@@ -110,5 +109,6 @@ export const useAuth = () => {
     ...state,
     login,
     logout,
+    checkAuthState,
   };
 };

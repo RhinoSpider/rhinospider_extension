@@ -37,15 +37,15 @@ type UpdateTopicRequest = record {
 };
 
 type CostLimits = record {
-    dailyUSD: nat;
-    monthlyUSD: nat;
+    maxDailyCost: float64;
+    maxMonthlyCost: float64;
     maxConcurrent: nat;
 };
 
 type AIConfig = record {
     apiKey: text;
-    model: text;
     costLimits: CostLimits;
+    model: text;
 };
 
 type UserRole = variant {
