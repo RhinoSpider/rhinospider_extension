@@ -1,11 +1,12 @@
 type Storage = 
  service {
-   createTopic: (ScrapingTopic) -> (Result_1);
-   deleteTopic: (text) -> (Result_1);
+   createTopic: (ScrapingTopic) -> (Result_2);
+   deleteTopic: (text) -> (Result_2);
+   extract: (ExtractionRequest) -> (Result_1);
    getBySource: (text) -> (vec ScrapedData) query;
-   getContent: (text) -> (Result_4) query;
-   getContentBySource: (text) -> (Result_3) query;
-   getContentByTopic: (text, nat) -> (Result_3) query;
+   getContent: (text) -> (Result_5) query;
+   getContentBySource: (text) -> (Result_4) query;
+   getContentByTopic: (text, nat) -> (Result_4) query;
    getNextPendingUrl: () -> (opt record {
                                    id: text;
                                    url: text;
@@ -13,19 +14,21 @@ type Storage =
    getScrapedData: (vec text) -> (vec ScrapedData) query;
    getTopic: (text) -> (opt ScrapingTopic) query;
    getTopics: () -> (vec ScrapingTopic) query;
-   processWithAI: (Request) -> (Result_2);
-   queueUrlForProcessing: (text, text) -> (Result_1);
-   setTopicActive: (text, bool) -> (Result_1);
-   storeContent: (ScrapedContent) -> (Result_1);
+   processWithAI: (Request) -> (Result_3);
+   queueUrlForProcessing: (text, text) -> (Result_2);
+   setTopicActive: (text, bool) -> (Result_2);
+   storeContent: (ScrapedContent) -> (Result_2);
    storeHtmlContent: (text, text) -> ();
-   storeRequest: (Request) -> (Result_1);
-   testExtraction: (record {
-                      extractionRules: ExtractionRules;
-                      url: text;
-                    }) -> (Result);
+   storeRequest: (Request) -> (Result_2);
+   testExtraction: (ExtractionRequest) -> (Result_1);
    testExtractionLocal:
     (record {
-       extractionRules: ExtractionRules;
+       extraction_rules: ExtractionRules;
+       htmlContent: text;
+     }) -> (Result);
+   testLocalExtraction:
+    (record {
+       extraction_rules: ExtractionRules;
        htmlContent: text;
      }) -> (Result);
  };
@@ -33,12 +36,22 @@ type ScrapingTopic =
  record {
    active: bool;
    createdAt: int;
-   description: opt text;
-   extractionRules: opt ExtractionRules;
+   description: text;
+   extractionRules: ExtractionRules;
    id: text;
    name: text;
-   updatedAt: int;
+   rateLimit: opt record {
+                    maxConcurrent: nat;
+                    requestsPerHour: nat;
+                  };
    urlPatterns: vec text;
+ };
+type ScrapingField = 
+ record {
+   aiPrompt: text;
+   fieldType: text;
+   name: text;
+   required: bool;
  };
 type ScrapedData = 
  record {
@@ -86,17 +99,17 @@ type ScrapedContent =
    update_date: int;
    url: text;
  };
-type Result_4 = 
+type Result_5 = 
  variant {
    err: text;
    ok: ScrapedContent;
  };
-type Result_3 = 
+type Result_4 = 
  variant {
    err: text;
    ok: vec ScrapedContent;
  };
-type Result_2 = 
+type Result_3 = 
  variant {
    err: text;
    ok: vec record {
@@ -104,10 +117,15 @@ type Result_2 =
              text;
            };
  };
-type Result_1 = 
+type Result_2 = 
  variant {
    err: text;
    ok;
+ };
+type Result_1 = 
+ variant {
+   err: text;
+   ok: ExtractionResult;
  };
 type Result = 
  variant {
@@ -129,13 +147,20 @@ type Request =
 type ExtractionRules = 
  record {
    customPrompt: opt text;
-   fields: vec ExtractionField;
+   fields: vec ScrapingField;
  };
-type ExtractionField = 
+type ExtractionResult = 
  record {
-   aiPrompt: text;
-   fieldType: text;
-   name: text;
-   required: bool;
+   data: vec record {
+               text;
+               text;
+             };
+   timestamp: int;
+   url: text;
+ };
+type ExtractionRequest = 
+ record {
+   extractionRules: ExtractionRules;
+   url: text;
  };
 service : () -> Storage

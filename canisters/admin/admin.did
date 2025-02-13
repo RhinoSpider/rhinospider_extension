@@ -1,8 +1,8 @@
 type ExtractionField = record {
     name: text;
-    fieldType: text;
+    description: text;
     required: bool;
-    aiPrompt: text;
+    type: text;
 };
 
 type ExtractionRules = record {
@@ -10,38 +10,30 @@ type ExtractionRules = record {
     customPrompt: opt text;
 };
 
-type Request = record {
-    url: text;
-    content_id: text;
-    extraction_rules: ExtractionRules;
-    topic_id: text;
-};
-
-type Task = record {
+type ScrapingTopic = record {
     id: text;
+    name: text;
+    description: text;
     url: text;
-    topic: text;
-    priority: nat;
-    created_at: int;
-    assigned_to: opt principal;
     status: text;
+    extractionRules: ExtractionRules;
 };
 
-type TaskConfig = record {
-    topics: vec text;
-    target_sites: vec text;
-    scan_interval: nat;
-    max_bandwidth_per_day: nat;
+type CreateTopicRequest = record {
+    id: text;
+    name: text;
+    description: text;
+    url: text;
+    status: text;
+    extractionRules: ExtractionRules;
 };
 
-type Result = variant {
-    ok: text;
-    err: text;
-};
-
-type Result_1 = variant {
-    ok;
-    err: text;
+type UpdateTopicRequest = record {
+    name: opt text;
+    description: opt text;
+    url: opt text;
+    status: opt text;
+    extractionRules: opt ExtractionRules;
 };
 
 type CostLimits = record {
@@ -56,115 +48,64 @@ type AIConfig = record {
     costLimits: CostLimits;
 };
 
+type UserRole = variant {
+    Admin;
+    User;
+    None;
+};
+
+type User = record {
+    role: UserRole;
+};
+
+type Result = variant {
+    ok: text;
+    err: text;
+};
+
+type Result_1 = variant {
+    ok;
+    err: text;
+};
+
 type Result_2 = variant {
     ok: AIConfig;
     err: text;
 };
 
-type ScrapingField = record {
-    name: text;
-    description: opt text;
-    example: opt text;
-    aiPrompt: text;
-    required: bool;
-    fieldType: text;
-};
-
-type Validation = opt record {
-    rules: vec text;
-    aiValidation: opt text;
-};
-
-type RateLimit = opt record {
-    requestsPerHour: nat;
-    maxConcurrent: nat;
-};
-
-type CreateTopicRequest = record {
-    id: text;
-    name: text;
-    description: text;
-    urlPatterns: vec text;
-    active: bool;
-    extractionRules: ExtractionRules;
-    validation: Validation;
-    rateLimit: RateLimit;
-};
-
-type ScrapingTopic = record {
-    id: text;
-    name: text;
-    description: text;
-    urlPatterns: vec text;
-    active: bool;
-    extractionRules: ExtractionRules;
-    validation: Validation;
-    rateLimit: RateLimit;
-    createdAt: int;
-};
-
-type ScrapedData = record {
-    id: text;
-    url: text;
-    topic: text;
-    source: text;
-    content: text;
-    timestamp: int;
-    client_id: principal;
-};
-
 type Result_3 = variant {
-    ok: vec ScrapedData;
-    err: text;
-};
-
-type Result_Topic = variant {
     ok: ScrapingTopic;
     err: text;
 };
 
-type User = record {
-    principal: principal;
-    role: UserRole;
+type Result_4 = variant {
+    ok: vec ScrapingTopic;
+    err: text;
 };
 
-type UserRole = variant {
-    admin;
-    user;
-};
-
-type Result = variant {
-    ok;
+type Result_5 = variant {
+    ok: vec User;
     err: text;
 };
 
 service : {
-    // User management
-    addUser: (principal, text) -> (Result);
-    removeUser: (principal) -> (Result);
-    getUsers: () -> (vec User) query;
-    hasRole: (principal, UserRole) -> (bool) query;
-    
-    // Topic management
-    createTopic: (ScrapingTopic) -> (Result);
-    updateTopic: (text, ScrapingTopic) -> (variant { ok: ScrapingTopic; err: text });
-    getTopic: (text) -> (opt ScrapingTopic) query;
-    getTopics: () -> (vec ScrapingTopic) query;
-    deleteTopic: (text) -> (Result);
-    setTopicActive: (text, bool) -> (Result);
-    
-    // Task management
-    addTasks: (vec Task) -> (variant { ok: nat; err: text });
-    getTasks: () -> (vec Task) query;
-    getTasksByTopic: (text) -> (vec Task) query;
-    getTasksByStatus: (text) -> (vec Task) query;
-    assignTask: (text, principal) -> (Result);
-    updateTaskStatus: (text, text) -> (Result);
-    
-    // AI configuration
-    getAIConfiguration: () -> (AIConfig) query;
-    updateAIConfiguration: (AIConfig) -> (Result);
-    
-    // System
-    getCycles: () -> (nat) query;
+    add_user: (principal, UserRole) -> (Result_1);
+    createTopic: (CreateTopicRequest) -> (Result_3);
+    deleteTopic: (text) -> (Result_1);
+    getAIConfig: () -> (Result_2) query;
+    getScrapedData: (vec text) -> (Result_4);
+    getTopics: () -> (Result_4) query;
+    get_users: () -> (Result_5);
+    remove_user: (principal) -> (Result_1);
+    setTopicActive: (text, bool) -> (Result_1);
+    testExtraction: (record {
+        url: text;
+        extraction_rules: record {
+            fields: vec ExtractionField;
+            customPrompt: opt text;
+        };
+    }) -> (Result);
+    updateAIConfig: (AIConfig) -> (Result_2);
+    updateLastScraped: (text, int) -> (Result);
+    updateTopic: (text, UpdateTopicRequest) -> (Result_3);
 };

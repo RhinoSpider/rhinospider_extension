@@ -3,6 +3,27 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { useAuth } from '@rhinospider/web3-client';
 import { StorageManager } from '../utils/storage';
+import { Line } from 'react-chartjs-2';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend
+} from 'chart.js';
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend
+);
 
 const Analytics = () => {
   const navigate = useNavigate();
@@ -12,6 +33,11 @@ const Analytics = () => {
     totalRequests: 0,
     totalBandwidth: 0,
     dailyStats: [],
+    realTimeStats: {
+      bandwidthUsed: 0,
+      requestsProcessed: 0,
+      lastUpdate: null
+    }
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -43,24 +69,22 @@ const Analytics = () => {
             const scrapingStats = await storage.getStats(dateStr);
             if (scrapingStats) {
               totalRequests += scrapingStats.requestCount || 0;
-              totalBandwidth += ((scrapingStats.bytesDownloaded || 0) + (scrapingStats.bytesUploaded || 0)) / (1024 * 1024 * 1024);
+              totalBandwidth += ((scrapingStats.bytesDownloaded || 0) + (scrapingStats.bytesUploaded || 0)) / (1024 * 1024);
+              
+              dailyStats.unshift({
+                date: dateStr,
+                points: (await storage.getDailyPoints(dateStr))?.total || 0,
+                bandwidth: ((scrapingStats.bytesDownloaded || 0) + (scrapingStats.bytesUploaded || 0)) / (1024 * 1024),
+                requests: scrapingStats.requestCount || 0
+              });
             }
 
             const points = await storage.getDailyPoints(dateStr);
             if (points) {
               totalPoints += points.total || 0;
             }
-
-            if (mounted) {
-              dailyStats.push({
-                date: dateStr,
-                points: points?.total || 0,
-                requests: scrapingStats?.requestCount || 0,
-                bandwidth: ((scrapingStats?.bytesDownloaded || 0) + (scrapingStats?.bytesUploaded || 0)) / (1024 * 1024 * 1024)
-              });
-            }
-          } catch (err) {
-            console.warn(`Failed to fetch stats for ${dateStr}:`, err);
+          } catch (error) {
+            console.error(`Error fetching stats for ${dateStr}:`, error);
           }
         }
 
@@ -69,13 +93,14 @@ const Analytics = () => {
             totalPoints,
             totalRequests,
             totalBandwidth,
-            dailyStats: dailyStats.reverse()
+            dailyStats,
+            streak,
+            realTimeStats: stats.realTimeStats
           });
         }
-      } catch (err) {
-        console.error('Failed to fetch analytics:', err);
+      } catch (error) {
         if (mounted) {
-          setError('Failed to load analytics data. Please try again later.');
+          setError(error.message);
         }
       } finally {
         if (mounted) {
@@ -84,106 +109,114 @@ const Analytics = () => {
       }
     };
 
+    // Initial fetch
     fetchStats();
+
+    // Set up real-time updates
+    const updateInterval = setInterval(async () => {
+      const today = new Date().toISOString().split('T')[0];
+      const currentStats = await storage.getStats(today);
+      if (currentStats && mounted) {
+        setStats(prev => ({
+          ...prev,
+          realTimeStats: {
+            bandwidthUsed: ((currentStats.bytesDownloaded || 0) + (currentStats.bytesUploaded || 0)) / (1024 * 1024),
+            requestsProcessed: currentStats.requestCount || 0,
+            lastUpdate: new Date()
+          }
+        }));
+      }
+    }, 5000); // Update every 5 seconds
+
     return () => {
       mounted = false;
+      clearInterval(updateInterval);
     };
   }, []);
 
-  if (loading) {
-    return (
-      <div className="popup-content" style={{ width: '360px', height: '600px', overflow: 'auto' }}>
-        <div className="header">
-          <button onClick={() => navigate('/')} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <h1 className="text-xl font-semibold">Analytics</h1>
-        </div>
-        <div className="flex items-center justify-center h-full">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary mx-auto"></div>
-            <p className="mt-4">Loading analytics...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const chartData = {
+    labels: stats.dailyStats.map(stat => stat.date),
+    datasets: [
+      {
+        label: 'Points',
+        data: stats.dailyStats.map(stat => stat.points),
+        borderColor: 'rgb(75, 192, 192)',
+        tension: 0.1
+      },
+      {
+        label: 'Bandwidth (MB)',
+        data: stats.dailyStats.map(stat => stat.bandwidth),
+        borderColor: 'rgb(255, 99, 132)',
+        tension: 0.1
+      }
+    ]
+  };
 
-  if (error) {
-    return (
-      <div className="popup-content" style={{ width: '360px', height: '600px', overflow: 'auto' }}>
-        <div className="header">
-          <button onClick={() => navigate('/')} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <h1 className="text-xl font-semibold">Analytics</h1>
-        </div>
-        <div className="flex items-center justify-center h-full">
-          <div className="text-center text-red-500">
-            <p>{error}</p>
-            <button 
-              onClick={() => window.location.reload()} 
-              className="mt-4 px-4 py-2 bg-primary text-white rounded hover:bg-primary/90"
-            >
-              Retry
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <div className="p-4">Loading...</div>;
+  if (error) return <div className="p-4 text-red-500">Error: {error}</div>;
 
   return (
-    <div className="popup-content" style={{ width: '360px', height: '600px', overflow: 'auto' }}>
-      <div className="header">
-        <button onClick={() => navigate('/')} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
-          <ArrowLeft className="w-5 h-5" />
+    <div className="container mx-auto p-4">
+      <div className="flex items-center mb-6">
+        <button onClick={() => navigate(-1)} className="mr-4">
+          <ArrowLeft className="h-6 w-6" />
         </button>
-        <h1 className="text-xl font-semibold">Analytics</h1>
-        <div className="text-xs text-secondary mt-1">
-          {user?.principal?.toString()}
+        <h1 className="text-2xl font-bold">Analytics</h1>
+      </div>
+
+      {/* Real-time Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="bg-gray-800 rounded-lg p-4">
+          <h3 className="text-lg font-semibold mb-2">Today's Bandwidth</h3>
+          <p className="text-2xl">{stats.realTimeStats.bandwidthUsed.toFixed(2)} MB</p>
+          <p className="text-sm text-gray-400">Last updated: {stats.realTimeStats.lastUpdate?.toLocaleTimeString()}</p>
+        </div>
+        <div className="bg-gray-800 rounded-lg p-4">
+          <h3 className="text-lg font-semibold mb-2">Today's Requests</h3>
+          <p className="text-2xl">{stats.realTimeStats.requestsProcessed}</p>
+        </div>
+        <div className="bg-gray-800 rounded-lg p-4">
+          <h3 className="text-lg font-semibold mb-2">Current Streak</h3>
+          <p className="text-2xl">{stats.streak} days</p>
+          <p className="text-sm text-gray-400">+{(stats.streak * 0.1 * 100).toFixed(0)}% bonus</p>
         </div>
       </div>
 
-      <div className="stats-grid">
-        <div className="stat">
-          <h3 className="stat-label">Points</h3>
-          <p className="stat-value">{stats.totalPoints.toLocaleString()}</p>
+      {/* Total Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="bg-gray-800 rounded-lg p-4">
+          <h3 className="text-lg font-semibold mb-2">Total Points</h3>
+          <p className="text-2xl">{stats.totalPoints.toFixed(0)}</p>
         </div>
-        <div className="stat">
-          <h3 className="stat-label">Requests</h3>
-          <p className="stat-value">{stats.totalRequests.toLocaleString()}</p>
+        <div className="bg-gray-800 rounded-lg p-4">
+          <h3 className="text-lg font-semibold mb-2">Total Bandwidth</h3>
+          <p className="text-2xl">{stats.totalBandwidth.toFixed(2)} MB</p>
         </div>
-        <div className="stat">
-          <h3 className="stat-label">Bandwidth</h3>
-          <p className="stat-value">{stats.totalBandwidth.toFixed(2)} GB</p>
+        <div className="bg-gray-800 rounded-lg p-4">
+          <h3 className="text-lg font-semibold mb-2">Total Requests</h3>
+          <p className="text-2xl">{stats.totalRequests}</p>
         </div>
       </div>
 
-      <div className="stats-table">
-        <h2 className="text-sm font-semibold mb-2">Daily Activity</h2>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr>
-                <th className="text-left">Date</th>
-                <th className="text-right">Points</th>
-                <th className="text-right">Requests</th>
-                <th className="text-right">Bandwidth</th>
-              </tr>
-            </thead>
-            <tbody>
-              {stats.dailyStats.map((day) => (
-                <tr key={day.date}>
-                  <td>{new Date(day.date).toLocaleDateString()}</td>
-                  <td className="text-right">{day.points}</td>
-                  <td className="text-right">{day.requests}</td>
-                  <td className="text-right">{day.bandwidth.toFixed(2)} GB</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      {/* Chart */}
+      <div className="bg-gray-800 rounded-lg p-4">
+        <h3 className="text-lg font-semibold mb-4">7-Day Activity</h3>
+        <Line data={chartData} options={{
+          responsive: true,
+          scales: {
+            y: {
+              beginAtZero: true,
+              grid: {
+                color: 'rgba(255, 255, 255, 0.1)'
+              }
+            },
+            x: {
+              grid: {
+                color: 'rgba(255, 255, 255, 0.1)'
+              }
+            }
+          }
+        }} />
       </div>
     </div>
   );

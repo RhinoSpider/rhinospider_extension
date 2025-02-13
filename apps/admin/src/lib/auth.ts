@@ -1,30 +1,57 @@
-import { AuthClient } from '@rhinospider/web3-client';
+import { AuthClient } from '@dfinity/auth-client';
+import { Identity } from '@dfinity/agent';
 
 let authClient: AuthClient | null = null;
 
-export const getAuthClient = (): AuthClient => {
+export const initAuthClient = async (): Promise<AuthClient> => {
   if (!authClient) {
     console.log('Creating new auth client...');
-    authClient = AuthClient.getInstance({
-      identityProvider: 'http://127.0.0.1:8000?canisterId=be2us-64aaa-aaaaa-qaabq-cai'
-    });
+    authClient = await AuthClient.create();
     console.log('Auth client created');
   }
   return authClient;
 };
 
+export const isAuthenticated = async (): Promise<boolean> => {
+  try {
+    const client = await initAuthClient();
+    return client.isAuthenticated();
+  } catch (error) {
+    console.error('Failed to check auth:', error);
+    return false;
+  }
+};
+
 export const login = async (): Promise<void> => {
-  const client = getAuthClient();
-  await client.login();
+  const client = await initAuthClient();
+  const identityProviderUrl = import.meta.env.VITE_II_URL || 'https://identity.ic0.app';
+
+  await new Promise<void>((resolve, reject) => {
+    client.login({
+      identityProvider: identityProviderUrl,
+      maxTimeToLive: BigInt(7 * 24 * 60 * 60 * 1000 * 1000 * 1000), // 7 days in nanoseconds
+      onSuccess: () => {
+        console.log('Login successful');
+        resolve();
+      },
+      onError: (error) => {
+        console.error('Login failed:', error);
+        reject(error);
+      },
+    });
+  });
 };
 
 export const logout = async (): Promise<void> => {
-  const client = getAuthClient();
+  const client = await initAuthClient();
   await client.logout();
   authClient = null;
 };
 
-export const isAuthenticated = async (): Promise<boolean> => {
-  const client = getAuthClient();
-  return client.isAuthenticated();
+export const getIdentity = async (): Promise<Identity | null> => {
+  const client = await initAuthClient();
+  if (await client.isAuthenticated()) {
+    return client.getIdentity();
+  }
+  return null;
 };

@@ -4,14 +4,17 @@
       "main": "canisters/admin/main.mo",
       "type": "motoko",
       "dependencies": ["auth"],
+      "declarations": {
+        "node_compatibility": true
+      }
+    },
+    "admin_frontend": {
       "frontend": {
         "entrypoint": "apps/admin/dist/index.html"
       },
       "source": ["apps/admin/dist/"],
       "type": "assets",
-      "declarations": {
-        "node_compatibility": true
-      }
+      "dependencies": ["admin"]
     },
     "auth": {
       "main": "canisters/auth/main.mo",

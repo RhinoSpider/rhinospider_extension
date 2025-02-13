@@ -165,20 +165,56 @@ async function processContent(content, topic) {
 }
 
 function calculatePoints(stats, streak) {
+  // Base points configuration
   const POINTS_PER_REQUEST = 10;
   const POINTS_PER_MB = 1;
   const STREAK_MULTIPLIER = 0.1;
+  const QUALITY_MULTIPLIER = 0.2;
+  const PEAK_HOURS_BONUS = 0.2;
+  const RESOURCE_BONUS = 0.05;
 
+  // Calculate base points
   const requestPoints = stats.requestCount * POINTS_PER_REQUEST;
   const bandwidthPoints = Math.floor((stats.bytesDownloaded + stats.bytesUploaded) / (1024 * 1024)) * POINTS_PER_MB;
+
+  // Calculate quality multiplier (based on successful vs failed requests)
+  const successRate = stats.successCount / (stats.successCount + stats.failureCount || 1);
+  const qualityBonus = Math.floor((requestPoints + bandwidthPoints) * (successRate * QUALITY_MULTIPLIER));
+
+  // Calculate streak bonus
   const streakBonus = Math.floor((requestPoints + bandwidthPoints) * (streak * STREAK_MULTIPLIER));
 
+  // Check if current hour is peak (9 AM - 5 PM local time)
+  const currentHour = new Date().getHours();
+  const isPeakHour = currentHour >= 9 && currentHour <= 17;
+  const peakBonus = isPeakHour ? Math.floor((requestPoints + bandwidthPoints) * PEAK_HOURS_BONUS) : 0;
+
+  // Resource optimization bonus (if processing multiple topics)
+  const resourceBonus = stats.topicsProcessed > 1 
+    ? Math.floor((requestPoints + bandwidthPoints) * (RESOURCE_BONUS * Math.min(stats.topicsProcessed, 5))) 
+    : 0;
+
+  // Calculate total points
+  const total = requestPoints + bandwidthPoints + streakBonus + qualityBonus + peakBonus + resourceBonus;
+
+  // Cap at 1000 points per day
+  const cappedTotal = Math.min(total, 1000);
+
   return {
-    total: requestPoints + bandwidthPoints + streakBonus,
+    total: cappedTotal,
     breakdown: {
       requests: requestPoints,
       bandwidth: bandwidthPoints,
-      streak: streakBonus
+      streak: streakBonus,
+      quality: qualityBonus,
+      peak: peakBonus,
+      resource: resourceBonus
+    },
+    multipliers: {
+      streak: streak * STREAK_MULTIPLIER,
+      quality: successRate * QUALITY_MULTIPLIER,
+      peak: isPeakHour ? PEAK_HOURS_BONUS : 0,
+      resource: stats.topicsProcessed > 1 ? RESOURCE_BONUS * Math.min(stats.topicsProcessed, 5) : 0
     }
   };
 }
@@ -203,6 +239,111 @@ function findMatchingTopic(url) {
   return null;
 }
 
+// Check if a topic should be scraped based on its schedule
+function shouldScrapeTopic(topic) {
+  const now = Date.now();
+  const currentHour = new Date().getUTCHours();
+
+  // Check if within active hours
+  if (currentHour < topic.activeHours.start || currentHour > topic.activeHours.end) {
+    return false;
+  }
+
+  // Check if enough time has passed since last scrape
+  const timeSinceLastScrape = now - topic.lastScraped;
+  if (timeSinceLastScrape < topic.scrapingInterval * 1000) {
+    return false;
+  }
+
+  return true;
+}
+
+// Update last scraped time for a topic
+async function updateLastScraped(topic) {
+  try {
+    const response = await fetch(`${apiConfig.adminUrl}/topics/${topic.id}/lastScraped`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        timestamp: Date.now()
+      })
+    });
+    
+    if (!response.ok) {
+      console.error('Failed to update last scraped time:', await response.text());
+    }
+  } catch (error) {
+    console.error('Error updating last scraped time:', error);
+  }
+}
+
+// Get active topics that need scraping
+async function getActiveTopics() {
+  try {
+    const response = await fetch(`${apiConfig.adminUrl}/topics`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch topics');
+    }
+
+    const topics = await response.json();
+    return topics.filter(topic => 
+      topic.status === 'active' && shouldScrapeTopic(topic)
+    );
+  } catch (error) {
+    console.error('Error fetching topics:', error);
+    return [];
+  }
+}
+
+// Main scraping loop
+async function scrapeLoop() {
+  const topics = await getActiveTopics();
+  
+  for (const topic of topics) {
+    try {
+      // Start scraping
+      const result = await scrapeContent(topic);
+      
+      if (result.success) {
+        // Update last scraped time
+        await updateLastScraped(topic);
+        
+        // Update analytics
+        await updateAnalytics({
+          topicId: topic.id,
+          success: true,
+          bytesProcessed: result.bytesProcessed,
+          processingTime: result.processingTime
+        });
+      } else {
+        // Handle failure
+        console.error('Scraping failed for topic:', topic.id, result.error);
+        
+        // Update analytics with failure
+        await updateAnalytics({
+          topicId: topic.id,
+          success: false,
+          error: result.error
+        });
+      }
+    } catch (error) {
+      console.error('Error processing topic:', topic.id, error);
+    }
+  }
+}
+
+// Start scraping loop with interval
+setInterval(scrapeLoop, 60000); // Check every minute
+scrapeLoop(); // Initial run
+
 // Listen for messages
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('Received message:', message);
@@ -226,9 +367,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   
   return true; // Keep the message channel open for async response
 });
-
-// Update topics periodically
-setInterval(updateTopics, 5 * 60 * 1000); // Every 5 minutes
 
 // Initialize auth when service worker starts
 initializeAuth();

@@ -1,126 +1,228 @@
 import type { Principal } from '@dfinity/principal';
 import type { ActorMethod } from '@dfinity/agent';
-import type { IDL } from '@dfinity/candid';
 
-export interface AIConfig {
-  'model' : string,
-  'costLimits' : CostLimits,
-  'apiKey' : string,
+export type BatchId = bigint;
+export type BatchOperationKind = {
+    'SetAssetProperties' : SetAssetPropertiesArguments
+  } |
+  { 'CreateAsset' : CreateAssetArguments } |
+  { 'UnsetAssetContent' : UnsetAssetContentArguments } |
+  { 'DeleteAsset' : DeleteAssetArguments } |
+  { 'SetAssetContent' : SetAssetContentArguments } |
+  { 'Clear' : ClearArguments };
+export type ChunkId = bigint;
+export type ClearArguments = {};
+export interface CommitBatchArguments {
+  'batch_id' : BatchId,
+  'operations' : Array<BatchOperationKind>,
 }
-export interface CostLimits {
-  'maxConcurrent' : bigint,
-  'dailyUSD' : bigint,
-  'monthlyUSD' : bigint,
+export interface CommitProposedBatchArguments {
+  'batch_id' : BatchId,
+  'evidence' : Uint8Array | number[],
 }
-export interface ExtractionRules {
-  'fields' : Array<ScrapingField>,
-  'customPrompt' : [] | [string],
+export interface ComputeEvidenceArguments {
+  'batch_id' : BatchId,
+  'max_iterations' : [] | [number],
 }
-export type RateLimit = [] | [
-  { 'maxConcurrent' : bigint, 'requestsPerHour' : bigint }
-];
-export type Result = { 'ok' : ScrapingTopic } |
-  { 'err' : string };
-export type Result_1 = { 'ok' : null } |
-  { 'err' : string };
-export type Result_2 = { 'ok' : string } |
-  { 'err' : string };
-export type Result_3 = { 'ok' : Array<ScrapedData> } |
-  { 'err' : string };
-export type Result_4 = { 'ok' : AIConfig } |
-  { 'err' : string };
-export type Result_5 = { 'ok' : bigint } |
-  { 'err' : string };
-export interface ScrapedData {
-  'id' : string,
+export interface ConfigurationResponse {
+  'max_batches' : [] | [bigint],
+  'max_bytes' : [] | [bigint],
+  'max_chunks' : [] | [bigint],
+}
+export interface ConfigureArguments {
+  'max_batches' : [] | [[] | [bigint]],
+  'max_bytes' : [] | [[] | [bigint]],
+  'max_chunks' : [] | [[] | [bigint]],
+}
+export interface CreateAssetArguments {
+  'key' : Key,
+  'content_type' : string,
+  'headers' : [] | [Array<HeaderField>],
+  'allow_raw_access' : [] | [boolean],
+  'max_age' : [] | [bigint],
+  'enable_aliasing' : [] | [boolean],
+}
+export interface DeleteAssetArguments { 'key' : Key }
+export interface DeleteBatchArguments { 'batch_id' : BatchId }
+export interface GrantPermission {
+  'permission' : Permission,
+  'to_principal' : Principal,
+}
+export type HeaderField = [string, string];
+export interface HttpRequest {
   'url' : string,
-  'topic' : string,
-  'content' : string,
-  'source' : string,
-  'timestamp' : bigint,
-  'client_id' : Principal,
+  'method' : string,
+  'body' : Uint8Array | number[],
+  'headers' : Array<HeaderField>,
+  'certificate_version' : [] | [number],
 }
-export interface ScrapingField {
-  'name' : string,
-  'aiPrompt' : string,
-  'required' : boolean,
-  'fieldType' : string,
+export interface HttpResponse {
+  'body' : Uint8Array | number[],
+  'headers' : Array<HeaderField>,
+  'streaming_strategy' : [] | [StreamingStrategy],
+  'status_code' : number,
 }
-export interface ScrapingField__1 {
-  'name' : string,
-  'aiPrompt' : string,
-  'required' : boolean,
-  'fieldType' : string,
+export type Key = string;
+export interface ListPermitted { 'permission' : Permission }
+export type Permission = { 'Prepare' : null } |
+  { 'ManagePermissions' : null } |
+  { 'Commit' : null };
+export interface RevokePermission {
+  'permission' : Permission,
+  'of_principal' : Principal,
 }
-export interface ScrapingTopic {
-  'id' : string,
-  'active' : boolean,
-  'name' : string,
-  'createdAt' : bigint,
-  'description' : string,
-  'urlPatterns' : Array<string>,
-  'extractionRules' : ExtractionRules,
-  'rateLimit' : RateLimit,
-  'validation' : Validation,
+export interface SetAssetContentArguments {
+  'key' : Key,
+  'sha256' : [] | [Uint8Array | number[]],
+  'chunk_ids' : Array<ChunkId>,
+  'content_encoding' : string,
 }
-export interface Task {
-  'id' : string,
-  'url' : string,
-  'status' : string,
-  'topic' : string,
-  'assignedTo' : [] | [Principal],
-  'createdAt' : bigint,
-  'priority' : bigint,
+export interface SetAssetPropertiesArguments {
+  'key' : Key,
+  'headers' : [] | [[] | [Array<HeaderField>]],
+  'is_aliased' : [] | [[] | [boolean]],
+  'allow_raw_access' : [] | [[] | [boolean]],
+  'max_age' : [] | [[] | [bigint]],
 }
-export interface TaskConfig {
-  'targetSites' : Array<string>,
-  'maxBandwidthPerDay' : bigint,
-  'topics' : Array<string>,
-  'scanInterval' : bigint,
+export interface StreamingCallbackHttpResponse {
+  'token' : [] | [StreamingCallbackToken],
+  'body' : Uint8Array | number[],
 }
+export interface StreamingCallbackToken {
+  'key' : Key,
+  'sha256' : [] | [Uint8Array | number[]],
+  'index' : bigint,
+  'content_encoding' : string,
+}
+export type StreamingStrategy = {
+    'Callback' : {
+      'token' : StreamingCallbackToken,
+      'callback' : [Principal, string],
+    }
+  };
 export type Time = bigint;
-export interface User {
-  'principal' : Principal,
-  'role' : UserRole,
-  'addedAt' : Time,
-  'addedBy' : Principal,
+export interface UnsetAssetContentArguments {
+  'key' : Key,
+  'content_encoding' : string,
 }
-export type UserRole = { 'Operator' : null } |
-  { 'SuperAdmin' : null } |
-  { 'Admin' : null };
-export type Validation = [] | [
-  { 'aiValidation' : [] | [string], 'rules' : Array<string> }
-];
+export type ValidationResult = { 'Ok' : string } |
+  { 'Err' : string };
 export interface _SERVICE {
-  'addTasks' : ActorMethod<[Array<Task>], Result_5>,
-  'addUser' : ActorMethod<[Principal, UserRole], Result_1>,
-  'clearAllData' : ActorMethod<[], string>,
-  'createTopic' : ActorMethod<[ScrapingTopic], Result>,
-  'deleteTopic' : ActorMethod<[string], Result_1>,
-  'getAIConfig' : ActorMethod<[], Result_4>,
-  'getConfig' : ActorMethod<[], TaskConfig>,
-  'getScrapedData' : ActorMethod<[Array<string>], Result_3>,
-  'getTasks' : ActorMethod<[bigint], Array<Task>>,
-  'getTopics' : ActorMethod<[], Array<ScrapingTopic>>,
-  'getUsers' : ActorMethod<[], Array<User>>,
-  'removeUser' : ActorMethod<[Principal], Result_1>,
-  'setTopicActive' : ActorMethod<[string, boolean], Result_1>,
-  'testExtraction' : ActorMethod<
+  'api_version' : ActorMethod<[], number>,
+  'authorize' : ActorMethod<[Principal], undefined>,
+  'certified_tree' : ActorMethod<
+    [{}],
+    { 'certificate' : Uint8Array | number[], 'tree' : Uint8Array | number[] }
+  >,
+  'clear' : ActorMethod<[ClearArguments], undefined>,
+  'commit_batch' : ActorMethod<[CommitBatchArguments], undefined>,
+  'commit_proposed_batch' : ActorMethod<
+    [CommitProposedBatchArguments],
+    undefined
+  >,
+  'compute_evidence' : ActorMethod<
+    [ComputeEvidenceArguments],
+    [] | [Uint8Array | number[]]
+  >,
+  'configure' : ActorMethod<[ConfigureArguments], undefined>,
+  'create_asset' : ActorMethod<[CreateAssetArguments], undefined>,
+  'create_batch' : ActorMethod<[{}], { 'batch_id' : BatchId }>,
+  'create_chunk' : ActorMethod<
+    [{ 'content' : Uint8Array | number[], 'batch_id' : BatchId }],
+    { 'chunk_id' : ChunkId }
+  >,
+  'deauthorize' : ActorMethod<[Principal], undefined>,
+  'delete_asset' : ActorMethod<[DeleteAssetArguments], undefined>,
+  'delete_batch' : ActorMethod<[DeleteBatchArguments], undefined>,
+  'get' : ActorMethod<
+    [{ 'key' : Key, 'accept_encodings' : Array<string> }],
+    {
+      'content' : Uint8Array | number[],
+      'sha256' : [] | [Uint8Array | number[]],
+      'content_type' : string,
+      'content_encoding' : string,
+      'total_length' : bigint,
+    }
+  >,
+  'get_asset_properties' : ActorMethod<
+    [Key],
+    {
+      'headers' : [] | [Array<HeaderField>],
+      'is_aliased' : [] | [boolean],
+      'allow_raw_access' : [] | [boolean],
+      'max_age' : [] | [bigint],
+    }
+  >,
+  'get_chunk' : ActorMethod<
     [
       {
-        'url' : string,
-        'extraction_rules' : {
-          'custom_prompt' : [] | [string],
-          'fields' : Array<ScrapingField__1>,
-        },
+        'key' : Key,
+        'sha256' : [] | [Uint8Array | number[]],
+        'index' : bigint,
+        'content_encoding' : string,
       },
     ],
-    Result_2
+    { 'content' : Uint8Array | number[] }
   >,
-  'updateAIConfig' : ActorMethod<[AIConfig], Result_1>,
-  'updateConfig' : ActorMethod<[TaskConfig], Result_1>,
-  'updateTaskStatus' : ActorMethod<[string, string], Result_1>,
-  'updateTopic' : ActorMethod<[string, ScrapingTopic], Result>,
+  'get_configuration' : ActorMethod<[], ConfigurationResponse>,
+  'grant_permission' : ActorMethod<[GrantPermission], undefined>,
+  'http_request' : ActorMethod<[HttpRequest], HttpResponse>,
+  'http_request_streaming_callback' : ActorMethod<
+    [StreamingCallbackToken],
+    [] | [StreamingCallbackHttpResponse]
+  >,
+  'list' : ActorMethod<
+    [{}],
+    Array<
+      {
+        'key' : Key,
+        'encodings' : Array<
+          {
+            'modified' : Time,
+            'sha256' : [] | [Uint8Array | number[]],
+            'length' : bigint,
+            'content_encoding' : string,
+          }
+        >,
+        'content_type' : string,
+      }
+    >
+  >,
+  'list_authorized' : ActorMethod<[], Array<Principal>>,
+  'list_permitted' : ActorMethod<[ListPermitted], Array<Principal>>,
+  'propose_commit_batch' : ActorMethod<[CommitBatchArguments], undefined>,
+  'revoke_permission' : ActorMethod<[RevokePermission], undefined>,
+  'set_asset_content' : ActorMethod<[SetAssetContentArguments], undefined>,
+  'set_asset_properties' : ActorMethod<
+    [SetAssetPropertiesArguments],
+    undefined
+  >,
+  'store' : ActorMethod<
+    [
+      {
+        'key' : Key,
+        'content' : Uint8Array | number[],
+        'sha256' : [] | [Uint8Array | number[]],
+        'content_type' : string,
+        'content_encoding' : string,
+      },
+    ],
+    undefined
+  >,
+  'take_ownership' : ActorMethod<[], undefined>,
+  'unset_asset_content' : ActorMethod<[UnsetAssetContentArguments], undefined>,
+  'validate_commit_proposed_batch' : ActorMethod<
+    [CommitProposedBatchArguments],
+    ValidationResult
+  >,
+  'validate_configure' : ActorMethod<[ConfigureArguments], ValidationResult>,
+  'validate_grant_permission' : ActorMethod<
+    [GrantPermission],
+    ValidationResult
+  >,
+  'validate_revoke_permission' : ActorMethod<
+    [RevokePermission],
+    ValidationResult
+  >,
+  'validate_take_ownership' : ActorMethod<[], ValidationResult>,
 }
-export declare const idlFactory: IDL.InterfaceFactory;
-export declare const init: (args: { IDL: typeof IDL }) => IDL.Type[];

@@ -1,23 +1,10 @@
-import React, { useEffect } from 'react';
-import { getAuthClient } from './lib/auth';
+import React from 'react';
 import { useAuth } from './hooks/useAuth';
 import { Login } from './components/Login';
 import { Dashboard } from './components/Dashboard';
 
 export const App: React.FC = () => {
   const { isAuthenticated, isInitialized } = useAuth();
-
-  useEffect(() => {
-    const initAuth = async () => {
-      try {
-        const authClient = getAuthClient();
-        await authClient.initialize();
-      } catch (error) {
-        console.error('Failed to initialize auth:', error);
-      }
-    };
-    initAuth();
-  }, []);
 
   if (!isInitialized) {
     return (

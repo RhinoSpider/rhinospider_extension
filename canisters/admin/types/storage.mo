@@ -5,20 +5,20 @@ module {
     public type AIConfig = {
         apiKey: Text;
         model: Text;
+        temperature: Float;
+        maxTokens: Nat;
         costLimits: CostLimits;
     };
 
     public type CostLimits = {
-        dailyUSD: Nat;
-        monthlyUSD: Nat;
-        maxConcurrent: Nat;
+        maxDailyCost: Float;
+        maxMonthlyCost: Float;
     };
 
     public type ScrapingField = {
         name: Text;
-        fieldType: Text;
+        description: Text;
         required: Bool;
-        aiPrompt: Text;
     };
 
     public type ExtractionRules = {
@@ -26,37 +26,38 @@ module {
         customPrompt: ?Text;
     };
 
-    public type Validation = ?{
-        rules: [Text];
-        aiValidation: ?Text;
-    };
-
-    public type RateLimit = ?{
-        requestsPerHour: Nat;
-        maxConcurrent: Nat;
+    public type ScrapingTopic = {
+        id: Text;
+        name: Text;
+        description: Text;
+        url: Text;
+        aiConfig: AIConfig;
+        status: Text;
+        extractionRules: ExtractionRules;
+        scrapingInterval: Nat;  // In seconds
+        lastScraped: Int;      // Timestamp
+        activeHours: {
+            start: Nat;        // Hour in UTC (0-23)
+            end: Nat;          // Hour in UTC (0-23)
+        };
+        maxRetries: Nat;       // Max retries per URL
+        createdAt: Int;
     };
 
     public type CreateTopicRequest = {
         id: Text;
         name: Text;
         description: Text;
-        urlPatterns: [Text];
-        active: Bool;
+        url: Text;
+        aiConfig: AIConfig;
+        status: Text;
         extractionRules: ExtractionRules;
-        validation: Validation;
-        rateLimit: RateLimit;
-    };
-
-    public type ScrapingTopic = {
-        id: Text;
-        name: Text;
-        description: Text;
-        urlPatterns: [Text];
-        active: Bool;
-        extractionRules: ExtractionRules;
-        validation: Validation;
-        rateLimit: RateLimit;
-        createdAt: Int;
+        scrapingInterval: Nat;
+        activeHours: {
+            start: Nat;
+            end: Nat;
+        };
+        maxRetries: Nat;
     };
 
     public type ScrapedData = {

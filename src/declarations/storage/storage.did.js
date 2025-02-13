@@ -1,12 +1,12 @@
 export const idlFactory = ({ IDL }) => {
-  const ExtractionField = IDL.Record({
+  const ScrapingField = IDL.Record({
     'name' : IDL.Text,
     'aiPrompt' : IDL.Text,
     'required' : IDL.Bool,
     'fieldType' : IDL.Text,
   });
   const ExtractionRules = IDL.Record({
-    'fields' : IDL.Vec(ExtractionField),
+    'fields' : IDL.Vec(ScrapingField),
     'customPrompt' : IDL.Opt(IDL.Text),
   });
   const ScrapingTopic = IDL.Record({
@@ -14,12 +14,24 @@ export const idlFactory = ({ IDL }) => {
     'active' : IDL.Bool,
     'name' : IDL.Text,
     'createdAt' : IDL.Int,
-    'description' : IDL.Opt(IDL.Text),
-    'updatedAt' : IDL.Int,
+    'description' : IDL.Text,
     'urlPatterns' : IDL.Vec(IDL.Text),
-    'extractionRules' : IDL.Opt(ExtractionRules),
+    'extractionRules' : ExtractionRules,
+    'rateLimit' : IDL.Opt(
+      IDL.Record({ 'maxConcurrent' : IDL.Nat, 'requestsPerHour' : IDL.Nat })
+    ),
   });
-  const Result_1 = IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text });
+  const Result_2 = IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text });
+  const ExtractionRequest = IDL.Record({
+    'url' : IDL.Text,
+    'extractionRules' : ExtractionRules,
+  });
+  const ExtractionResult = IDL.Record({
+    'url' : IDL.Text,
+    'data' : IDL.Vec(IDL.Tuple(IDL.Text, IDL.Text)),
+    'timestamp' : IDL.Int,
+  });
+  const Result_1 = IDL.Variant({ 'ok' : ExtractionResult, 'err' : IDL.Text });
   const ScrapedData = IDL.Record({
     'id' : IDL.Text,
     'url' : IDL.Text,
@@ -60,8 +72,8 @@ export const idlFactory = ({ IDL }) => {
     }),
     'publish_date' : IDL.Int,
   });
-  const Result_4 = IDL.Variant({ 'ok' : ScrapedContent, 'err' : IDL.Text });
-  const Result_3 = IDL.Variant({
+  const Result_5 = IDL.Variant({ 'ok' : ScrapedContent, 'err' : IDL.Text });
+  const Result_4 = IDL.Variant({
     'ok' : IDL.Vec(ScrapedContent),
     'err' : IDL.Text,
   });
@@ -73,7 +85,7 @@ export const idlFactory = ({ IDL }) => {
     'timestamp' : IDL.Int,
     'extraction_rules' : ExtractionRules,
   });
-  const Result_2 = IDL.Variant({
+  const Result_3 = IDL.Variant({
     'ok' : IDL.Vec(IDL.Tuple(IDL.Text, IDL.Text)),
     'err' : IDL.Text,
   });
@@ -82,12 +94,13 @@ export const idlFactory = ({ IDL }) => {
     'err' : IDL.Text,
   });
   const Storage = IDL.Service({
-    'createTopic' : IDL.Func([ScrapingTopic], [Result_1], []),
-    'deleteTopic' : IDL.Func([IDL.Text], [Result_1], []),
+    'createTopic' : IDL.Func([ScrapingTopic], [Result_2], []),
+    'deleteTopic' : IDL.Func([IDL.Text], [Result_2], []),
+    'extract' : IDL.Func([ExtractionRequest], [Result_1], []),
     'getBySource' : IDL.Func([IDL.Text], [IDL.Vec(ScrapedData)], ['query']),
-    'getContent' : IDL.Func([IDL.Text], [Result_4], ['query']),
-    'getContentBySource' : IDL.Func([IDL.Text], [Result_3], ['query']),
-    'getContentByTopic' : IDL.Func([IDL.Text, IDL.Nat], [Result_3], ['query']),
+    'getContent' : IDL.Func([IDL.Text], [Result_5], ['query']),
+    'getContentBySource' : IDL.Func([IDL.Text], [Result_4], ['query']),
+    'getContentByTopic' : IDL.Func([IDL.Text, IDL.Nat], [Result_4], ['query']),
     'getNextPendingUrl' : IDL.Func(
         [],
         [IDL.Opt(IDL.Record({ 'id' : IDL.Text, 'url' : IDL.Text }))],
@@ -100,22 +113,28 @@ export const idlFactory = ({ IDL }) => {
       ),
     'getTopic' : IDL.Func([IDL.Text], [IDL.Opt(ScrapingTopic)], ['query']),
     'getTopics' : IDL.Func([], [IDL.Vec(ScrapingTopic)], ['query']),
-    'processWithAI' : IDL.Func([Request], [Result_2], []),
-    'queueUrlForProcessing' : IDL.Func([IDL.Text, IDL.Text], [Result_1], []),
-    'setTopicActive' : IDL.Func([IDL.Text, IDL.Bool], [Result_1], []),
-    'storeContent' : IDL.Func([ScrapedContent], [Result_1], []),
+    'processWithAI' : IDL.Func([Request], [Result_3], []),
+    'queueUrlForProcessing' : IDL.Func([IDL.Text, IDL.Text], [Result_2], []),
+    'setTopicActive' : IDL.Func([IDL.Text, IDL.Bool], [Result_2], []),
+    'storeContent' : IDL.Func([ScrapedContent], [Result_2], []),
     'storeHtmlContent' : IDL.Func([IDL.Text, IDL.Text], [], []),
-    'storeRequest' : IDL.Func([Request], [Result_1], []),
-    'testExtraction' : IDL.Func(
-        [IDL.Record({ 'url' : IDL.Text, 'extractionRules' : ExtractionRules })],
-        [Result],
-        [],
-      ),
+    'storeRequest' : IDL.Func([Request], [Result_2], []),
+    'testExtraction' : IDL.Func([ExtractionRequest], [Result_1], []),
     'testExtractionLocal' : IDL.Func(
         [
           IDL.Record({
             'htmlContent' : IDL.Text,
-            'extractionRules' : ExtractionRules,
+            'extraction_rules' : ExtractionRules,
+          }),
+        ],
+        [Result],
+        [],
+      ),
+    'testLocalExtraction' : IDL.Func(
+        [
+          IDL.Record({
+            'htmlContent' : IDL.Text,
+            'extraction_rules' : ExtractionRules,
           }),
         ],
         [Result],

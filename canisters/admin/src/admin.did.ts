@@ -30,16 +30,16 @@ export const idlFactory = ({ IDL }) => {
     })),
   });
 
+  const CostLimits = IDL.Record({
+    'dailyUSD': IDL.Nat,
+    'monthlyUSD': IDL.Nat,
+    'maxConcurrent': IDL.Nat,
+  });
+
   const AIConfig = IDL.Record({
-    'provider': IDL.Text,
-    'api_key': IDL.Text,
+    'apiKey': IDL.Text,
     'model': IDL.Text,
-    'max_tokens': IDL.Nat32,
-    'temperature': IDL.Float64,
-    'cost_limits': IDL.Record({
-      'daily_usd': IDL.Float64,
-      'monthly_usd': IDL.Float64,
-    }),
+    'costLimits': CostLimits,
   });
 
   const ScrapedData = IDL.Record({
@@ -48,7 +48,7 @@ export const idlFactory = ({ IDL }) => {
     'url': IDL.Text,
     'timestamp': IDL.Nat64,
     'extracted_by': IDL.Text,
-    'data': IDL.Record(IDL.Text, IDL.Text),
+    'data': IDL.Record({ 'text': IDL.Text }),
     'quality': IDL.Record({
       'score': IDL.Float64,
       'issues': IDL.Opt(IDL.Vec(IDL.Text)),
@@ -71,18 +71,18 @@ export const idlFactory = ({ IDL }) => {
   });
 
   return IDL.Service({
-    'getTopics': IDL.Func([], [IDL.Result(IDL.Vec(ScrapingTopic), IDL.Text)], ['query']),
-    'createTopic': IDL.Func([ScrapingTopic], [IDL.Result(ScrapingTopic, IDL.Text)], []),
-    'updateTopic': IDL.Func([IDL.Text, ScrapingTopic], [IDL.Result(ScrapingTopic, IDL.Text)], []),
-    'deleteTopic': IDL.Func([IDL.Text], [IDL.Result(IDL.Bool, IDL.Text)], []),
+    'get_topics': IDL.Func([], [IDL.Vec(ScrapingTopic)], ['query']),
+    'create_topic': IDL.Func([ScrapingTopic], [ScrapingTopic], []),
+    'update_topic': IDL.Func([IDL.Text, ScrapingTopic], [ScrapingTopic], []),
+    'delete_topic': IDL.Func([IDL.Text], [], []),
     
-    'getAIConfig': IDL.Func([], [IDL.Result(AIConfig, IDL.Text)], ['query']),
-    'updateAIConfig': IDL.Func([AIConfig], [IDL.Result(AIConfig, IDL.Text)], []),
+    'getAIConfig': IDL.Func([], [IDL.Variant({ 'Ok': AIConfig, 'Err': IDL.Text })], []),
+    'updateAIConfig': IDL.Func([AIConfig], [IDL.Variant({ 'Ok': IDL.Null, 'Err': IDL.Text })], []),
     
-    'getScrapedData': IDL.Func([IDL.Opt(IDL.Text)], [IDL.Result(IDL.Vec(ScrapedData), IDL.Text)], ['query']),
-    'addScrapedData': IDL.Func([ScrapedData], [IDL.Result(ScrapedData, IDL.Text)], []),
+    'get_scraped_data': IDL.Func([IDL.Opt(IDL.Text)], [IDL.Vec(ScrapedData)], ['query']),
+    'delete_scraped_data': IDL.Func([IDL.Text], [], []),
     
-    'getUsers': IDL.Func([], [IDL.Result(IDL.Vec(ExtensionUser), IDL.Text)], ['query']),
-    'updateUser': IDL.Func([IDL.Text, ExtensionUser], [IDL.Result(ExtensionUser, IDL.Text)], []),
+    'get_users': IDL.Func([], [IDL.Vec(ExtensionUser)], ['query']),
+    'update_user': IDL.Func([IDL.Text, ExtensionUser], [ExtensionUser], []),
   });
 };

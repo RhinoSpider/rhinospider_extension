@@ -28,7 +28,7 @@ actor Auth {
     private var admins = HashMap.HashMap<Principal, Bool>(0, Principal.equal, Principal.hash);
 
     // Initialize with default admin
-    private stable let INITIAL_ADMIN = "YOUR_ADMIN_PRINCIPAL_ID";
+    private stable let INITIAL_ADMIN = "p6gaf-qjt3x-6q6ci-ro7nd-aklhp-6hgfo-4dljo-busl6-3ftgp-iliyi-zqe";
 
     // Constructor
     public shared func init(): async () {

@@ -2,67 +2,54 @@
 const _global = typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : typeof self !== 'undefined' ? self : {};
 (window as any).global = _global;
 
-import { Actor, HttpAgent, AnonymousIdentity } from '@dfinity/agent';
+import { Actor, HttpAgent } from '@dfinity/agent';
 import { idlFactory } from '@declarations/admin/admin.did.js';
 import type { ScrapingTopic, AIConfig, ScrapedData, ExtensionUser } from '../types';
-import { getAuthClient } from './auth';
+import { getIdentity } from './auth';
 
 let actor: any = null;
 
 export const getAdminActor = async () => {
   try {
-    // For local development, use anonymous identity
-    if (process.env.NODE_ENV !== 'production') {
-      if (!actor) {
-        const agent = new HttpAgent({ 
-          identity: new AnonymousIdentity(),
-          host: 'http://127.0.0.1:8000'
-        });
-        
-        await agent.fetchRootKey();
-        
-        actor = Actor.createActor(idlFactory, {
-          agent,
-          canisterId: import.meta.env.VITE_ADMIN_CANISTER_ID!,
-        });
-      }
-      return actor;
+    // Get identity
+    const identity = await getIdentity();
+    if (!identity) {
+      console.error('No identity found');
+      throw new Error('No identity found');
     }
 
-    // For production, use Internet Identity
-    const authClient = getAuthClient();
-    const state = authClient.getState();
-    console.log('Auth state:', state);
-    
-    if (!state.isAuthenticated || !state.identity) {
-      console.log('Not authenticated, starting login...');
-      await authClient.login();
-      return null;
-    }
+    console.log('Got identity:', identity.getPrincipal().toString());
 
-    if (!actor) {
-      const identity = state.identity;
-      console.log('Got identity:', identity.getPrincipal().toString());
-
+    // Create new actor if it doesn't exist or if we have a new identity
+    if (!actor || !actor._identity || actor._identity.getPrincipal().toString() !== identity.getPrincipal().toString()) {
       const agent = new HttpAgent({ 
         identity,
-        host: import.meta.env.VITE_IC_HOST || 'http://127.0.0.1:8000'
+        host: import.meta.env.VITE_IC_HOST || 'https://icp0.io'
       });
 
-      if (process.env.NODE_ENV !== 'production') {
+      if (import.meta.env.DEV) {
         await agent.fetchRootKey();
       }
 
-      actor = Actor.createActor(idlFactory, {
+      const canisterId = import.meta.env.VITE_ADMIN_CANISTER_ID;
+      if (!canisterId) {
+        throw new Error('Admin canister ID not found in environment variables');
+      }
+
+      actor = await Actor.createActor(idlFactory, {
         agent,
-        canisterId: import.meta.env.VITE_ADMIN_CANISTER_ID!,
+        canisterId,
       });
+
+      // Verify that we can access the actor methods
+      const methods = Object.keys(actor);
+      console.log('Admin actor methods:', methods);
     }
 
     return actor;
   } catch (error) {
-    console.error('Failed to get admin actor:', error);
-    return null;
+    console.error('Error getting admin actor:', error);
+    throw error;
   }
 };
 
@@ -73,100 +60,76 @@ export const clearAdminActor = () => {
 
 // Topic Management
 export async function getTopics(): Promise<ScrapingTopic[]> {
-  const actor = await getAdminActor();
-  if (!actor) throw new Error('Failed to get admin actor');
-  return actor.getTopics();
+  console.log('Fetching topics...');
+  const adminActor = await getAdminActor();
+  const result = await adminActor.getTopics();
+  if ('err' in result) {
+    throw new Error(result.err);
+  }
+  return result.ok;
 }
 
 export async function createTopic(topic: Omit<ScrapingTopic, 'id'>): Promise<ScrapingTopic> {
-  const actor = await getAdminActor();
-  const result = await actor.createTopic(topic);
-  if ('Ok' in result) {
-    return result.Ok;
+  const adminActor = await getAdminActor();
+  const result = await adminActor.createTopic(topic);
+  if ('err' in result) {
+    throw new Error(result.err);
   }
-  throw new Error(result.Err);
+  return result.ok;
 }
 
 export async function updateTopic(id: string, topic: ScrapingTopic): Promise<ScrapingTopic> {
-  const actor = await getAdminActor();
-  const result = await actor.updateTopic(id, topic);
-  if ('Ok' in result) {
-    return result.Ok;
+  const adminActor = await getAdminActor();
+  const result = await adminActor.updateTopic(id, topic);
+  if ('err' in result) {
+    throw new Error(result.err);
   }
-  throw new Error(result.Err);
+  return result.ok;
 }
 
 export async function deleteTopic(id: string): Promise<void> {
-  const actor = await getAdminActor();
-  const result = await actor.deleteTopic(id);
-  if ('Err' in result) {
-    throw new Error(result.Err);
+  const adminActor = await getAdminActor();
+  const result = await adminActor.deleteTopic(id);
+  if ('err' in result) {
+    throw new Error(result.err);
   }
 }
 
 // AI Configuration
-export const getAIConfig = async (): Promise<AIConfig | null> => {
-  try {
-    const actor = await getAdminActor();
-    if (!actor) return null;
-
-    const result = await actor.getAIConfig();
-    if ('ok' in result) {
-      return result.ok;
-    }
-    console.error('Failed to get AI config:', result.err);
-    return null;
-  } catch (error) {
-    console.error('Failed to get AI config:', error);
-    return null;
+export async function getAIConfig(): Promise<AIConfig> {
+  const adminActor = await getAdminActor();
+  const result = await adminActor.getAIConfig();
+  if ('err' in result) {
+    throw new Error(result.err);
   }
-};
+  return result.ok;
+}
 
-export const updateAIConfig = async (config: AIConfig): Promise<AIConfig | null> => {
-  try {
-    const actor = await getAdminActor();
-    if (!actor) return null;
-
-    const result = await actor.updateAIConfig(config);
-    if ('ok' in result) {
-      const getResult = await actor.getAIConfig();
-      if ('ok' in getResult) {
-        return getResult.ok;
-      }
-    }
-    console.error('Failed to update AI config:', result.err);
-    return null;
-  } catch (error) {
-    console.error('Failed to update AI config:', error);
-    return null;
+export async function updateAIConfig(config: AIConfig): Promise<AIConfig> {
+  const adminActor = await getAdminActor();
+  const result = await adminActor.updateAIConfig(config);
+  if ('err' in result) {
+    throw new Error(result.err);
   }
-};
+  return result.ok;
+}
 
 // Scraped Data
 export async function getScrapedData(topicId?: string): Promise<ScrapedData[]> {
-  const actor = await getAdminActor();
-  const result = await actor.getScrapedData(topicId || null);
-  if ('Ok' in result) {
-    return result.Ok;
-  }
-  throw new Error(result.Err);
+  const adminActor = await getAdminActor();
+  if (!adminActor) throw new Error('Failed to get admin actor');
+  return adminActor.get_scraped_data(topicId ? [topicId] : []);
 }
 
 // User Management
 export async function getUsers(): Promise<ExtensionUser[]> {
-  const actor = await getAdminActor();
-  const result = await actor.getUsers();
-  if ('Ok' in result) {
-    return result.Ok;
-  }
-  throw new Error(result.Err);
+  const adminActor = await getAdminActor();
+  if (!adminActor) throw new Error('Failed to get admin actor');
+  return adminActor.get_users();
 }
 
 export async function updateUser(principalId: string, userData: ExtensionUser): Promise<ExtensionUser> {
-  const actor = await getAdminActor();
-  const result = await actor.updateUser(principalId, userData);
-  if ('Ok' in result) {
-    return result.Ok;
-  }
-  throw new Error(result.Err);
+  const adminActor = await getAdminActor();
+  if (!adminActor) throw new Error('Failed to get admin actor');
+  return adminActor.update_user(principalId, userData);
 }

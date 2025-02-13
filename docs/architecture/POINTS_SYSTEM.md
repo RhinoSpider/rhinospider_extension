@@ -9,91 +9,109 @@ The RhinoSpider points system rewards users for contributing their bandwidth and
 ### Base Points
 
 1. **Bandwidth Contribution**
-   - 1 point per 10MB of data processed
-   - Bonus points for consistent availability
-   - Formula: `points = (bytesProcessed / (10 * 1024 * 1024)) * availabilityMultiplier`
+   - 1 point per MB of data processed
+   - Calculated from both uploaded and downloaded bytes
+   - Formula: `points = (bytesProcessed / (1024 * 1024)) * POINTS_PER_MB`
 
 2. **Request Processing**
-   - 5 points per successful request
-   - -1 point per failed request
-   - Formula: `points = (successCount * 5) - failureCount`
+   - 10 points per successful request
+   - Formula: `points = requestCount * POINTS_PER_REQUEST`
 
-3. **Quality Multiplier**
+### Multipliers and Bonuses
+
+1. **Quality Multiplier (20%)**
+   - Based on successful vs failed requests
    - Success rate affects point earning
-   - Formula: `multiplier = successCount / (successCount + failureCount)`
+   - Formula: `successRate = successCount / (successCount + failureCount)`
+   - Bonus: `(basePoints) * (successRate * 0.2)`
 
-### Bonus Points
+2. **Streak Bonus (10% per day)**
+   - +10% points for each consecutive day
+   - Caps at 100% (10 days)
+   - Formula: `bonus = basePoints * (streak * 0.1)`
 
-1. **Consistency Bonus**
-   - +10% points for daily activity
-   - +25% points for weekly streaks
-   - +50% points for monthly streaks
+3. **Peak Hours Bonus (20%)**
+   - +20% points during high-demand periods (9 AM - 5 PM local time)
+   - Formula: `bonus = basePoints * 0.2` (if during peak hours)
 
-2. **Peak Hours Contribution**
-   - +20% points during high-demand periods
-   - +15% points for processing priority requests
-
-3. **Resource Optimization**
-   - +5% points for efficient bandwidth usage
-   - +10% points for processing multiple topics
+4. **Resource Optimization (5% per topic)**
+   - +5% points per additional topic being processed
+   - Caps at 25% (5 topics)
+   - Formula: `bonus = basePoints * (0.05 * min(topicsCount, 5))`
 
 ## Daily Points Cap
 
 To ensure fair distribution and prevent abuse:
 - Maximum 1000 points per day
-- Minimum 10 points per successful request
 - Points reset at UTC midnight
+- All bonuses are calculated before cap is applied
 
-## Point Usage
+## Real-time Tracking
 
-1. **Privileges**
-   - Access to premium features
-   - Priority in request processing
-   - Access to advanced analytics
+The system tracks the following metrics in real-time:
+1. Bandwidth usage (MB)
+2. Requests processed
+3. Success/failure rates
+4. Points earned
+5. Active streak
 
-2. **Rewards**
-   - Monthly leaderboard recognition
-   - Special badges and achievements
-   - Future: Token conversion
+Updates occur:
+- Every 5 seconds for real-time stats
+- Daily for point calculations and rewards
 
-## Implementation Details
+## Points Distribution
 
-### Storage
+1. **Daily Rewards**
+   - Points are calculated and distributed daily
+   - Rewards are based on:
+     - Total points earned
+     - Quality of contribution
+     - Consistency (streak)
 
-Points data is stored in two places:
-1. Local IndexedDB for real-time tracking
-2. IC canister for permanent storage
+2. **Bonus Periods**
+   - Peak hours (9 AM - 5 PM local time)
+   - High-demand topics
+   - Special events
 
-### Calculation Flow
+## Implementation
 
-1. **Real-time Tracking**
-   ```typescript
-   interface PointsCalculation {
-     basePoints: number;
-     bandwidthPoints: number;
-     requestPoints: number;
-     bonusPoints: number;
-     multiplier: number;
-     total: number;
-   }
-   ```
+### Extension Analytics
+- Real-time bandwidth tracking
+- Points calculation
+- Success rate monitoring
+- Streak tracking
 
-2. **Daily Aggregation**
-   ```typescript
-   interface DailyPoints {
-     date: string;
-     points: PointsCalculation;
-     streak: number;
-     achievements: string[];
-   }
-   ```
+### Storage Canister
+- Daily points storage
+- Analytics data
+- User statistics
+- Reward distribution
 
-### Sync Process
+## User Interface
 
-1. Points are calculated locally in real-time
-2. Synced to IC canister every hour
-3. Daily totals are finalized at UTC midnight
-4. Weekly and monthly bonuses are calculated at period end
+1. **Extension Popup**
+   - Current day's points
+   - Real-time bandwidth usage
+   - Active streak
+   - Today's contribution stats
+
+2. **Analytics Dashboard**
+   - 7-day activity graph
+   - Total points earned
+   - Detailed breakdown of points
+   - Performance metrics
+
+## Security and Validation
+
+1. **Data Validation**
+   - Server-side verification of points
+   - Rate limiting
+   - Anomaly detection
+
+2. **Anti-abuse Measures**
+   - Daily points cap
+   - Quality requirements
+   - Minimum contribution thresholds
 
 ## Future Improvements
 

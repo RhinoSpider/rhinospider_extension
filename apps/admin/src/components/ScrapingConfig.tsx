@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '../hooks/useAuth';
 import { Actor } from '@dfinity/agent';
 import type { ScrapingTopic, AIConfig, CreateTopicRequest } from '../types';
 import { TopicModal } from './TopicModal';
 import { AIConfigModal } from './AIConfigModal';
 import { getAdminActor } from '../lib/admin';
-import { getAuthClient } from '../lib/auth';
+import { initAuthClient } from '../lib/auth';
 import { getStorageActor } from '../lib/storage'; // Import getStorageActor
 
 export const ScrapingConfig: React.FC = () => {
+  const { isAuthenticated } = useAuth();
   const [topics, setTopics] = useState<ScrapingTopic[]>([]);
   const [topicsLoading, setTopicsLoading] = useState(false);
   const [topicsError, setTopicsError] = useState<string | null>(null);
@@ -324,12 +326,12 @@ export const ScrapingConfig: React.FC = () => {
 
   // Check authentication
   useEffect(() => {
-    const checkAuth = async () => {
+    const init = async () => {
       try {
         setLoading(true);
         setError(null);
 
-        const authClient = getAuthClient();
+        const authClient = initAuthClient();
         const isAuth = await authClient.isAuthenticated();
         
         if (!isAuth) {
@@ -344,7 +346,7 @@ export const ScrapingConfig: React.FC = () => {
       }
     };
 
-    checkAuth();
+    init();
   }, []);
 
   const loadTopics = async () => {
