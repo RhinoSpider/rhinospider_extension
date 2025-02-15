@@ -11,6 +11,7 @@ import StorageTypes "./types/storage";
 import Iter "mo:base/Iter";
 import Option "mo:base/Option";
 import Debug "mo:base/Debug";
+import Array "mo:base/Array";
 
 actor Admin {
     // Types
@@ -28,24 +29,7 @@ actor Admin {
     };
 
     type AIConfig = StorageTypes.AIConfig;
-    type ScrapingTopic = {
-        id: Text;
-        name: Text;
-        description: Text;
-        url: Text;
-        aiConfig: AIConfig;
-        status: Text;
-        extractionRules: StorageTypes.ExtractionRules;
-        scrapingInterval: Nat;  // In seconds
-        lastScraped: Int;      // Timestamp
-        activeHours: {
-            start: Nat;        // Hour in UTC (0-23)
-            end: Nat;         // Hour in UTC (0-23)
-        };
-        maxRetries: Nat;
-        createdAt: Int;
-    };
-
+    type ScrapingTopic = StorageTypes.ScrapingTopic;
     type StorageActor = actor {
         getScrapedData: shared ([Text]) -> async [StorageTypes.ScrapedData];
         setTopicActive: shared (Text, Bool) -> async Result.Result<(), Text>;
@@ -57,11 +41,11 @@ actor Admin {
     private stable var stableTopics : [(Text, ScrapingTopic)] = [];
     private stable var stableAIConfig : AIConfig = {
         apiKey = "";
-        model = "gpt-3.5-turbo";
+        model = "gpt-4";
         costLimits = {
-            maxDailyCost = 1.0;
-            maxMonthlyCost = 10.0;
-            maxConcurrent = 10;
+            maxDailyCost = 0.0;
+            maxMonthlyCost = 0.0;
+            maxConcurrent = 5;
         };
     };
 
@@ -72,10 +56,43 @@ actor Admin {
     private var _aiConfig : AIConfig = stableAIConfig;
 
     system func preupgrade() {
-        stableUsers := Iter.toArray(users.entries());
         stableAdmins := Iter.toArray(admins.entries());
         stableTopics := Iter.toArray(topics.entries());
         stableAIConfig := _aiConfig;
+        // Migrate old topics to new format if needed
+        stableTopics := Array.map<(Text, ScrapingTopic), (Text, ScrapingTopic)>(
+            stableTopics,
+            func((id, topic)) {
+                let migratedFields = Array.map<StorageTypes.ScrapingField, StorageTypes.ScrapingField>(
+                    topic.extractionRules.fields,
+                    func(field) {
+                        {
+                            name = field.name;
+                            fieldType = "text"; // Default to text for existing fields
+                            required = field.required;
+                            aiPrompt = field.aiPrompt;
+                        }
+                    }
+                );
+                (id, {
+                    id = topic.id;
+                    name = topic.name;
+                    description = topic.description;
+                    urlPatterns = topic.urlPatterns;
+                    aiConfig = topic.aiConfig;
+                    status = topic.status;
+                    extractionRules = {
+                        fields = migratedFields;
+                        customPrompt = topic.extractionRules.customPrompt;
+                    };
+                    scrapingInterval = topic.scrapingInterval;
+                    lastScraped = topic.lastScraped;
+                    activeHours = topic.activeHours;
+                    maxRetries = topic.maxRetries;
+                    createdAt = topic.createdAt;
+                })
+            }
+        );
     };
 
     system func postupgrade() {
@@ -86,7 +103,6 @@ actor Admin {
         
         // Always initialize admin
         initializeAdmin();
-        Debug.print("Admin initialized");
     };
 
     // Initialize admin
@@ -188,34 +204,51 @@ actor Admin {
         #ok(result)
     };
 
-    public shared({ caller }) func createTopic(request: { id: Text; name: Text; description: Text; url: Text; status: Text; extractionRules: StorageTypes.ExtractionRules }) : async Result.Result<ScrapingTopic, Text> {
+    type CreateTopicRequest = {
+        id: Text;
+        name: Text;
+        description: Text;
+        urlPatterns: [Text];
+        status: Text;
+        extractionRules: StorageTypes.ExtractionRules;
+    };
+
+    public shared({ caller }) func createTopic(request: CreateTopicRequest) : async Result.Result<ScrapingTopic, Text> {
         if (not _isAuthorized(caller)) {
             return #err("Unauthorized");
         };
-        
-        let topic : ScrapingTopic = {
+
+        let topic: ScrapingTopic = {
             id = request.id;
             name = request.name;
             description = request.description;
-            url = request.url;
+            urlPatterns = request.urlPatterns;
+            aiConfig = {
+                apiKey = "";
+                model = "gpt-3.5-turbo";
+                costLimits = {
+                    maxDailyCost = 1.0;
+                    maxMonthlyCost = 10.0;
+                    maxConcurrent = 5;
+                };
+            };
             status = request.status;
             extractionRules = request.extractionRules;
-            aiConfig = _aiConfig;
-            scrapingInterval = 3600;  // Default 1 hour
+            scrapingInterval = 3600;
             lastScraped = 0;
             activeHours = {
                 start = 0;
-                end = 23;
+                end = 24;
             };
             maxRetries = 3;
             createdAt = Time.now();
         };
-        
-        topics.put(request.id, topic);
-        #ok(topic)
+
+        topics.put(topic.id, topic);
+        #ok(topic);
     };
 
-    public shared({ caller }) func updateTopic(id: Text, request: { name: ?Text; description: ?Text; url: ?Text; status: ?Text; extractionRules: ?StorageTypes.ExtractionRules }) : async Result.Result<ScrapingTopic, Text> {
+    public shared({ caller }) func updateTopic(id: Text, request: { name: ?Text; description: ?Text; urlPatterns: ?[Text]; status: ?Text; extractionRules: ?StorageTypes.ExtractionRules }) : async Result.Result<ScrapingTopic, Text> {
         if (not _isAuthorized(caller)) {
             return #err("Unauthorized");
         };
@@ -227,7 +260,7 @@ actor Admin {
                     topic with
                     name = Option.get(request.name, topic.name);
                     description = Option.get(request.description, topic.description);
-                    url = Option.get(request.url, topic.url);
+                    urlPatterns = Option.get(request.urlPatterns, topic.urlPatterns);
                     status = Option.get(request.status, topic.status);
                     extractionRules = Option.get(request.extractionRules, topic.extractionRules);
                 };

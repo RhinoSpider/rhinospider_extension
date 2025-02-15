@@ -39,23 +39,24 @@ export interface ScrapedData {
   'client_id' : Principal,
 }
 export interface ScrapingField {
-  'name' : string,
-  'description' : string,
-  'required' : boolean,
+  'name': string,
+  'fieldType': string,
+  'required': boolean,
+  'aiPrompt': [] | [string],
 }
 export interface ScrapingTopic {
-  'id' : string,
-  'url' : string,
-  'status' : string,
-  'name' : string,
-  'createdAt' : bigint,
-  'scrapingInterval' : bigint,
-  'description' : string,
-  'maxRetries' : bigint,
-  'activeHours' : { 'end' : bigint, 'start' : bigint },
-  'extractionRules' : ExtractionRules,
-  'aiConfig' : AIConfig,
-  'lastScraped' : bigint,
+  'id': string,
+  'name': string,
+  'description': string,
+  'urlPatterns': Array<string>,
+  'status': string,
+  'extractionRules': ExtractionRules,
+  'aiConfig': AIConfig,
+  'createdAt': bigint,
+  'scrapingInterval': bigint,
+  'lastScraped': bigint,
+  'maxRetries': bigint,
+  'activeHours': { 'end': bigint, 'start': bigint },
 }
 export type Time = bigint;
 export interface User {
@@ -72,12 +73,12 @@ export interface _SERVICE {
   'createTopic' : ActorMethod<
     [
       {
-        'id' : string,
-        'url' : string,
-        'status' : string,
-        'name' : string,
-        'description' : string,
-        'extractionRules' : ExtractionRules,
+        'id': string,
+        'name': string,
+        'description': string,
+        'urlPatterns': Array<string>,
+        'status': string,
+        'extractionRules': ExtractionRules,
       },
     ],
     Result

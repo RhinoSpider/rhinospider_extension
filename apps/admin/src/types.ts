@@ -1,8 +1,8 @@
 export interface ExtractionField {
   name: string;
-  description: string;
+  fieldType: string;
   required: boolean;
-  type: string;
+  aiPrompt: string | undefined;
 }
 
 export interface ExtractionRules {
@@ -19,7 +19,11 @@ export interface CostLimits {
 export interface AIConfig {
   apiKey: string;
   model: string;
-  costLimits: CostLimits;
+  costLimits: {
+    maxDailyCost: number;
+    maxMonthlyCost: number;
+    maxConcurrent: number;
+  };
   temperature: number;
   maxTokens: number;
 }
@@ -28,10 +32,16 @@ export interface ScrapingTopic {
   id: string;
   name: string;
   description: string;
-  url: string;
+  urlPatterns: string[];
   status: string;
   extractionRules: ExtractionRules;
   aiConfig: AIConfig;
+  scrapingInterval: number;
+  activeHours: {
+    start: number;
+    end: number;
+  };
+  maxRetries: number;
 }
 
 export type UserRole = 'Admin' | 'User' | 'None';
@@ -60,10 +70,9 @@ export interface CreateTopicRequest {
   id: string;
   name: string;
   description: string;
-  url: string;
+  urlPatterns: string[];
   status: string;
   extractionRules: ExtractionRules;
-  aiConfig: AIConfig;
 }
 
 export interface UpdateTopicRequest {

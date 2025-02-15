@@ -7,8 +7,9 @@ export const idlFactory = ({ IDL }) => {
   const Result_3 = IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text });
   const ScrapingField = IDL.Record({
     'name' : IDL.Text,
-    'description' : IDL.Text,
+    'aiPrompt' : IDL.Opt(IDL.Text),
     'required' : IDL.Bool,
+    'fieldType' : IDL.Text,
   });
   const ExtractionRules = IDL.Record({
     'fields' : IDL.Vec(ScrapingField),
@@ -19,6 +20,23 @@ export const idlFactory = ({ IDL }) => {
     'maxDailyCost' : IDL.Float64,
     'maxMonthlyCost' : IDL.Float64,
   });
+  const AIConfig__1 = IDL.Record({
+    'model' : IDL.Text,
+    'costLimits' : CostLimits,
+    'apiKey' : IDL.Text,
+  });
+  const CreateTopicRequest = IDL.Record({
+    'id' : IDL.Text,
+    'status' : IDL.Text,
+    'name' : IDL.Text,
+    'scrapingInterval' : IDL.Nat,
+    'description' : IDL.Text,
+    'maxRetries' : IDL.Nat,
+    'activeHours' : IDL.Record({ 'end' : IDL.Nat, 'start' : IDL.Nat }),
+    'urlPatterns' : IDL.Vec(IDL.Text),
+    'extractionRules' : ExtractionRules,
+    'aiConfig' : AIConfig__1,
+  });
   const AIConfig = IDL.Record({
     'model' : IDL.Text,
     'costLimits' : CostLimits,
@@ -26,7 +44,6 @@ export const idlFactory = ({ IDL }) => {
   });
   const ScrapingTopic = IDL.Record({
     'id' : IDL.Text,
-    'url' : IDL.Text,
     'status' : IDL.Text,
     'name' : IDL.Text,
     'createdAt' : IDL.Int,
@@ -34,12 +51,13 @@ export const idlFactory = ({ IDL }) => {
     'description' : IDL.Text,
     'maxRetries' : IDL.Nat,
     'activeHours' : IDL.Record({ 'end' : IDL.Nat, 'start' : IDL.Nat }),
+    'urlPatterns' : IDL.Vec(IDL.Text),
     'extractionRules' : ExtractionRules,
     'aiConfig' : AIConfig,
     'lastScraped' : IDL.Int,
   });
   const Result = IDL.Variant({ 'ok' : ScrapingTopic, 'err' : IDL.Text });
-  const Result_2 = IDL.Variant({ 'ok' : AIConfig, 'err' : IDL.Text });
+  const Result_2 = IDL.Variant({ 'ok' : AIConfig__1, 'err' : IDL.Text });
   const ScrapedData = IDL.Record({
     'id' : IDL.Text,
     'url' : IDL.Text,
@@ -68,20 +86,7 @@ export const idlFactory = ({ IDL }) => {
   const Result_1 = IDL.Variant({ 'ok' : IDL.Text, 'err' : IDL.Text });
   return IDL.Service({
     'add_user' : IDL.Func([IDL.Principal, UserRole], [Result_3], []),
-    'createTopic' : IDL.Func(
-        [
-          IDL.Record({
-            'id' : IDL.Text,
-            'url' : IDL.Text,
-            'status' : IDL.Text,
-            'name' : IDL.Text,
-            'description' : IDL.Text,
-            'extractionRules' : ExtractionRules,
-          }),
-        ],
-        [Result],
-        [],
-      ),
+    'createTopic' : IDL.Func([CreateTopicRequest], [Result], []),
     'deleteTopic' : IDL.Func([IDL.Text], [Result_3], []),
     'getAIConfig' : IDL.Func([], [Result_2], []),
     'getScrapedData' : IDL.Func([IDL.Vec(IDL.Text)], [Result_6], []),
@@ -102,16 +107,16 @@ export const idlFactory = ({ IDL }) => {
         [Result_1],
         [],
       ),
-    'updateAIConfig' : IDL.Func([AIConfig], [Result_2], []),
+    'updateAIConfig' : IDL.Func([AIConfig__1], [Result_2], []),
     'updateLastScraped' : IDL.Func([IDL.Text, IDL.Int], [Result_1], []),
     'updateTopic' : IDL.Func(
         [
           IDL.Text,
           IDL.Record({
-            'url' : IDL.Opt(IDL.Text),
             'status' : IDL.Opt(IDL.Text),
             'name' : IDL.Opt(IDL.Text),
             'description' : IDL.Opt(IDL.Text),
+            'urlPatterns' : IDL.Opt(IDL.Vec(IDL.Text)),
             'extractionRules' : IDL.Opt(ExtractionRules),
           }),
         ],

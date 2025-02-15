@@ -227,7 +227,10 @@ export const AIConfigModal: React.FC<AIConfigModalProps> = ({
               <p className="text-red-400 text-sm mr-auto self-center">{error}</p>
             )}
             <button
-              onClick={onClose}
+              onClick={(e) => {
+                e.preventDefault();
+                onClose();
+              }}
               className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
             >
               Cancel

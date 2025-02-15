@@ -6,10 +6,27 @@ export interface AIConfig {
   'costLimits' : CostLimits,
   'apiKey' : string,
 }
+export interface AIConfig__1 {
+  'model' : string,
+  'costLimits' : CostLimits,
+  'apiKey' : string,
+}
 export interface CostLimits {
   'maxConcurrent' : bigint,
   'maxDailyCost' : number,
   'maxMonthlyCost' : number,
+}
+export interface CreateTopicRequest {
+  'id' : string,
+  'status' : string,
+  'name' : string,
+  'scrapingInterval' : bigint,
+  'description' : string,
+  'maxRetries' : bigint,
+  'activeHours' : { 'end' : bigint, 'start' : bigint },
+  'urlPatterns' : Array<string>,
+  'extractionRules' : ExtractionRules,
+  'aiConfig' : AIConfig__1,
 }
 export interface ExtractionRules {
   'fields' : Array<ScrapingField>,
@@ -19,7 +36,7 @@ export type Result = { 'ok' : ScrapingTopic } |
   { 'err' : string };
 export type Result_1 = { 'ok' : string } |
   { 'err' : string };
-export type Result_2 = { 'ok' : AIConfig } |
+export type Result_2 = { 'ok' : AIConfig__1 } |
   { 'err' : string };
 export type Result_3 = { 'ok' : null } |
   { 'err' : string };
@@ -40,12 +57,12 @@ export interface ScrapedData {
 }
 export interface ScrapingField {
   'name' : string,
-  'description' : string,
+  'aiPrompt' : [] | [string],
   'required' : boolean,
+  'fieldType' : string,
 }
 export interface ScrapingTopic {
   'id' : string,
-  'url' : string,
   'status' : string,
   'name' : string,
   'createdAt' : bigint,
@@ -53,6 +70,7 @@ export interface ScrapingTopic {
   'description' : string,
   'maxRetries' : bigint,
   'activeHours' : { 'end' : bigint, 'start' : bigint },
+  'urlPatterns' : Array<string>,
   'extractionRules' : ExtractionRules,
   'aiConfig' : AIConfig,
   'lastScraped' : bigint,
@@ -69,19 +87,7 @@ export type UserRole = { 'Operator' : null } |
   { 'Admin' : null };
 export interface _SERVICE {
   'add_user' : ActorMethod<[Principal, UserRole], Result_3>,
-  'createTopic' : ActorMethod<
-    [
-      {
-        'id' : string,
-        'url' : string,
-        'status' : string,
-        'name' : string,
-        'description' : string,
-        'extractionRules' : ExtractionRules,
-      },
-    ],
-    Result
-  >,
+  'createTopic' : ActorMethod<[CreateTopicRequest], Result>,
   'deleteTopic' : ActorMethod<[string], Result_3>,
   'getAIConfig' : ActorMethod<[], Result_2>,
   'getScrapedData' : ActorMethod<[Array<string>], Result_6>,
@@ -101,16 +107,16 @@ export interface _SERVICE {
     ],
     Result_1
   >,
-  'updateAIConfig' : ActorMethod<[AIConfig], Result_2>,
+  'updateAIConfig' : ActorMethod<[AIConfig__1], Result_2>,
   'updateLastScraped' : ActorMethod<[string, bigint], Result_1>,
   'updateTopic' : ActorMethod<
     [
       string,
       {
-        'url' : [] | [string],
         'status' : [] | [string],
         'name' : [] | [string],
         'description' : [] | [string],
+        'urlPatterns' : [] | [Array<string>],
         'extractionRules' : [] | [ExtractionRules],
       },
     ],

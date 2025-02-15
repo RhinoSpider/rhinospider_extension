@@ -28,11 +28,12 @@ type ScrapingTopic =
    name: text;
    scrapingInterval: nat;
    status: text;
-   url: text;
+   urlPatterns: vec text;
  };
 type ScrapingField = 
  record {
-   description: text;
+   aiPrompt: opt text;
+   fieldType: text;
    name: text;
    required: bool;
  };
@@ -69,7 +70,7 @@ type Result_3 =
 type Result_2 = 
  variant {
    err: text;
-   ok: AIConfig;
+   ok: AIConfig__1;
  };
 type Result_1 = 
  variant {
@@ -86,11 +87,33 @@ type ExtractionRules =
    customPrompt: opt text;
    fields: vec ScrapingField;
  };
+type CreateTopicRequest = 
+ record {
+   activeHours: record {
+                  end: nat;
+                  start: nat;
+                };
+   aiConfig: AIConfig__1;
+   description: text;
+   extractionRules: ExtractionRules;
+   id: text;
+   maxRetries: nat;
+   name: text;
+   scrapingInterval: nat;
+   status: text;
+   urlPatterns: vec text;
+ };
 type CostLimits = 
  record {
    maxConcurrent: nat;
    maxDailyCost: float64;
    maxMonthlyCost: float64;
+ };
+type AIConfig__1 = 
+ record {
+   apiKey: text;
+   costLimits: CostLimits;
+   model: text;
  };
 type AIConfig = 
  record {
@@ -100,15 +123,7 @@ type AIConfig =
  };
 service : {
   add_user: (principal, UserRole) -> (Result_3);
-  createTopic:
-   (record {
-      description: text;
-      extractionRules: ExtractionRules;
-      id: text;
-      name: text;
-      status: text;
-      url: text;
-    }) -> (Result);
+  createTopic: (CreateTopicRequest) -> (Result);
   deleteTopic: (text) -> (Result_3);
   getAIConfig: () -> (Result_2);
   getScrapedData: (vec text) -> (Result_6);
@@ -125,7 +140,7 @@ service : {
        };
       url: text;
     }) -> (Result_1);
-  updateAIConfig: (AIConfig) -> (Result_2);
+  updateAIConfig: (AIConfig__1) -> (Result_2);
   updateLastScraped: (text, int) -> (Result_1);
   updateTopic: (text,
    record {
@@ -133,6 +148,6 @@ service : {
      extractionRules: opt ExtractionRules;
      name: opt text;
      status: opt text;
-     url: opt text;
+     urlPatterns: opt vec text;
    }) -> (Result);
 }

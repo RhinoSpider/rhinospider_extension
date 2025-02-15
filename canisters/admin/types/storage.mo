@@ -16,8 +16,9 @@ module {
 
     public type ScrapingField = {
         name: Text;
-        description: Text;
+        fieldType: Text;
         required: Bool;
+        aiPrompt: ?Text;
     };
 
     public type ExtractionRules = {
@@ -29,7 +30,7 @@ module {
         id: Text;
         name: Text;
         description: Text;
-        url: Text;
+        urlPatterns: [Text];
         aiConfig: AIConfig;
         status: Text;
         extractionRules: ExtractionRules;
@@ -47,7 +48,7 @@ module {
         id: Text;
         name: Text;
         description: Text;
-        url: Text;
+        urlPatterns: [Text];
         aiConfig: AIConfig;
         status: Text;
         extractionRules: ExtractionRules;
