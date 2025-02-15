@@ -1,14 +1,26 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
-import { writeFileSync, copyFileSync, mkdirSync } from 'fs';
+import { writeFileSync, copyFileSync, mkdirSync, existsSync, rmSync } from 'fs';
 
 // Custom plugin to copy files after build
 const copyManifestPlugin = () => ({
   name: 'copy-manifest',
-  closeBundle: () => {
-    // Create build directory if it doesn't exist
-    mkdirSync(resolve(__dirname, 'build'), { recursive: true });
-    
+  configResolved(config) {
+    // Remove existing build directory if it exists
+    if (existsSync(config.build.outDir)) {
+      rmSync(config.build.outDir, { recursive: true });
+    }
+
+    // Create all required directories
+    const dirs = [
+      config.build.outDir,
+      resolve(config.build.outDir, 'icons'),
+      resolve(config.build.outDir, 'assets')
+    ];
+
+    dirs.forEach(dir => mkdirSync(dir, { recursive: true }));
+  },
+  generateBundle() {
     // Copy manifest
     copyFileSync(
       resolve(__dirname, 'manifest.json'),
@@ -22,7 +34,6 @@ const copyManifestPlugin = () => ({
     );
     
     // Copy icons
-    mkdirSync(resolve(__dirname, 'build/icons'), { recursive: true });
     ['icon16.png', 'icon48.png', 'icon128.png'].forEach(icon => {
       copyFileSync(
         resolve(__dirname, 'public/icons', icon),
@@ -53,7 +64,8 @@ export default defineConfig({
     sourcemap: true,
     modulePreload: false,
     cssCodeSplit: false,
-    assetsInlineLimit: 0
+    assetsInlineLimit: 0,
+    emptyOutDir: false // We'll handle directory cleanup ourselves
   },
   resolve: {
     alias: {

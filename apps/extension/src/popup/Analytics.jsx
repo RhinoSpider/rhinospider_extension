@@ -18,8 +18,10 @@ const Analytics = () => {
 
     const fetchStats = async () => {
       try {
+        console.log('Starting to fetch analytics...');
         setLoading(true);
         await storage.init();
+        console.log('Storage initialized');
         
         // Get last 7 days of stats
         const dailyStats = [];
@@ -33,8 +35,11 @@ const Analytics = () => {
           const dateStr = date.toISOString().split('T')[0];
           
           try {
+            console.log(`Fetching stats for ${dateStr}...`);
             const scrapingStats = await storage.getStats(dateStr);
+            console.log('Scraping stats:', scrapingStats);
             const points = await storage.getPoints(dateStr);
+            console.log('Points:', points);
 
             if (scrapingStats) {
               totalRequests += scrapingStats.requestCount || 0;
@@ -55,10 +60,21 @@ const Analytics = () => {
               });
             }
           } catch (err) {
-            console.warn(`Failed to fetch stats for ${dateStr}:`, err);
+            console.error(`Error fetching stats for ${dateStr}:`, err);
+            // Continue with other dates even if one fails
+            if (mounted) {
+              dailyStats.push({
+                date: dateStr,
+                points: 0,
+                pointsBreakdown: { requests: 0, bandwidth: 0, streak: 0 },
+                requests: 0,
+                bandwidth: 0
+              });
+            }
           }
         }
 
+        console.log('Finished fetching all stats');
         if (mounted) {
           setStats({
             totalPoints,
@@ -66,6 +82,7 @@ const Analytics = () => {
             totalBandwidth,
             dailyStats: dailyStats.reverse()
           });
+          console.log('Stats updated');
         }
       } catch (err) {
         console.error('Failed to fetch analytics:', err);

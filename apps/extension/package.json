@@ -1,7 +1,7 @@
 {
   "name": "@rhinospider/extension",
   "private": true,
-  "version": "1.2.8",
+  "version": "1.2.9",
   "type": "module",
   "main": "index.js",
   "scripts": {
@@ -16,9 +16,10 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@dfinity/auth-client": "^2.2.0",
-    "@dfinity/identity": "^2.2.0",
-    "@dfinity/principal": "^2.2.0",
+    "@dfinity/agent": "0.19.3",
+    "@dfinity/auth-client": "0.19.3",
+    "@dfinity/identity": "0.19.3",
+    "@dfinity/principal": "0.19.3",
     "@rhinospider/scraping-core": "workspace:*",
     "@rhinospider/ui": "workspace:*",
     "@rhinospider/web3-client": "workspace:*",

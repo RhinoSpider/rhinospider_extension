@@ -193,7 +193,12 @@ export class StorageManager {
     await this.ensureInitialized();
     const tx = this.db.transaction('points', 'readonly');
     const store = tx.objectStore('points');
-    return store.get(date);
+    const points = await store.get(date);
+    return points || {
+      date,
+      total: 0,
+      breakdown: { requests: 0, bandwidth: 0, streak: 0 }
+    };
   }
 
   async updatePoints(date, points) {

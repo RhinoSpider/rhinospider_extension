@@ -4,6 +4,7 @@ import react from '@vitejs/plugin-react';
 import fs from 'fs';
 import packageJson from './package.json';
 import dotenv from 'dotenv';
+import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
 // Load environment variables
 const env = dotenv.config({ path: resolve(__dirname, '../../.env') }).parsed || {};
@@ -34,10 +35,6 @@ const manifest = {
   },
   web_accessible_resources: [{
     resources: [
-      'pages/analytics/*',
-      'pages/settings/*',
-      'pages/profile/*',
-      'pages/referrals/*',
       'assets/*'
     ],
     matches: ['<all_urls>']
@@ -47,35 +44,17 @@ const manifest = {
 export default defineConfig({
   plugins: [
     react(),
+    nodePolyfills({
+      globals: {
+        Buffer: true,
+        global: true,
+        process: true,
+      },
+      protocolImports: true,
+    }),
     {
       name: 'copy-html',
       closeBundle() {
-        // Create pages directory
-        const pagesDir = resolve(__dirname, 'build/pages');
-        if (!fs.existsSync(pagesDir)) {
-          fs.mkdirSync(pagesDir);
-        }
-
-        // Copy HTML files
-        const pages = ['analytics', 'settings', 'profile', 'referrals'];
-        pages.forEach(page => {
-          const html = `
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>RhinoSpider ${page.charAt(0).toUpperCase() + page.slice(1)}</title>
-    <link rel="stylesheet" href="../assets/index-D8JTpqma.css" />
-  </head>
-  <body class="bg-gradient-to-br from-[#0F0E13] to-[#1B1B1F]">
-    <div id="root"></div>
-    <script type="module" src="../assets/${page}.js"></script>
-  </body>
-</html>`;
-          fs.writeFileSync(resolve(pagesDir, `${page}.html`), html);
-        });
-
         // Write manifest.json
         fs.writeFileSync(
           resolve(__dirname, 'build/manifest.json'),
@@ -85,7 +64,7 @@ export default defineConfig({
         // Copy icons
         const iconSizes = ['16', '48', '128'];
         if (!fs.existsSync(resolve(__dirname, 'build/icons'))) {
-          fs.mkdirSync(resolve(__dirname, 'build/icons'));
+          fs.mkdirSync(resolve(__dirname, 'build/icons'), { recursive: true });
         }
         iconSizes.forEach(size => {
           fs.copyFileSync(
@@ -99,26 +78,20 @@ export default defineConfig({
   build: {
     outDir: 'build',
     emptyOutDir: true,
+    sourcemap: true,
     rollupOptions: {
       input: {
-        popup: resolve(__dirname, 'popup.html'),
         background: resolve(__dirname, 'src/background.js'),
+        popup: resolve(__dirname, 'popup.html'),
         analytics: resolve(__dirname, 'src/pages/analytics-entry.jsx'),
         settings: resolve(__dirname, 'src/pages/settings-entry.jsx'),
         profile: resolve(__dirname, 'src/pages/profile-entry.jsx'),
-        referrals: resolve(__dirname, 'src/pages/referrals-entry.jsx'),
-        'analytics-html': resolve(__dirname, 'src/pages/analytics.html'),
-        'settings-html': resolve(__dirname, 'src/pages/settings.html'),
-        'profile-html': resolve(__dirname, 'src/pages/profile.html'),
-        'referrals-html': resolve(__dirname, 'src/pages/referrals.html')
+        referrals: resolve(__dirname, 'src/pages/referrals-entry.jsx')
       },
       output: {
         entryFileNames: (chunkInfo) => {
           if (chunkInfo.name === 'background') {
             return 'background.js';
-          }
-          if (chunkInfo.name.endsWith('-html')) {
-            return `src/pages/${chunkInfo.name.replace('-html', '')}.html`;
           }
           return 'assets/[name].js';
         },
@@ -132,12 +105,13 @@ export default defineConfig({
           }
           
           return `assets/[name]-[hash][extname]`;
-        }
+        },
+        format: 'es',
+        sourcemap: true
       }
     },
-    css: {
-      modules: false,
-    }
+    target: 'esnext',
+    minify: false
   },
   resolve: {
     alias: {
@@ -145,6 +119,9 @@ export default defineConfig({
     }
   },
   define: {
+    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV),
+    'process.env.NODE_DEBUG': JSON.stringify(process.env.NODE_DEBUG),
+    'global': 'globalThis',
     'process.env': env
   }
 });

@@ -121,15 +121,18 @@ importers:
 
   apps/extension:
     dependencies:
+      '@dfinity/agent':
+        specifier: 0.19.3
+        version: 0.19.3(@dfinity/candid@0.19.3(@dfinity/principal@0.15.7(@types/node@18.19.74)(typescript@5.7.3)))(@dfinity/principal@0.19.3)
       '@dfinity/auth-client':
-        specifier: ^2.2.0
-        version: 2.2.0(@dfinity/agent@0.20.2(@dfinity/candid@0.19.3(@dfinity/principal@2.2.0))(@dfinity/principal@2.2.0))(@dfinity/identity@2.2.0(@dfinity/agent@0.20.2(@dfinity/candid@0.19.3(@dfinity/principal@2.2.0))(@dfinity/principal@2.2.0))(@dfinity/principal@2.2.0))(@dfinity/principal@2.2.0)
+        specifier: 0.19.3
+        version: 0.19.3(@dfinity/agent@0.19.3(@dfinity/candid@0.19.3(@dfinity/principal@0.15.7(@types/node@18.19.74)(typescript@5.7.3)))(@dfinity/principal@0.19.3))(@dfinity/identity@0.19.3(@dfinity/agent@0.19.3(@dfinity/candid@0.19.3(@dfinity/principal@0.15.7(@types/node@18.19.74)(typescript@5.7.3)))(@dfinity/principal@0.19.3))(@dfinity/principal@0.19.3)(@peculiar/webcrypto@1.5.0))(@dfinity/principal@0.19.3)
       '@dfinity/identity':
-        specifier: ^2.2.0
-        version: 2.2.0(@dfinity/agent@0.20.2(@dfinity/candid@0.19.3(@dfinity/principal@2.2.0))(@dfinity/principal@2.2.0))(@dfinity/principal@2.2.0)
+        specifier: 0.19.3
+        version: 0.19.3(@dfinity/agent@0.19.3(@dfinity/candid@0.19.3(@dfinity/principal@0.15.7(@types/node@18.19.74)(typescript@5.7.3)))(@dfinity/principal@0.19.3))(@dfinity/principal@0.19.3)(@peculiar/webcrypto@1.5.0)
       '@dfinity/principal':
-        specifier: ^2.2.0
-        version: 2.2.0
+        specifier: 0.19.3
+        version: 0.19.3
       '@rhinospider/scraping-core':
         specifier: workspace:*
         version: link:../../packages/scraping-core
@@ -627,13 +630,6 @@ packages:
       '@dfinity/identity': ^0.19.3
       '@dfinity/principal': ^0.19.3
 
-  '@dfinity/auth-client@2.2.0':
-    resolution: {integrity: sha512-r3bIW2wLggCd5EO7H3JvE/xxBxPErndA1vpQN5bJi9V0VhqM9eMnjoPCm+cwaV8jZ4PCUFjYCxhSY40CfJZSfQ==}
-    peerDependencies:
-      '@dfinity/agent': ^2.2.0
-      '@dfinity/identity': ^2.2.0
-      '@dfinity/principal': ^2.2.0
-
   '@dfinity/authentication@0.14.2':
     resolution: {integrity: sha512-kiZrRKUOnbseTQiAh4GDkAo5vCX6dUN1jkqJ5rLBYkIiGuK3jENxbu4G5oJPxq57F/cgnR4Hx/abSVHQfFRkEw==}
     deprecated: This package has been deprecated. isDelegationValid has been migrated to @dfinity/identity
@@ -665,12 +661,6 @@ packages:
       '@dfinity/agent': ^0.19.3
       '@dfinity/principal': ^0.19.3
       '@peculiar/webcrypto': ^1.4.0
-
-  '@dfinity/identity@2.2.0':
-    resolution: {integrity: sha512-4L/i6pDYrGnpgnITHJR1Tb5umawqytZ8BhCE7G1MzG2ftWJ0SO1QJxRDwp5Nuj/fNZumq+ILSc3o3ItzaUs1iQ==}
-    peerDependencies:
-      '@dfinity/agent': ^2.2.0
-      '@dfinity/principal': ^2.2.0
 
   '@dfinity/principal@0.10.4':
     resolution: {integrity: sha512-qwzpmq5wfyeKMBspRZmuYvTxu1dqN+IY0ThACHTRh6D58QjnVQNCD3Hq9d5eEDu0qyNcY22cJEWwzrzZaaoVmw==}
@@ -5043,7 +5033,7 @@ snapshots:
     dependencies:
       '@jridgewell/trace-mapping': 0.3.9
 
-  '@dfinity/agent@0.10.4(@dfinity/candid@0.19.3(@dfinity/principal@0.15.7(@types/node@18.19.74)(typescript@5.7.3)))(@dfinity/principal@0.10.4)':
+  '@dfinity/agent@0.10.4(@dfinity/candid@0.19.3(@dfinity/principal@0.19.3))(@dfinity/principal@0.10.4)':
     dependencies:
       '@dfinity/candid': 0.19.3(@dfinity/principal@0.19.3)
       '@dfinity/principal': 0.10.4
@@ -5071,7 +5061,7 @@ snapshots:
 
   '@dfinity/agent@0.15.7(@dfinity/candid@0.19.3(@dfinity/principal@0.15.7(@types/node@18.19.74)(typescript@5.7.3)))(@dfinity/principal@0.15.7(@types/node@18.19.74)(typescript@5.7.3))(@types/node@18.19.74)(typescript@5.7.3)':
     dependencies:
-      '@dfinity/candid': 0.19.3(@dfinity/principal@0.19.3)
+      '@dfinity/candid': 0.19.3(@dfinity/principal@0.15.7(@types/node@18.19.74)(typescript@5.7.3))
       '@dfinity/principal': 0.15.7(@types/node@18.19.74)(typescript@5.7.3)
       base64-arraybuffer: 0.2.0
       bignumber.js: 9.1.2
@@ -5119,13 +5109,6 @@ snapshots:
       '@dfinity/principal': 0.19.3
       idb: 7.1.1
 
-  '@dfinity/auth-client@2.2.0(@dfinity/agent@0.20.2(@dfinity/candid@0.19.3(@dfinity/principal@2.2.0))(@dfinity/principal@2.2.0))(@dfinity/identity@2.2.0(@dfinity/agent@0.20.2(@dfinity/candid@0.19.3(@dfinity/principal@2.2.0))(@dfinity/principal@2.2.0))(@dfinity/principal@2.2.0))(@dfinity/principal@2.2.0)':
-    dependencies:
-      '@dfinity/agent': 0.20.2(@dfinity/candid@0.19.3(@dfinity/principal@2.2.0))(@dfinity/principal@2.2.0)
-      '@dfinity/identity': 2.2.0(@dfinity/agent@0.20.2(@dfinity/candid@0.19.3(@dfinity/principal@2.2.0))(@dfinity/principal@2.2.0))(@dfinity/principal@2.2.0)
-      '@dfinity/principal': 2.2.0
-      idb: 7.1.1
-
   '@dfinity/authentication@0.14.2(@dfinity/agent@0.19.3(@dfinity/candid@0.19.3(@dfinity/principal@0.15.7(@types/node@18.19.74)(typescript@5.7.3)))(@dfinity/principal@0.19.3))(@dfinity/principal@0.19.3)(@peculiar/webcrypto@1.5.0)':
     dependencies:
       '@dfinity/identity': 0.15.7(@dfinity/agent@0.19.3(@dfinity/candid@0.19.3(@dfinity/principal@0.15.7(@types/node@18.19.74)(typescript@5.7.3)))(@dfinity/principal@0.19.3))(@dfinity/principal@0.19.3)(@peculiar/webcrypto@1.5.0)
@@ -5143,6 +5126,10 @@ snapshots:
       - '@types/node'
       - typescript
 
+  '@dfinity/candid@0.19.3(@dfinity/principal@0.15.7(@types/node@18.19.74)(typescript@5.7.3))':
+    dependencies:
+      '@dfinity/principal': 0.15.7(@types/node@18.19.74)(typescript@5.7.3)
+
   '@dfinity/candid@0.19.3(@dfinity/principal@0.19.3)':
     dependencies:
       '@dfinity/principal': 0.19.3
@@ -5151,9 +5138,9 @@ snapshots:
     dependencies:
       '@dfinity/principal': 2.2.0
 
-  '@dfinity/identity@0.10.4(@dfinity/agent@0.10.4(@dfinity/candid@0.19.3(@dfinity/principal@0.15.7(@types/node@18.19.74)(typescript@5.7.3)))(@dfinity/principal@0.10.4))(@dfinity/principal@0.10.4)':
+  '@dfinity/identity@0.10.4(@dfinity/agent@0.10.4(@dfinity/candid@0.19.3(@dfinity/principal@0.19.3))(@dfinity/principal@0.10.4))(@dfinity/principal@0.10.4)':
     dependencies:
-      '@dfinity/agent': 0.10.4(@dfinity/candid@0.19.3(@dfinity/principal@0.15.7(@types/node@18.19.74)(typescript@5.7.3)))(@dfinity/principal@0.10.4)
+      '@dfinity/agent': 0.10.4(@dfinity/candid@0.19.3(@dfinity/principal@0.19.3))(@dfinity/principal@0.10.4)
       '@dfinity/principal': 0.10.4
       borc: 2.1.2
       js-sha256: 0.9.0
@@ -5186,14 +5173,6 @@ snapshots:
       '@peculiar/webcrypto': 1.5.0
       borc: 2.1.2
       tweetnacl: 1.0.3
-
-  '@dfinity/identity@2.2.0(@dfinity/agent@0.20.2(@dfinity/candid@0.19.3(@dfinity/principal@2.2.0))(@dfinity/principal@2.2.0))(@dfinity/principal@2.2.0)':
-    dependencies:
-      '@dfinity/agent': 0.20.2(@dfinity/candid@0.19.3(@dfinity/principal@2.2.0))(@dfinity/principal@2.2.0)
-      '@dfinity/principal': 2.2.0
-      '@noble/curves': 1.8.1
-      '@noble/hashes': 1.7.1
-      borc: 2.1.2
 
   '@dfinity/principal@0.10.4': {}
 
@@ -7478,16 +7457,16 @@ snapshots:
       '@dfinity/candid': 0.19.3(@dfinity/principal@0.19.3)
       '@dfinity/identity': 0.19.3(@dfinity/agent@0.19.3(@dfinity/candid@0.19.3(@dfinity/principal@0.15.7(@types/node@18.19.74)(typescript@5.7.3)))(@dfinity/principal@0.19.3))(@dfinity/principal@0.19.3)(@peculiar/webcrypto@1.5.0)
       '@dfinity/principal': 0.19.3
-      ic-stoic-identity: 2.0.0(@dfinity/candid@0.19.3(@dfinity/principal@0.15.7(@types/node@18.19.74)(typescript@5.7.3)))
+      ic-stoic-identity: 2.0.0(@dfinity/candid@0.19.3(@dfinity/principal@0.19.3))
       react: 17.0.2
       react-dom: 17.0.2(react@17.0.2)
     transitivePeerDependencies:
       - '@peculiar/webcrypto'
 
-  ic-stoic-identity@2.0.0(@dfinity/candid@0.19.3(@dfinity/principal@0.15.7(@types/node@18.19.74)(typescript@5.7.3))):
+  ic-stoic-identity@2.0.0(@dfinity/candid@0.19.3(@dfinity/principal@0.19.3)):
     dependencies:
-      '@dfinity/agent': 0.10.4(@dfinity/candid@0.19.3(@dfinity/principal@0.15.7(@types/node@18.19.74)(typescript@5.7.3)))(@dfinity/principal@0.10.4)
-      '@dfinity/identity': 0.10.4(@dfinity/agent@0.10.4(@dfinity/candid@0.19.3(@dfinity/principal@0.15.7(@types/node@18.19.74)(typescript@5.7.3)))(@dfinity/principal@0.10.4))(@dfinity/principal@0.10.4)
+      '@dfinity/agent': 0.10.4(@dfinity/candid@0.19.3(@dfinity/principal@0.19.3))(@dfinity/principal@0.10.4)
+      '@dfinity/identity': 0.10.4(@dfinity/agent@0.10.4(@dfinity/candid@0.19.3(@dfinity/principal@0.19.3))(@dfinity/principal@0.10.4))(@dfinity/principal@0.10.4)
       '@dfinity/principal': 0.10.4
       buffer: 6.0.3
     transitivePeerDependencies:

@@ -73,13 +73,13 @@ const Analytics = () => {
               
               dailyStats.unshift({
                 date: dateStr,
-                points: (await storage.getDailyPoints(dateStr))?.total || 0,
+                points: (await storage.getPoints(dateStr))?.total || 0,
                 bandwidth: ((scrapingStats.bytesDownloaded || 0) + (scrapingStats.bytesUploaded || 0)) / (1024 * 1024),
                 requests: scrapingStats.requestCount || 0
               });
             }
 
-            const points = await storage.getDailyPoints(dateStr);
+            const points = await storage.getPoints(dateStr);
             if (points) {
               totalPoints += points.total || 0;
             }

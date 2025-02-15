@@ -132,7 +132,7 @@ export class StorageManager {
     await this.db.put('clientInfo', info, 'current');
   }
 
-  async getDailyPoints(date: string): Promise<DailyPoints | null> {
+  async getPoints(date: string): Promise<DailyPoints | null> {
     if (!this.db) throw new Error('Database not initialized');
     const points = await this.db.get('points', date);
     return points || null;
@@ -152,7 +152,7 @@ export class StorageManager {
 
     while (true) {
       const dateStr = currentDate.toISOString().split('T')[0];
-      const points = await this.getDailyPoints(dateStr);
+      const points = await this.getPoints(dateStr);
       
       if (!points || points.points.total === 0) break;
       

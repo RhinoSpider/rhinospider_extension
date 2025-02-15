@@ -38,10 +38,14 @@ async function initAdminActor() {
 async function initialize() {
   try {
     console.log('Initializing auth...');
-    await authManager.initialize();
-    console.log('Auth initialized');
+    const authState = await authManager.initialize();
+    console.log('Auth initialized:', authState);
     
-    await updateTopics();
+    if (authState.isAuthenticated) {
+      await updateTopics();
+    } else {
+      console.log('Not authenticated, skipping topic update');
+    }
   } catch (error) {
     console.error('Failed to initialize:', error);
   }
@@ -50,18 +54,21 @@ async function initialize() {
 // Fetch and cache scraping topics
 async function updateTopics() {
   try {
-    console.log('Updating topics...');
     const actor = await initAdminActor();
-    console.log('Actor initialized');
     const result = await actor.getTopics();
     console.log('Got topics result:', result);
+    
+    // Handle the Result variant
     if ('Ok' in result) {
       topics = result.Ok;
-      console.log('Updated topics:', topics);
+      console.log('Topics updated:', topics);
+    } else if ('Err' in result) {
+      console.error('Error getting topics:', result.Err);
+      topics = [];
     }
   } catch (error) {
-    console.error('Failed to fetch topics:', error);
-    throw error;
+    console.error('Failed to update topics:', error);
+    topics = [];
   }
 }
 
@@ -153,6 +160,53 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
-// Initialize when the service worker starts
-console.log('Service worker starting...');
-initialize().catch(console.error);
+// Initialize on install/update
+chrome.runtime.onInstalled.addListener(() => {
+  console.log('Extension installed/updated');
+  initialize();
+});
+
+// Re-initialize when extension loads
+initialize();
+
+// Listen for messages from popup
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.type === 'UPDATE_AUTH_STATE') {
+    console.log('Received auth state update:', request.state);
+    if (request.state.isAuthenticated) {
+      updateTopics();
+    } else {
+      topics = [];
+    }
+    sendResponse({ success: true });
+    return true;
+  }
+  
+  if (request.type === 'login') {
+    authManager.login()
+      .then(() => {
+        sendResponse({ success: true });
+        // After successful login, update topics
+        updateTopics();
+      })
+      .catch(error => {
+        console.error('Login failed:', error);
+        sendResponse({ success: false, error: error.message });
+      });
+    return true; // Will respond asynchronously
+  }
+  
+  if (request.type === 'logout') {
+    authManager.logout()
+      .then(() => {
+        sendResponse({ success: true });
+        // Clear topics on logout
+        topics = [];
+      })
+      .catch(error => {
+        console.error('Logout failed:', error);
+        sendResponse({ success: false, error: error.message });
+      });
+    return true; // Will respond asynchronously
+  }
+});
