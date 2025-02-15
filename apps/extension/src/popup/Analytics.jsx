@@ -34,7 +34,7 @@ const Analytics = () => {
           
           try {
             const scrapingStats = await storage.getStats(dateStr);
-            const points = await storage.getDailyPoints(dateStr);
+            const points = await storage.getPoints(dateStr);
 
             if (scrapingStats) {
               totalRequests += scrapingStats.requestCount || 0;

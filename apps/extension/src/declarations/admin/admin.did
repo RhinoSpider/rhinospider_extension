@@ -1,0 +1,153 @@
+type UserRole = 
+ variant {
+   Admin;
+   Operator;
+   SuperAdmin;
+ };
+type User = 
+ record {
+   addedAt: Time;
+   addedBy: principal;
+   "principal": principal;
+   role: UserRole;
+ };
+type Time = int;
+type ScrapingTopic = 
+ record {
+   activeHours: record {
+                  end: nat;
+                  start: nat;
+                };
+   aiConfig: AIConfig;
+   createdAt: int;
+   description: text;
+   extractionRules: ExtractionRules;
+   id: text;
+   lastScraped: int;
+   maxRetries: nat;
+   name: text;
+   scrapingInterval: nat;
+   status: text;
+   urlPatterns: vec text;
+ };
+type ScrapingField = 
+ record {
+   aiPrompt: opt text;
+   fieldType: text;
+   name: text;
+   required: bool;
+ };
+type ScrapedData = 
+ record {
+   client_id: principal;
+   content: text;
+   id: text;
+   source: text;
+   timestamp: int;
+   topic: text;
+   url: text;
+ };
+type Result_6 = 
+ variant {
+   err: text;
+   ok: vec ScrapedData;
+ };
+type Result_5 = 
+ variant {
+   err: text;
+   ok: vec ScrapingTopic;
+ };
+type Result_4 = 
+ variant {
+   err: text;
+   ok: vec User;
+ };
+type Result_3 = 
+ variant {
+   err: text;
+   ok;
+ };
+type Result_2 = 
+ variant {
+   err: text;
+   ok: AIConfig__1;
+ };
+type Result_1 = 
+ variant {
+   err: text;
+   ok: text;
+ };
+type Result = 
+ variant {
+   err: text;
+   ok: ScrapingTopic;
+ };
+type ExtractionRules = 
+ record {
+   customPrompt: opt text;
+   fields: vec ScrapingField;
+ };
+type CreateTopicRequest = 
+ record {
+   activeHours: record {
+                  end: nat;
+                  start: nat;
+                };
+   aiConfig: AIConfig__1;
+   description: text;
+   extractionRules: ExtractionRules;
+   id: text;
+   maxRetries: nat;
+   name: text;
+   scrapingInterval: nat;
+   status: text;
+   urlPatterns: vec text;
+ };
+type CostLimits = 
+ record {
+   maxConcurrent: nat;
+   maxDailyCost: float64;
+   maxMonthlyCost: float64;
+ };
+type AIConfig__1 = 
+ record {
+   apiKey: text;
+   costLimits: CostLimits;
+   model: text;
+ };
+type AIConfig = 
+ record {
+   apiKey: text;
+   costLimits: CostLimits;
+   model: text;
+ };
+service : {
+  add_user: (principal, UserRole) -> (Result_3);
+  createTopic: (CreateTopicRequest) -> (Result);
+  deleteTopic: (text) -> (Result_3);
+  getAIConfig: () -> (Result_2);
+  getScrapedData: (vec text) -> (Result_6);
+  getTopics: () -> (Result_5);
+  get_users: () -> (Result_4);
+  remove_user: (principal) -> (Result_3);
+  setTopicActive: (text, bool) -> (Result_3);
+  testExtraction:
+   (record {
+      extraction_rules:
+       record {
+         customPrompt: opt text;
+         fields: vec ScrapingField;
+       };
+      url: text;
+    }) -> (Result_1);
+  updateAIConfig: (AIConfig__1) -> (Result_2);
+  updateLastScraped: (text, int) -> (Result_1);
+  updateTopic: (text,
+   record {
+     description: opt text;
+     extractionRules: opt ExtractionRules;
+     name: opt text;
+     status: opt text;
+     urlPatterns: opt vec text;
+   }) -> (Result);
+}

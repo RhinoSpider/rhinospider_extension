@@ -16,24 +16,31 @@ function extractRelevantHTML(topic: ScrapingTopic): string {
   const relevantElements = new Set<Element>();
   
   // For each extraction field in the topic
-  topic.extractionRules.forEach(rule => {
-    // Common selectors for different fields
+  topic.extractionRules.fields.forEach(field => {
+    // Common selectors for different field types
     const selectors = {
-      title: ['h1', '[class*="title"]', '[id*="title"]', '[class*="product-name"]'],
-      price: ['[class*="price"]', '[id*="price"]', '.amount', '[itemprop="price"]'],
-      description: ['[class*="description"]', '[id*="description"]', '[class*="product-info"]'],
+      text: ['p', 'article', '.post-content', '.article-content', '.entry-content'],
+      title: ['h1', '[class*="title"]', '[id*="title"]', '[class*="headline"]'],
+      date: ['time', '[class*="date"]', '[class*="time"]', '[itemprop="datePublished"]'],
       author: ['[class*="author"]', '[rel="author"]', '[itemprop="author"]'],
-      date: ['[class*="date"]', '[class*="time"]', '[itemprop="datePublished"]'],
-      content: ['article', '.post-content', '.article-content', '.entry-content']
+      votes: ['[class*="vote"]', '[class*="score"]', '[class*="points"]'],
+      price: ['[class*="price"]', '[id*="price"]', '.amount', '[itemprop="price"]'],
+      description: ['meta[name="description"]', '[class*="description"]', '[id*="description"]']
     };
 
-    // Get relevant selectors for this field
-    const fieldSelectors = selectors[rule.fieldType as keyof typeof selectors] || [];
+    // Get relevant selectors for this field type
+    const fieldSelectors = selectors[field.fieldType as keyof typeof selectors] || ['*'];
     
     // Find elements matching selectors
     fieldSelectors.forEach(selector => {
       document.querySelectorAll(selector).forEach(el => {
         relevantElements.add(el);
+        // Also add parent elements for context
+        let parent = el.parentElement;
+        while (parent && parent !== document.body) {
+          relevantElements.add(parent);
+          parent = parent.parentElement;
+        }
       });
     });
   });

@@ -10,7 +10,9 @@
     ],
     "host_permissions": [
         "http://127.0.0.1:8000/*",
-        "https://identity.ic0.app/*"
+        "https://identity.ic0.app/*",
+        "https://icp0.io/*",
+        "https://ic0.app/*"
     ],
     "action": {
         "default_popup": "popup.html",

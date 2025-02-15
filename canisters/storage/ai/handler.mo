@@ -13,18 +13,25 @@ module {
 
     // Extract and validate a field based on its properties
     public func extractField(content: Text, field: Types.ScrapingField, context: ?Text) : async Result.Result<Text, Text> {
-        // TODO: In production, this will make an actual call to OpenAI
-        // For now, we'll simulate the extraction process
-        let extractedValue = await mockExtract(content, field, context);
+        Debug.print("Extracting field: " # field.name);
         
+        // For now, return mock data based on field type and name
+        let mockValue = switch (field.fieldType, field.name) {
+            case ("title", _) { "Sample Article Title" };
+            case ("date", _) { "2025-02-15" };
+            case ("author", _) { "John Doe" };
+            case ("votes", _) { "42" };
+            case ("description", _) { "This is a sample description for testing purposes." };
+            case (_, _) { "Sample value for " # field.name };
+        };
+
         // Validate the extracted value
-        let validationResult = validateField(extractedValue, field);
-        
+        let validationResult = validateField(mockValue, field);
         if (not validationResult.isValid) {
             return #err(validationResult.message);
         };
 
-        #ok(extractedValue)
+        #ok(mockValue)
     };
 
     // Validate extracted value based on field properties
@@ -61,30 +68,10 @@ module {
             };
             case _ {  // "text" and other types
                 // For text fields, just ensure non-empty if required
-                // Additional validation could be added here
                 return { isValid = true; message = "" };
             };
         };
 
         { isValid = true; message = "" }
-    };
-
-    // Mock extraction function for local testing
-    private func mockExtract(content: Text, field: Types.ScrapingField, context: ?Text) : async Text {
-        let contextStr = switch (context) {
-            case (?c) { c };
-            case null { "" };
-        };
-        
-        Debug.print("Extracting field: " # field.name);
-        Debug.print("Context: " # contextStr);
-        Debug.print("Content length: " # Int.toText(Text.size(content)));
-        
-        // Return mock data based on field type
-        switch (field.fieldType) {
-            case "number" { "42" };
-            case "date" { "2024-02-12" };
-            case _ { "Mock value for " # field.name };
-        }
     };
 };

@@ -1,6 +1,8 @@
-import { Actor } from '@dfinity/agent';
-import { idlFactory } from '../../../../src/declarations/admin/admin.did.js';
-import type { ScrapingTopic } from '../../admin/src/types';
+import { Actor, HttpAgent, Identity } from '@dfinity/agent';
+import { Principal } from '@dfinity/principal';
+import { AnonymousIdentity } from '@dfinity/agent';
+import { idlFactory } from '../declarations/admin/admin.did.js';
+import type { ScrapingTopic } from '../types';
 
 let topics: ScrapingTopic[] = [];
 let adminActor: any = null;
@@ -8,23 +10,26 @@ let adminActor: any = null;
 // Initialize admin canister connection
 async function initAdminActor() {
   if (!adminActor) {
-    const host = process.env.NODE_ENV === 'production' 
-      ? 'https://ic0.app'
-      : 'http://localhost:4943';
+    try {
+      const host = process.env.IC_HOST || 'https://icp0.io';
+      const canisterId = Principal.fromText(process.env.ADMIN_CANISTER_ID || 's6r66-wyaaa-aaaaj-az4sq-cai');
       
-    const agent = new HttpAgent({
-      host,
-      verifyQuerySignatures: false
-    });
-
-    if (process.env.NODE_ENV !== 'production') {
-      await agent.fetchRootKey();
+      console.log('Initializing admin actor with:', { host, canisterId: canisterId.toText() });
+      
+      // Use AnonymousIdentity for now (as per MEMORY)
+      const identity = new AnonymousIdentity();
+      const agent = new HttpAgent({ host, identity });
+      
+      adminActor = Actor.createActor(idlFactory, {
+        agent,
+        canisterId
+      });
+      
+      console.log('Admin actor initialized');
+    } catch (error) {
+      console.error('Failed to initialize admin actor:', error);
+      throw error;
     }
-
-    adminActor = Actor.createActor(idlFactory, {
-      agent,
-      canisterId: process.env.ADMIN_CANISTER_ID!
-    });
   }
   return adminActor;
 }
@@ -32,15 +37,31 @@ async function initAdminActor() {
 // Fetch and cache scraping topics
 async function updateTopics() {
   try {
+    console.log('Updating topics...');
     const actor = await initAdminActor();
+    console.log('Actor initialized');
     const result = await actor.getTopics();
+    console.log('Got topics result:', result);
     if ('Ok' in result) {
       topics = result.Ok;
+      console.log('Updated topics:', topics);
     }
   } catch (error) {
     console.error('Failed to fetch topics:', error);
+    throw error;
   }
 }
+
+// Initialize when the service worker starts
+console.log('Service worker starting...');
+
+// Initialize topics on extension load
+chrome.runtime.onInstalled.addListener(() => {
+  console.log('Extension installed, initializing...');
+  updateTopics().catch(error => {
+    console.error('Failed to initialize topics:', error);
+  });
+});
 
 // Check if a URL matches any topic patterns
 function findMatchingTopic(url: string): ScrapingTopic | null {
@@ -103,18 +124,27 @@ async function processContent(url: string, html: string, topic: ScrapingTopic) {
 
 // Listen for messages from content script
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  console.log('Received message:', message);
+  
   if (message.type === 'CHECK_URL') {
     const topic = findMatchingTopic(message.url);
-    sendResponse({ topic });
-  } else if (message.type === 'PROCESS_CONTENT') {
-    processContent(message.url, message.html, message.topic);
-    sendResponse({ success: true });
+    if (topic) {
+      console.log('Found matching topic:', topic);
+      sendResponse({ match: true, topic });
+    } else {
+      console.log('No matching topic found');
+      sendResponse({ match: false });
+    }
+    return true;
   }
-  return true;
+  
+  if (message.type === 'SCRAPE_PAGE') {
+    const { url, html, topic } = message;
+    console.log('Processing page:', { url, topic: topic.name });
+    processContent(url, html, topic);
+    return true;
+  }
 });
 
 // Update topics periodically
 setInterval(updateTopics, 5 * 60 * 1000); // Every 5 minutes
-
-// Initial topics fetch
-updateTopics();
