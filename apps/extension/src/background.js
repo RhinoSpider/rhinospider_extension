@@ -60,15 +60,20 @@ async function updateTopics() {
     }
     
     console.log('Fetching topics from canister...');
-    const result = await actor.get_topics();
+    const result = await actor.getScrapingTopics();
+    console.log('Raw topics result:', result);
     
-    if ('Ok' in result) {
+    // Handle result based on canister response format
+    if (Array.isArray(result)) {
+      topics = result;
+    } else if (result.Ok) {
       topics = result.Ok;
-      console.log('Topics updated:', topics);
     } else {
-      console.error('Failed to get topics:', result.Err);
+      console.error('Unexpected topics format:', result);
       topics = [];
     }
+    
+    console.log('Topics updated:', topics);
     return topics;
   } catch (error) {
     console.error('Failed to update topics:', error);
