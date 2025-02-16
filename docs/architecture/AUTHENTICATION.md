@@ -24,75 +24,128 @@ RhinoSpider uses Internet Identity (II) as its primary authentication system. II
 ## Implementation
 
 ### 1. Dependencies
-
 ```json
 {
   "dependencies": {
     "@dfinity/auth-client": "^0.15.7",
     "@dfinity/identity": "^0.15.7",
-    "@dfinity/principal": "^0.15.7"
+    "@dfinity/principal": "^0.15.7",
+    "@dfinity/agent": "^0.15.7"
   }
 }
 ```
 
 ### 2. Authentication Flow
 
-1. **Extension Popup**
-   ```javascript
-   // Initialize auth client
-   const authClient = await AuthClient.create();
-   
-   // Start login flow
-   await authClient.login({
-     identityProvider: process.env.VITE_II_URL,
-     onSuccess: () => {
-       const identity = authClient.getIdentity();
-       // Update UI and state
-     },
-     onError: (error) => {
-       console.error('Login failed:', error);
-       // Show error in UI
-     }
-   });
-   ```
+```mermaid
+sequenceDiagram
+    participant User
+    participant Extension
+    participant II as Internet Identity
+    participant IC as Internet Computer
+    
+    User->>Extension: Click Login
+    Extension->>II: Open Popup Window
+    II->>User: Show Login UI
+    User->>II: Authenticate
+    II->>Extension: Return Identity
+    Extension->>IC: Use Identity for Calls
+```
 
-2. **Background Script**
-   ```javascript
-   // Listen for auth state changes
-   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-     if (message.type === 'AUTH_STATE_CHANGED') {
-       updateAuthState(message.identity);
-     }
-   });
-   ```
+### 3. Extension Implementation
 
-3. **Canister Integration**
-   ```typescript
-   // Verify caller identity
-   public shared(msg) func authenticate() : async Result.Result<Text, Text> {
-     if (not isAuthorized(msg.caller)) {
-       return #err("Unauthorized");
-     };
-     // Process authenticated request
-   };
-   ```
+#### Popup Component
+```javascript
+// Initialize auth client and handle login
+const handleLogin = async () => {
+  const authClient = await AuthClient.create({
+    idleOptions: {
+      idleTimeout: 30 * 60 * 1000, // 30 minutes
+      disableDefaultIdleCallback: true
+    }
+  });
 
-### 3. Security Best Practices
+  await authClient.login({
+    identityProvider: II_URL,
+    maxTimeToLive: BigInt(30 * 60 * 1000 * 1000 * 1000), // 30 minutes
+    onSuccess: async () => {
+      const identity = authClient.getIdentity();
+      // Store delegation chain and update UI
+    }
+  });
+};
+```
 
-1. **Principal Validation**
-   - Always validate caller principal
-   - Never trust anonymous principals in production
-   - Implement proper access control
+#### Background Service
+```javascript
+// Reconstruct identity from stored delegation chain
+const identity = new DelegationIdentity(publicKey, delegations);
+const agent = new HttpAgent({ identity });
+
+// Use agent for canister calls
+const actor = Actor.createActor(idlFactory, {
+  agent,
+  canisterId: ADMIN_CANISTER_ID
+});
+```
+
+### 4. Security Features
+
+1. **Session Management**
+   - 30-minute idle timeout
+   - Secure session storage in extension
+   - Automatic cleanup of expired sessions
 
 2. **Identity Management**
-   - Store identity securely
-   - Clear identity on logout
-   - Handle session expiry
+   - Delegation chain storage and reconstruction
+   - Proper principal verification
+   - No anonymous access in production
 
-3. **Error Handling**
-   - Graceful error recovery
-   - Clear user feedback
-   - Automatic retry for transient failures
+3. **State Management**
+   - Consistent state between popup and background
+   - Secure storage of delegation chains
+   - Proper cleanup on logout
+
+### 5. Production Considerations
+
+1. **Security**
+   - Never allow anonymous principals
+   - Always verify delegation chain expiration
+   - Properly handle session timeouts
+
+2. **User Experience**
+   - Clean popup window management
+   - Clear error messages
+   - Smooth login/logout flow
+
+3. **Maintenance**
+   - Regular security audits
+   - Version updates for II dependencies
+   - Monitoring of auth failures
+
+## Troubleshooting
+
+1. **Common Issues**
+   - Identity reconstruction failures
+   - Delegation chain expiration
+   - Window management issues
+
+2. **Solutions**
+   - Clear invalid auth states
+   - Proper error handling
+   - Regular state validation
+
+## Future Improvements
+
+1. **Features**
+   - Multiple identity support
+   - Enhanced session management
+   - Better error recovery
+
+2. **Security**
+   - Additional verification layers
+   - Enhanced monitoring
+   - Automated security checks
 
 ## Development Setup
 
@@ -118,23 +171,6 @@ RhinoSpider uses Internet Identity (II) as its primary authentication system. II
      });
    });
    ```
-
-## Production Considerations
-
-1. **Deployment**
-   - Use production II URL
-   - Enable proper security headers
-   - Set up monitoring
-
-2. **User Experience**
-   - Clear login/logout feedback
-   - Persistent sessions where appropriate
-   - Graceful error handling
-
-3. **Security**
-   - Regular security audits
-   - Keep dependencies updated
-   - Monitor for suspicious activity
 
 ## Resources
 

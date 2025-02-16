@@ -3,6 +3,8 @@ import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@rhinospider/web3-client';
 import Analytics from './pages/Analytics';
 import Settings from './pages/Settings';
+import Profile from './pages/Profile';
+import Referrals from './pages/Referrals';
 import Popup from './popup/Popup';
 import './App.css';
 
@@ -51,7 +53,7 @@ export default function App() {
     );
   }
 
-  // Full page mode
+  // Pages mode (settings, analytics, etc)
   return (
     <AuthProvider config={authConfig}>
       <HashRouter>
@@ -69,6 +71,22 @@ export default function App() {
             element={
               <AuthGuard>
                 <Settings />
+              </AuthGuard>
+            } 
+          />
+          <Route 
+            path="/profile" 
+            element={
+              <AuthGuard>
+                <Profile />
+              </AuthGuard>
+            } 
+          />
+          <Route 
+            path="/referrals" 
+            element={
+              <AuthGuard>
+                <Referrals />
               </AuthGuard>
             } 
           />

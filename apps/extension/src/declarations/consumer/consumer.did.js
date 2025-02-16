@@ -1,12 +1,4 @@
 export const idlFactory = ({ IDL }) => {
-  const Error = IDL.Variant({
-    'InvalidInput' : IDL.Text,
-    'SystemError' : IDL.Text,
-    'NotFound' : IDL.Null,
-    'NotAuthorized' : IDL.Null,
-    'AlreadyExists' : IDL.Null,
-  });
-  const Result = IDL.Variant({ 'ok' : IDL.Null, 'err' : Error });
   const CostLimits = IDL.Record({
     'maxConcurrent' : IDL.Nat,
     'maxDailyCost' : IDL.Float64,
@@ -17,21 +9,25 @@ export const idlFactory = ({ IDL }) => {
     'costLimits' : CostLimits,
     'apiKey' : IDL.Text,
   });
-  const Result_3 = IDL.Variant({ 'ok' : AIConfig, 'err' : Error });
-  const ScrapedData = IDL.Record({
-    'id' : IDL.Text,
-    'url' : IDL.Text,
-    'status' : IDL.Text,
-    'content' : IDL.Record({
-      'raw' : IDL.Text,
-      'extracted' : IDL.Vec(IDL.Tuple(IDL.Text, IDL.Text)),
-    }),
-    'error' : IDL.Opt(IDL.Text),
-    'timestamp' : IDL.Int,
-    'topicId' : IDL.Text,
-    'retries' : IDL.Nat,
+  const Error = IDL.Variant({
+    'InvalidInput' : IDL.Text,
+    'SystemError' : IDL.Text,
+    'NotFound' : IDL.Null,
+    'NotAuthorized' : IDL.Null,
+    'AlreadyExists' : IDL.Null,
   });
-  const Result_2 = IDL.Variant({ 'ok' : IDL.Vec(ScrapedData), 'err' : Error });
+  const Result_3 = IDL.Variant({ 'ok' : AIConfig, 'err' : Error });
+  const UserProfile = IDL.Record({
+    'created' : IDL.Int,
+    'principal' : IDL.Principal,
+    'preferences' : IDL.Record({
+      'theme' : IDL.Text,
+      'notificationsEnabled' : IDL.Bool,
+    }),
+    'lastLogin' : IDL.Int,
+    'devices' : IDL.Vec(IDL.Text),
+  });
+  const Result_2 = IDL.Variant({ 'ok' : UserProfile, 'err' : Error });
   const ScrapingField = IDL.Record({
     'name' : IDL.Text,
     'aiPrompt' : IDL.Opt(IDL.Text),
@@ -59,16 +55,27 @@ export const idlFactory = ({ IDL }) => {
     'ok' : IDL.Vec(ScrapingTopic),
     'err' : Error,
   });
-  const Storage = IDL.Service({
-    'addAuthorizedCanister' : IDL.Func([IDL.Principal], [Result], []),
-    'getAIConfig' : IDL.Func([], [Result_3], ['query']),
-    'getScrapedData' : IDL.Func([IDL.Vec(IDL.Text)], [Result_2], ['query']),
-    'getTopics' : IDL.Func([], [Result_1], ['query']),
-    'removeAuthorizedCanister' : IDL.Func([IDL.Principal], [Result], []),
-    'submitScrapedData' : IDL.Func([ScrapedData], [Result], []),
-    'updateAIConfig' : IDL.Func([AIConfig], [Result], []),
-    'updateTopic' : IDL.Func([ScrapingTopic], [Result], []),
+  const Result = IDL.Variant({ 'ok' : IDL.Null, 'err' : Error });
+  const ScrapedData = IDL.Record({
+    'id' : IDL.Text,
+    'url' : IDL.Text,
+    'status' : IDL.Text,
+    'content' : IDL.Record({
+      'raw' : IDL.Text,
+      'extracted' : IDL.Vec(IDL.Tuple(IDL.Text, IDL.Text)),
+    }),
+    'error' : IDL.Opt(IDL.Text),
+    'timestamp' : IDL.Int,
+    'topicId' : IDL.Text,
+    'retries' : IDL.Nat,
   });
-  return Storage;
+  return IDL.Service({
+    'getAIConfig' : IDL.Func([], [Result_3], []),
+    'getProfile' : IDL.Func([], [Result_2], ['query']),
+    'getTopics' : IDL.Func([], [Result_1], []),
+    'registerDevice' : IDL.Func([IDL.Text], [Result], []),
+    'submitScrapedData' : IDL.Func([ScrapedData], [Result], []),
+    'updatePreferences' : IDL.Func([IDL.Bool, IDL.Text], [Result], []),
+  });
 };
 export const init = ({ IDL }) => { return []; };

@@ -5,7 +5,7 @@ import { useAuth } from '@rhinospider/web3-client';
 
 const Referrals = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { logout } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [showCopyNotification, setShowCopyNotification] = useState(false);
   const [referralStats, setReferralStats] = useState({
@@ -35,15 +35,29 @@ const Referrals = () => {
     setTimeout(() => setShowCopyNotification(false), 2000);
   };
 
+  const handleLogout = async () => {
+    try {
+      await logout();
+      window.close();
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
+  };
+
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-4 w-[300px]">
+      <div className="flex justify-between items-center mb-4">
         <button
-          onClick={() => navigate('/')}
-          className="flex items-center text-gray-400 hover:text-white transition-colors"
+          onClick={() => navigate(-1)}
+          className="text-gray-600 hover:text-gray-900 transition-colors"
         >
-          <ArrowLeft className="w-5 h-5 mr-2" />
-          <span className="text-sm">Back</span>
+          <ArrowLeft size={20} />
+        </button>
+        <button
+          onClick={handleLogout}
+          className="text-red-600 hover:text-red-700 transition-colors text-sm"
+        >
+          Logout
         </button>
       </div>
 

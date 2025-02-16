@@ -3,17 +3,18 @@ import { II_URL } from '../constants';
 
 export interface AuthState {
   isAuthenticated: boolean;
-  identity: any;
+  principal: string | null;
   isInitialized: boolean;
-  error: Error | null;
+  error: string | null;
 }
 
 export class AuthClient {
   private static instance: AuthClient;
   private authClient: IcAuthClient | null = null;
+  private identity: Identity | null = null;
   private state: AuthState = {
     isAuthenticated: false,
-    identity: null,
+    principal: null,
     isInitialized: true,
     error: null
   };
@@ -41,6 +42,15 @@ export class AuthClient {
     return this.authClient;
   }
 
+  private setState(newState: Partial<AuthState>) {
+    console.log('Setting new auth state:', newState);
+    this.state = {
+      ...this.state,
+      ...newState
+    };
+    console.log('Updated auth state:', this.state);
+  }
+
   async initialize(): Promise<AuthState> {
     try {
       console.log('Initializing auth client...');
@@ -49,20 +59,26 @@ export class AuthClient {
       console.log('Is authenticated?', isAuthenticated);
       
       if (isAuthenticated) {
-        const identity = authClient.getIdentity();
-        console.log('Got identity:', identity.getPrincipal().toString());
-        this.state = {
+        this.identity = authClient.getIdentity();
+        const principal = this.identity.getPrincipal().toText();
+        console.log('Got identity:', principal);
+        this.setState({
           isAuthenticated: true,
-          identity,
+          principal,
           isInitialized: true,
           error: null
-        };
+        });
       }
 
       return this.state;
     } catch (error) {
       console.error('Failed to initialize auth:', error);
-      this.state.error = error instanceof Error ? error : new Error('Failed to initialize auth');
+      this.setState({
+        isAuthenticated: false,
+        principal: null,
+        isInitialized: true,
+        error: error instanceof Error ? error.message : 'Failed to initialize auth'
+      });
       return this.state;
     }
   }
@@ -80,15 +96,16 @@ export class AuthClient {
           onSuccess: async () => {
             try {
               console.log('Login successful, getting identity...');
-              const identity = authClient.getIdentity();
-              console.log('Got identity:', identity.getPrincipal().toString());
+              this.identity = authClient.getIdentity();
+              const principal = this.identity.getPrincipal().toText();
+              console.log('Got identity:', principal);
               
-              this.state = {
+              this.setState({
                 isAuthenticated: true,
-                identity,
+                principal,
                 isInitialized: true,
                 error: null
-              };
+              });
 
               resolve();
             } catch (error) {
@@ -100,10 +117,9 @@ export class AuthClient {
             console.log('Login error type:', error);
             // Handle user interruption (closing the popup) differently
             if (error === 'UserInterrupt') {
-              this.state = {
-                ...this.state,
+              this.setState({
                 error: null // Don't set an error for user interruption
-              };
+              });
               resolve(); // Resolve without error
               return;
             }
@@ -115,8 +131,10 @@ export class AuthClient {
                 ? error.message 
                 : 'Login failed';
             
-            this.state.error = new Error(errorMessage);
-            reject(this.state.error);
+            this.setState({
+              error: errorMessage
+            });
+            reject(new Error(errorMessage));
           }
         });
       });
@@ -129,8 +147,10 @@ export class AuthClient {
         return;
       }
       console.error('Login process error:', error);
-      this.state.error = error instanceof Error ? error : new Error('Failed to login');
-      throw this.state.error;
+      this.setState({
+        error: error instanceof Error ? error.message : 'Failed to login'
+      });
+      throw error;
     }
   }
 
@@ -142,19 +162,22 @@ export class AuthClient {
       console.log('Logged out from auth client');
       
       // Clear state
-      this.state = {
+      this.identity = null;
+      this.setState({
         isAuthenticated: false,
-        identity: null,
+        principal: null,
         isInitialized: true,
         error: null
-      };
+      });
 
       // Force page reload to clear any cached state
       window.location.reload();
     } catch (error) {
       console.error('Logout error:', error);
-      this.state.error = error instanceof Error ? error : new Error('Failed to logout');
-      throw this.state.error;
+      this.setState({
+        error: error instanceof Error ? error.message : 'Failed to logout'
+      });
+      throw error;
     }
   }
 
@@ -164,7 +187,7 @@ export class AuthClient {
   }
 
   getIdentity(): Identity | null {
-    return this.state.identity;
+    return this.identity;
   }
 
   getState(): AuthState {

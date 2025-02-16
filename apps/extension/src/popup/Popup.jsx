@@ -1,19 +1,26 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { Principal } from '@dfinity/principal';
+import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import Settings from '../pages/Settings';
 import Profile from '../pages/Profile';
 import Referrals from '../pages/Referrals';
 import Home from './Home';
 import Analytics from './Analytics';
-import './Popup.css';
 import { AuthClient } from '@dfinity/auth-client';
+import { DelegationIdentity } from '@dfinity/identity';
+import { Actor, HttpAgent } from '@dfinity/agent';
+import { idlFactory } from '../declarations/consumer/consumer.did.js';
+
+const CONSUMER_CANISTER_ID = import.meta.env.VITE_CONSUMER_CANISTER_ID;
+const II_URL = import.meta.env.VITE_II_URL;
+const IC_HOST = import.meta.env.VITE_IC_HOST;
 
 // Constants
-const II_URL = 'https://identity.ic0.app';
 const MAX_TTL = BigInt(30 * 60 * 1000 * 1000 * 1000); // 30 minutes in nanoseconds
 
 const Popup = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -27,6 +34,7 @@ const Popup = () => {
   const userMenuRef = useRef(null);
   const [authClient, setAuthClient] = useState(null);
   const [avatar, setAvatar] = useState(null);
+  const [activeTab, setActiveTab] = useState('home');
 
   // Default avatar
   const DEFAULT_AVATAR = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIyMCIgY3k9IjIwIiByPSIyMCIgZmlsbD0iI0U1RTdFQiIvPjxwYXRoIGQ9Ik0yMCAxOUMyMi43NjE0IDE5IDI1IDIxLjIzODYgMjUgMjRDMjUgMjYuNzYxNCAyMi43NjE0IDI5IDIwIDI5QzE3LjIzODYgMjkgMTUgMjYuNzYxNCAxNSAyNEMxNSAyMS4yMzg2IDE3LjIzODYgMTkgMjAgMTlaIiBmaWxsPSIjOUVBM0FCIi8+PC9zdmc+';
@@ -47,102 +55,130 @@ const Popup = () => {
         const isAuthed = await client.isAuthenticated();
         if (isAuthed) {
           const identity = client.getIdentity();
-          if (!identity.getPrincipal().isAnonymous()) {
-            setIsAuthenticated(true);
-            setPrincipal(identity.getPrincipal().toText());
-            setAvatar(DEFAULT_AVATAR);
+          if (identity instanceof DelegationIdentity) {
+            const chain = identity.getDelegation();
+            if (!chain || chain.delegations.length === 0) {
+              setError('Invalid delegation chain');
+              setIsLoading(false);
+              return;
+            }
+
+            // Check if delegation is expired
+            const now = BigInt(Date.now()) * BigInt(1000_000);
+            if (chain.delegations.some(d => d.delegation.expiration < now)) {
+              setError('Delegation chain has expired');
+              await client.logout();
+              setIsLoading(false);
+              return;
+            }
+          }
+          
+          const principal = identity.getPrincipal().toText();
+          setIsAuthenticated(true);
+          setPrincipal(principal);
+          
+          // Store only serializable auth state
+          try {
+            const authState = {
+              isAuthenticated: true,
+              principal,
+              timestamp: Date.now()
+            };
+            localStorage.setItem('authState', JSON.stringify(authState));
+          } catch (error) {
+            console.error('Failed to save auth state:', error);
           }
         }
+        setIsLoading(false);
       } catch (error) {
         console.error('Failed to initialize auth:', error);
         setError('Failed to initialize authentication');
-      } finally {
         setIsLoading(false);
       }
     };
 
+    // Try to load saved auth state
+    try {
+      const savedState = localStorage.getItem('authState');
+      if (savedState) {
+        const { isAuthenticated: savedAuth, principal: savedPrincipal } = JSON.parse(savedState);
+        setIsAuthenticated(savedAuth);
+        setPrincipal(savedPrincipal);
+      }
+    } catch (error) {
+      console.error('Failed to load auth state:', error);
+    }
+
     initAuth();
   }, []);
 
+  useEffect(() => {
+    // Update activeTab based on current route
+    const path = location.pathname.substring(1) || 'home';
+    setActiveTab(path);
+  }, [location]);
+
   const handleLogin = async () => {
-    setError(null);
     try {
-      // Initialize auth client
-      const authClient = await AuthClient.create({
-        idleOptions: {
-          idleTimeout: 30 * 60 * 1000,
-          disableDefaultIdleCallback: true
+      await authClient.login({
+        identityProvider: import.meta.env.VITE_II_URL,
+        maxTimeToLive: MAX_TTL,
+        windowOpenerFeatures: 
+          `width=500,` +
+          `height=700,` +
+          `left=${Math.max(0, Math.floor((window.screen.width - 500) / 2))},` +
+          `top=${Math.max(0, Math.floor((window.screen.height - 700) / 2))},` +
+          `popup=yes,location=no`,
+        onSuccess: async () => {
+          const identity = authClient.getIdentity();
+          
+          // Verify delegation chain
+          if (identity instanceof DelegationIdentity) {
+            const chain = identity.getDelegation();
+            if (!chain || chain.delegations.length === 0) {
+              setError('Invalid delegation chain');
+              return;
+            }
+
+            // Check if delegation is expired
+            const now = BigInt(Date.now()) * BigInt(1000_000);
+            if (chain.delegations.some(d => d.delegation.expiration < now)) {
+              setError('Delegation chain has expired');
+              await authClient.logout();
+              return;
+            }
+          }
+
+          const principal = identity.getPrincipal().toText();
+          setIsAuthenticated(true);
+          setPrincipal(principal);
+          
+          // Store only serializable auth state
+          try {
+            const authState = {
+              isAuthenticated: true,
+              principal,
+              timestamp: Date.now()
+            };
+            localStorage.setItem('authState', JSON.stringify(authState));
+
+            // Notify background script
+            await chrome.runtime.sendMessage({
+              type: 'AUTH_STATE_CHANGED',
+              data: { isAuthenticated: true, principal }
+            });
+          } catch (error) {
+            console.error('Failed to save auth state:', error);
+          }
+        },
+        onError: (error) => {
+          console.error('Login failed:', error);
+          setError('Failed to login');
         }
       });
-
-      // Start login in a popup window
-      await new Promise((resolve, reject) => {
-        authClient.login({
-          identityProvider: II_URL,
-          maxTimeToLive: MAX_TTL,
-          windowOpenerFeatures: 
-            'width=500,' +
-            'height=700,' +
-            'left=' + Math.max(0, Math.floor((window.screen.width - 500) / 2)) + ',' +
-            'top=' + Math.max(0, Math.floor((window.screen.height - 700) / 2)) + ',' +
-            'popup=yes,location=no',
-          onSuccess: async () => {
-            try {
-              const identity = authClient.getIdentity();
-              if (identity.getPrincipal().isAnonymous()) {
-                reject(new Error('Anonymous principal not allowed'));
-                return;
-              }
-
-              // Get delegation chain for storage
-              const delegation = identity.getDelegation();
-              const delegationChain = delegation ? {
-                delegations: delegation.delegations.map(d => ({
-                  delegation: {
-                    pubkey: Array.from(d.delegation.pubkey),
-                    expiration: d.delegation.expiration.toString(),
-                    targets: d.delegation.targets?.map(t => t.toText())
-                  },
-                  signature: Array.from(d.signature)
-                })),
-                publicKey: Array.from(delegation.publicKey)
-              } : null;
-
-              // Store auth state
-              const authState = {
-                isAuthenticated: true,
-                principal: identity.getPrincipal().toText(),
-                delegationChain
-              };
-
-              // Store in extension storage
-              await chrome.storage.local.set({ authState });
-
-              // Notify background script
-              await chrome.runtime.sendMessage({
-                type: 'AUTH_STATE_CHANGED',
-                data: authState
-              });
-
-              // Update UI
-              setIsAuthenticated(true);
-              setPrincipal(identity.getPrincipal().toText());
-              setAvatar(DEFAULT_AVATAR);
-              resolve();
-            } catch (error) {
-              console.error('Login error:', error);
-              reject(error);
-            }
-          },
-          onError: (error) => {
-            console.error('Login error:', error);
-            reject(error);
-          }
-        });
-      });
     } catch (error) {
-      console.error('Login failed:', error);
-      setError(error.message || 'Failed to login');
+      console.error('Login error:', error);
+      setError('Failed to login');
     }
   };
 
@@ -152,19 +188,12 @@ const Popup = () => {
         await authClient.logout();
         setIsAuthenticated(false);
         setPrincipal(null);
-        setAvatar(null);
-        setIsUserMenuOpen(false);
-
-        // Clear stored auth state
-        await chrome.storage.local.remove('authState');
-
+        localStorage.removeItem('authState');
+        
         // Notify background script
         await chrome.runtime.sendMessage({
           type: 'AUTH_STATE_CHANGED',
-          data: {
-            isAuthenticated: false,
-            principal: null
-          }
+          data: { isAuthenticated: false }
         });
       }
     } catch (error) {
@@ -173,6 +202,12 @@ const Popup = () => {
     }
   };
 
+  const navigateToPage = (page) => {
+    navigate(`/${page}`);
+    setIsUserMenuOpen(false); // Close menu when navigating
+  };
+
+  // Close menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
@@ -181,41 +216,44 @@ const Popup = () => {
     };
 
     document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  useEffect(() => {
-    // Simulating bandwidth speed updates
-    const updateSpeed = () => {
-      // This would be replaced with actual speed measurement
-      const speeds = ['low', 'medium', 'high'];
-      const speedValues = ['1.2 MB/s', '2.5 MB/s', '5.0 MB/s'];
-      const randomIndex = Math.floor(Math.random() * speeds.length);
-      setBandwidthSpeed(speeds[randomIndex]);
-      setCurrentSpeed(speedValues[randomIndex]);
-    };
+  const agent = new HttpAgent({ host: IC_HOST });
+  const actor = Actor.createActor(idlFactory, {
+    agent,
+    canisterId: CONSUMER_CANISTER_ID,
+  });
 
-    const interval = setInterval(updateSpeed, 5000); // Update every 5 seconds
-    return () => clearInterval(interval);
-  }, []);
+  const checkAuthStatus = async () => {
+    try {
+      const response = await actor.checkAuthStatus();
+      setIsAuthenticated(response.isAuthenticated);
+      if (response.principal) {
+        setPrincipal(response.principal);
+      }
+    } catch (error) {
+      console.error('Error checking auth status:', error);
+      setError('Failed to check authentication status');
+    }
+  };
+
+  const fetchTopics = async () => {
+    try {
+      const response = await actor.getTopics();
+      setTopics(response.topics);
+    } catch (error) {
+      console.error('Error fetching topics:', error);
+      setError('Failed to fetch topics');
+    }
+  };
 
   const togglePlugin = () => {
     setIsPluginActive(!isPluginActive);
   };
 
-  const navigateToPage = (page) => {
-    navigate(`/${page}`);
-    setIsUserMenuOpen(false);
-  };
-
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center w-[360px] h-[600px] bg-[#131217]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white" />
-      </div>
-    );
+    return <div>Loading...</div>;
   }
 
   if (!isAuthenticated) {
@@ -325,27 +363,41 @@ const Popup = () => {
                 >
                   Referrals
                 </button>
-                <button
-                  onClick={handleLogout}
-                  className="w-full text-left px-4 py-2 text-sm text-white hover:bg-white/10 border-t border-white/10"
-                >
-                  Sign Out
-                </button>
               </div>
             )}
           </div>
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col justify-center px-6">
-        <Home 
-          points={points} 
-          uptime={uptime} 
-          isPluginActive={isPluginActive} 
-          togglePlugin={togglePlugin}
-          bandwidthSpeed={bandwidthSpeed}
-          currentSpeed={currentSpeed}
-        />
+      <div className="p-4">
+        <Routes>
+          <Route path="/" element={
+            !isAuthenticated ? (
+              <div className="flex flex-col items-center justify-center space-y-4">
+                <h1 className="text-2xl font-bold">Welcome to RhinoSpider</h1>
+                <button
+                  onClick={handleLogin}
+                  className="bg-white/10 hover:bg-white/20 text-white px-6 py-3 rounded-lg transition-colors"
+                >
+                  Login with Internet Identity
+                </button>
+              </div>
+            ) : (
+              <Home 
+                points={points} 
+                uptime={uptime} 
+                isPluginActive={isPluginActive} 
+                togglePlugin={togglePlugin} 
+                bandwidthSpeed={bandwidthSpeed} 
+                currentSpeed={currentSpeed}
+              />
+            )
+          } />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/referrals" element={<Referrals />} />
+          <Route path="/analytics" element={<Analytics />} />
+        </Routes>
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import React, { createContext, useContext } from 'react';
+import React, { createContext, useContext, useCallback, useEffect, useState } from 'react';
 import { AuthClient } from './AuthClient';
 import { AuthState } from './types';
 
@@ -15,16 +15,16 @@ export interface AuthConfig {
 
 interface AuthContextType {
   isAuthenticated: boolean;
-  identity: any;
+  principal: string | null;
   isInitialized: boolean;
-  error: Error | null;
+  error: string | null;
   login: (options?: LoginOptions) => Promise<void>;
   logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
   isAuthenticated: false,
-  identity: null,
+  principal: null,
   isInitialized: false,
   error: null,
   login: async () => {
@@ -41,32 +41,9 @@ interface AuthProviderProps {
 }
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children, config }) => {
-  const auth = useAuth();
-
-  return (
-    <AuthContext.Provider
-      value={{
-        isAuthenticated: auth.isAuthenticated,
-        identity: auth.identity,
-        isInitialized: auth.isInitialized,
-        error: auth.error,
-        login: auth.login,
-        logout: auth.logout
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
-  );
-};
-
-import { useCallback, useEffect, useState } from 'react';
-import { AuthClient } from './AuthClient';
-import type { AuthState } from './types';
-
-export function useAuth() {
   const [state, setState] = useState<AuthState>({
     isAuthenticated: false,
-    identity: null,
+    principal: null,
     isInitialized: false,
     error: null,
   });
@@ -75,35 +52,106 @@ export function useAuth() {
   useEffect(() => {
     const loadState = async () => {
       try {
+        console.log('Starting to load auth state...');
+        // Try to load from chrome storage first
         const result = await chrome.storage.local.get(['authState']);
+        console.log('Raw storage result:', result);
+        
+        let loadedState: AuthState | null = null;
+
         if (result.authState) {
-          setState(result.authState);
+          try {
+            console.log('Found stored auth state, attempting to parse:', result.authState);
+            const parsed = JSON.parse(result.authState);
+            console.log('Successfully parsed stored state:', parsed);
+            
+            // Validate the parsed state has the correct shape
+            if (typeof parsed === 'object' && 
+                'isAuthenticated' in parsed && 
+                'principal' in parsed && 
+                'isInitialized' in parsed) {
+              loadedState = parsed as AuthState;
+              console.log('Validated auth state shape:', loadedState);
+            } else {
+              console.log('Invalid auth state shape:', parsed);
+            }
+          } catch (parseError) {
+            console.error('Failed to parse stored auth state:', parseError);
+          }
         } else {
-          // If no stored state, check auth client
-          const authClient = AuthClient.getInstance();
-          const newState = await authClient.initialize();
-          setState(newState);
-          await chrome.storage.local.set({ authState: newState });
+          console.log('No stored auth state found');
         }
+
+        if (!loadedState) {
+          console.log('Initializing new auth state from client...');
+          // If no valid stored state, check auth client
+          const authClient = AuthClient.getInstance();
+          loadedState = await authClient.initialize();
+          console.log('New auth state from client:', loadedState);
+          
+          // Store the new state
+          try {
+            const stateToStore = {
+              isAuthenticated: loadedState.isAuthenticated,
+              principal: loadedState.principal,
+              isInitialized: loadedState.isInitialized,
+              error: loadedState.error
+            };
+            console.log('Attempting to store state:', stateToStore);
+            await chrome.storage.local.set({ 
+              authState: JSON.stringify(stateToStore)
+            });
+            console.log('Successfully stored auth state');
+          } catch (storageError) {
+            console.error('Failed to store auth state:', storageError);
+          }
+        }
+
+        setState(loadedState);
       } catch (error) {
         console.error('Failed to load auth state:', error);
+        setState(prev => ({
+          ...prev,
+          error: error instanceof Error ? error.message : 'Failed to load auth state',
+          isInitialized: true
+        }));
       }
     };
 
     loadState();
   }, []);
 
-  const login = useCallback(async () => {
+  const login = useCallback(async (options?: LoginOptions) => {
     try {
+      console.log('Starting login process...');
       const authClient = AuthClient.getInstance();
-      const newState = await authClient.login();
+      await authClient.login();
+      const newState = authClient.getState();
+      console.log('Got new auth state after login:', newState);
+
+      // Store the new state
+      try {
+        const stateToStore = {
+          isAuthenticated: newState.isAuthenticated,
+          principal: newState.principal,
+          isInitialized: newState.isInitialized,
+          error: newState.error
+        };
+        console.log('Attempting to store login state:', stateToStore);
+        await chrome.storage.local.set({ 
+          authState: JSON.stringify(stateToStore)
+        });
+        console.log('Successfully stored login state');
+      } catch (storageError) {
+        console.error('Failed to store auth state:', storageError);
+      }
+
       setState(newState);
-      await chrome.storage.local.set({ authState: newState });
-    } catch (error: any) {
+    } catch (error) {
       console.error('Login failed:', error);
       setState(prev => ({
         ...prev,
-        error,
+        error: error instanceof Error ? error.message : 'Login failed',
         isAuthenticated: false
       }));
       throw error;
@@ -112,23 +160,43 @@ export function useAuth() {
 
   const logout = useCallback(async () => {
     try {
+      console.log('Starting logout process...');
       const authClient = AuthClient.getInstance();
-      const newState = await authClient.logout();
+      await authClient.logout();
+      const newState = authClient.getState();
+      console.log('Got new auth state after logout:', newState);
       setState(newState);
-      await chrome.storage.local.set({ authState: newState });
-    } catch (error: any) {
+
+      // Clear stored state
+      try {
+        await chrome.storage.local.remove('authState');
+        console.log('Successfully cleared auth state');
+      } catch (storageError) {
+        console.error('Failed to clear auth state:', storageError);
+      }
+    } catch (error) {
       console.error('Logout failed:', error);
       setState(prev => ({
         ...prev,
-        error,
+        error: error instanceof Error ? error.message : 'Logout failed',
       }));
       throw error;
     }
   }, []);
 
-  return {
-    ...state,
-    login,
-    logout,
-  };
+  return (
+    <AuthContext.Provider
+      value={{
+        ...state,
+        login,
+        logout
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
+};
+
+export function useAuth(): AuthContextType {
+  return useContext(AuthContext);
 }

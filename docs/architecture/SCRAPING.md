@@ -43,6 +43,84 @@ RhinoSpider implements a distributed web scraping system with a hybrid architect
 - Handles access control
 - Provides data to admin portal
 
+## Topic System
+
+### 1. Topic Structure
+A Topic represents a specific type of content to scrape:
+- **Basic Info**:
+  - Name and description
+  - Target URL
+  - Status (active/inactive)
+
+- **Scheduling**:
+  - `scrapingInterval`: How often to scrape (in seconds)
+  - `activeHours`: When scraping is allowed (UTC hours)
+  - `lastScraped`: Last successful scrape timestamp
+  - `maxRetries`: Maximum retry attempts per URL
+
+- **AI Configuration**:
+  - Model (gpt-4, gpt-3.5-turbo)
+  - Temperature
+  - Max tokens
+  - Cost limits (daily/monthly)
+
+- **Extraction Rules**:
+  - Fields to extract
+  - Custom prompts
+  - Field requirements
+
+### 2. Workflow
+
+#### Topic Discovery
+1. Extension fetches active topics from admin canister
+2. Filters topics based on:
+   - Within active hours
+   - Enough time since last scrape
+   - Topic is active
+   - Cost limits not exceeded
+
+#### Scraping Process
+```mermaid
+sequenceDiagram
+    participant Extension
+    participant DO as Digital Ocean
+    participant AI as AI Service
+    participant IC as Internet Computer
+    
+    Extension->>IC: Get Active Topics
+    IC-->>Extension: Topics List
+    
+    loop Each Topic
+        Extension->>DO: Send Scraping Request
+        DO->>DO: Process with Puppeteer
+        DO-->>Extension: Raw Content
+        
+        Extension->>AI: Process Content
+        AI-->>Extension: Structured Data
+        
+        Extension->>IC: Store Results
+        IC-->>Extension: Confirmation
+        
+        Extension->>IC: Update Analytics
+    end
+```
+
+### 3. Error Handling
+1. **Rate Limiting**
+   - Exponential backoff
+   - Per-domain limits
+   - Respect robots.txt
+
+2. **Content Validation**
+   - Schema validation
+   - Required field checks
+   - Data quality metrics
+
+3. **Recovery**
+   - Automatic retries
+   - Error logging
+   - Admin notifications
+
 ## Data Flow
 
 ```mermaid
@@ -101,6 +179,66 @@ sequenceDiagram
 - Redis for queue management
 - Load balancing if needed
 - Resource monitoring
+
+## Analytics & Monitoring
+
+### 1. Metrics Tracked
+- Scraping success rate
+- Processing time
+- AI token usage
+- Error rates
+- Cost per topic
+
+### 2. Monitoring
+- Real-time status dashboard
+- Error alerts
+- Cost tracking
+- Performance metrics
+
+### 3. Optimization
+- Dynamic scheduling
+- Resource allocation
+- Cost optimization
+- Quality improvements
+
+## Security Considerations
+
+### 1. Access Control
+- Role-based permissions
+- IP whitelisting
+- Rate limiting
+- Authentication
+
+### 2. Data Protection
+- Encryption at rest
+- Secure transmission
+- Data retention policies
+- Privacy compliance
+
+### 3. Infrastructure
+- Container isolation
+- Regular updates
+- Security monitoring
+- Backup systems
+
+## Future Improvements
+
+1. **Scalability**
+   - Multiple DO instances
+   - Load balancing
+   - Geographic distribution
+
+2. **Features**
+   - Advanced scheduling
+   - More AI models
+   - Custom extractors
+   - Real-time monitoring
+
+3. **Integration**
+   - More data sources
+   - Export options
+   - API access
+   - Webhooks
 
 ## Deployment
 

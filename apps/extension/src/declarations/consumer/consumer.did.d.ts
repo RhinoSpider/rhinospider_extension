@@ -24,7 +24,7 @@ export type Result = { 'ok' : null } |
   { 'err' : Error };
 export type Result_1 = { 'ok' : Array<ScrapingTopic> } |
   { 'err' : Error };
-export type Result_2 = { 'ok' : Array<ScrapedData> } |
+export type Result_2 = { 'ok' : UserProfile } |
   { 'err' : Error };
 export type Result_3 = { 'ok' : AIConfig } |
   { 'err' : Error };
@@ -57,14 +57,18 @@ export interface ScrapingTopic {
   'extractionRules' : ExtractionRules,
   'aiConfig' : AIConfig,
 }
-export interface Storage {
-  'addAuthorizedCanister' : ActorMethod<[Principal], Result>,
-  'getAIConfig' : ActorMethod<[], Result_3>,
-  'getScrapedData' : ActorMethod<[Array<string>], Result_2>,
-  'getTopics' : ActorMethod<[], Result_1>,
-  'removeAuthorizedCanister' : ActorMethod<[Principal], Result>,
-  'submitScrapedData' : ActorMethod<[ScrapedData], Result>,
-  'updateAIConfig' : ActorMethod<[AIConfig], Result>,
-  'updateTopic' : ActorMethod<[ScrapingTopic], Result>,
+export interface UserProfile {
+  'created' : bigint,
+  'principal' : Principal,
+  'preferences' : { 'theme' : string, 'notificationsEnabled' : boolean },
+  'lastLogin' : bigint,
+  'devices' : Array<string>,
 }
-export interface _SERVICE extends Storage {}
+export interface _SERVICE {
+  'getAIConfig' : ActorMethod<[], Result_3>,
+  'getProfile' : ActorMethod<[], Result_2>,
+  'getTopics' : ActorMethod<[], Result_1>,
+  'registerDevice' : ActorMethod<[string], Result>,
+  'submitScrapedData' : ActorMethod<[ScrapedData], Result>,
+  'updatePreferences' : ActorMethod<[boolean, string], Result>,
+}

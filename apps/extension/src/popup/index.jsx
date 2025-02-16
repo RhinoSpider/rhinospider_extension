@@ -1,20 +1,44 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { HashRouter } from 'react-router-dom';
+import { AuthProvider } from '@rhinospider/web3-client';
 import Popup from './Popup';
 import '../index.css';
 import './Popup.css';
 
 // Get environment variables
-const II_URL = 'https://identity.ic0.app';
-console.log('Identity Provider URL:', II_URL);
+const II_URL = import.meta.env.VITE_II_URL || 'https://identity.ic0.app';
+const IC_HOST = import.meta.env.VITE_IC_HOST || 'https://ic0.app';
 
-// Auth configuration
 const authConfig = {
-  idleTimeout: 30 * 60 * 1000, // 30 minutes
+  identityProvider: II_URL,
+  host: IC_HOST,
+  storage: {
+    get: async (key) => {
+      try {
+        const result = await chrome.storage.local.get([key]);
+        return result[key];
+      } catch (error) {
+        console.error('Failed to get from storage:', error);
+        return null;
+      }
+    },
+    set: async (key, value) => {
+      try {
+        await chrome.storage.local.set({ [key]: value });
+      } catch (error) {
+        console.error('Failed to set in storage:', error);
+      }
+    },
+    remove: async (key) => {
+      try {
+        await chrome.storage.local.remove(key);
+      } catch (error) {
+        console.error('Failed to remove from storage:', error);
+      }
+    }
+  }
 };
-
-console.log('Auth Config:', authConfig);
 
 // Error boundary component
 class ErrorBoundary extends React.Component {
@@ -28,16 +52,17 @@ class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    console.error('Error:', error);
-    console.error('Error Info:', errorInfo);
+    console.error('Error caught by boundary:', error, errorInfo);
   }
 
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{ padding: '20px', color: 'red' }}>
+        <div className="error-boundary">
           <h1>Something went wrong.</h1>
-          <p>Please try reloading the extension.</p>
+          <button onClick={() => window.location.reload()}>
+            Reload Extension
+          </button>
         </div>
       );
     }
@@ -56,7 +81,9 @@ root.render(
   <React.StrictMode>
     <ErrorBoundary>
       <HashRouter>
-        <Popup />
+        <AuthProvider config={authConfig}>
+          <Popup />
+        </AuthProvider>
       </HashRouter>
     </ErrorBoundary>
   </React.StrictMode>

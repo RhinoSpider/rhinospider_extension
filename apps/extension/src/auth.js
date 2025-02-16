@@ -1,71 +1,160 @@
 import { AuthClient } from '@dfinity/auth-client';
 import { HttpAgent } from '@dfinity/agent';
-import { DelegationIdentity, Ed25519PublicKey } from '@dfinity/identity';
-import { Principal } from '@dfinity/principal';
+import { DelegationIdentity } from '@dfinity/identity';
 
-// Constants
-const II_URL = 'https://identity.ic0.app';
-const HOST = 'https://icp0.io';
+const II_URL = import.meta.env.VITE_II_URL;
+const IC_HOST = import.meta.env.VITE_IC_HOST;
 
-export class BackgroundAuthManager {
+class BackgroundAuthManager {
+  static instance = null;
+  
   constructor() {
+    this.authClient = null;
     this.agent = null;
   }
 
+  static getInstance() {
+    if (!BackgroundAuthManager.instance) {
+      BackgroundAuthManager.instance = new BackgroundAuthManager();
+    }
+    return BackgroundAuthManager.instance;
+  }
+
   async initialize() {
-    console.log('Initializing background auth manager...');
-    try {
-      // Check storage for saved state
-      const stored = await chrome.storage.local.get('authState');
-      const authState = stored.authState;
+    if (!this.authClient) {
+      this.authClient = await AuthClient.create();
+    }
 
-      if (authState?.isAuthenticated && authState.delegationChain) {
-        try {
-          // Reconstruct delegation identity
-          const chain = authState.delegationChain;
-          const publicKey = new Ed25519PublicKey(new Uint8Array(chain.publicKey));
-          
-          const delegations = chain.delegations.map(d => ({
-            delegation: {
-              pubkey: new Uint8Array(d.delegation.pubkey),
-              expiration: BigInt(d.delegation.expiration),
-              targets: d.delegation.targets?.map(t => Principal.fromText(t))
-            },
-            signature: new Uint8Array(d.signature)
-          }));
+    const isAuthenticated = await this.isAuthenticated();
+    
+    if (isAuthenticated) {
+      const identity = this.authClient.getIdentity();
+      await this.createAgent(identity);
+    }
 
-          const identity = new DelegationIdentity(publicKey, delegations);
-          
-          // Create agent with reconstructed identity
-          this.agent = new HttpAgent({
-            host: HOST,
-            identity
-          });
+    return {
+      isAuthenticated,
+      principal: isAuthenticated ? this.authClient.getIdentity().getPrincipal().toText() : null
+    };
+  }
 
-          await this.agent.fetchRootKey();
+  async createAgent(identity) {
+    this.agent = new HttpAgent({
+      identity,
+      host: IC_HOST
+    });
 
-          return {
-            isAuthenticated: true,
-            principal: identity.getPrincipal().toText()
-          };
-        } catch (error) {
-          console.error('Failed to reconstruct identity:', error);
-          // Clear invalid state
-          await chrome.storage.local.remove('authState');
-        }
-      }
-
-      return { isAuthenticated: false };
-    } catch (error) {
-      console.error('Failed to initialize background auth:', error);
-      throw error;
+    if (import.meta.env.DEV) {
+      await this.agent.fetchRootKey();
     }
   }
 
   getAgent() {
-    if (!this.agent) {
-      throw new Error('No agent available. Make sure to initialize first.');
-    }
     return this.agent;
   }
+
+  async refreshAgent() {
+    const identity = this.authClient.getIdentity();
+    await this.createAgent(identity);
+    return this.agent;
+  }
+
+  async login(windowFeatures) {
+    if (!this.authClient) {
+      await this.initialize();
+    }
+
+    return new Promise((resolve, reject) => {
+      this.authClient.login({
+        identityProvider: II_URL,
+        maxTimeToLive: BigInt(7 * 24 * 60 * 60 * 1000 * 1000 * 1000), // 7 days in nanoseconds
+        windowOpenerFeatures: windowFeatures,
+        onSuccess: async () => {
+          try {
+            const identity = this.authClient.getIdentity();
+            
+            // Verify delegation chain
+            if (identity instanceof DelegationIdentity) {
+              const chain = identity.getDelegation();
+              if (!chain || chain.delegations.length === 0) {
+                reject(new Error('Invalid delegation chain'));
+                return;
+              }
+
+              // Check if delegation is expired
+              const now = BigInt(Date.now()) * BigInt(1000_000);
+              if (chain.delegations.some(d => d.delegation.expiration < now)) {
+                await this.authClient.logout();
+                reject(new Error('Delegation chain has expired'));
+                return;
+              }
+            }
+
+            await this.createAgent(identity);
+            const principal = identity.getPrincipal().toText();
+            
+            // Store only serializable auth state
+            const authState = {
+              isAuthenticated: true,
+              principal,
+              isInitialized: true,
+              error: null,
+              timestamp: Date.now()
+            };
+
+            try {
+              await chrome.storage.local.set({ authState: JSON.stringify(authState) });
+            } catch (storageError) {
+              console.error('Failed to store auth state:', storageError);
+            }
+
+            resolve(authState);
+          } catch (error) {
+            reject(error);
+          }
+        },
+        onError: reject
+      });
+    });
+  }
+
+  async logout() {
+    if (this.authClient) {
+      await this.authClient.logout();
+      this.agent = null;
+      await chrome.storage.local.remove('authState');
+      return true;
+    }
+    return false;
+  }
+
+  async isAuthenticated() {
+    return this.authClient ? await this.authClient.isAuthenticated() : false;
+  }
+
+  getIdentity() {
+    return this.authClient ? this.authClient.getIdentity() : null;
+  }
+
+  async getAuthState() {
+    try {
+      const isAuthenticated = await this.isAuthenticated();
+      if (!isAuthenticated) {
+        return { isAuthenticated: false };
+      }
+
+      const identity = this.getIdentity();
+      const principal = identity.getPrincipal().toText();
+
+      return {
+        isAuthenticated: true,
+        principal
+      };
+    } catch (error) {
+      console.error('Error getting auth state:', error);
+      return { isAuthenticated: false, error: error.message };
+    }
+  }
 }
+
+export { BackgroundAuthManager };

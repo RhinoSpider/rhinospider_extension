@@ -1,98 +1,61 @@
-import { Actor } from '@dfinity/agent';
+import { Actor, HttpAgent } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
-import { idlFactory } from './declarations/admin/admin.did.js';
+import { idlFactory as consumerIdlFactory } from './declarations/consumer/consumer.did.js';
 import { BackgroundAuthManager } from './auth';
-import { Ed25519KeyIdentity } from '@dfinity/identity';
 
-const ADMIN_CANISTER_ID = Principal.fromText('s6r66-wyaaa-aaaaj-az4sq-cai');
-let topics = [];
-let adminActor = null;
-const authManager = new BackgroundAuthManager();
+const CONSUMER_CANISTER_ID = Principal.fromText(import.meta.env.VITE_CONSUMER_CANISTER_ID);
+let consumerActor = null;
+const authManager = BackgroundAuthManager.getInstance();
 
-// Initialize auth on extension load
 const initializeAuth = async () => {
   console.log('Initializing auth...');
   try {
-    const state = await authManager.initialize();
-    console.log('Auth initialized:', state);
-    
-    if (state.isAuthenticated) {
-      console.log('Auth state is authenticated, updating topics...');
-      await updateTopics();
-    } else {
-      console.log('Not authenticated, skipping topic update');
-    }
-    return state;
+    await authManager.initialize();
+    const isAuthenticated = await authManager.isAuthenticated();
+    console.log('Auth initialized, isAuthenticated:', isAuthenticated);
+
+    return {
+      isAuthenticated,
+      principal: isAuthenticated ? (await authManager.getIdentity()).getPrincipal().toText() : null
+    };
   } catch (error) {
     console.error('Failed to initialize auth:', error);
     throw error;
   }
 };
 
-// Initialize admin actor
-async function initAdminActor() {
-  console.log('Initializing admin actor with canisterId:', ADMIN_CANISTER_ID.toText());
+async function initConsumerActor() {
   try {
-    const agent = await authManager.getAgent();
-    console.log('Got authenticated agent');
-    
-    adminActor = Actor.createActor(idlFactory, {
-      agent,
-      canisterId: ADMIN_CANISTER_ID
-    });
-    
-    console.log('Admin actor created successfully');
-    return adminActor;
+    const agent = authManager.getAgent();
+    if (!agent) {
+      throw new Error('No agent available. Please login first.');
+    }
+
+    if (!consumerActor || consumerActor._agent !== agent) {
+      consumerActor = Actor.createActor(consumerIdlFactory, {
+        agent,
+        canisterId: CONSUMER_CANISTER_ID
+      });
+    }
+
+    return consumerActor;
   } catch (error) {
-    console.error('Failed to initialize admin actor:', error);
-    adminActor = null;
+    console.error('Failed to initialize consumer actor:', error);
+    consumerActor = null;
     throw error;
   }
 }
 
-// Fetch and cache scraping topics
-async function updateTopics() {
-  console.log('Updating topics...');
-  try {
-    const actor = await initAdminActor();
-    if (!actor) {
-      throw new Error('Failed to get admin actor');
-    }
-    
-    console.log('Fetching topics from canister...');
-    const result = await actor.getScrapingTopics();
-    console.log('Raw topics result:', result);
-    
-    // Handle result based on canister response format
-    if (Array.isArray(result)) {
-      topics = result;
-    } else if (result.Ok) {
-      topics = result.Ok;
-    } else {
-      console.error('Unexpected topics format:', result);
-      topics = [];
-    }
-    
-    console.log('Topics updated:', topics);
-    return topics;
-  } catch (error) {
-    console.error('Failed to update topics:', error);
-    topics = [];
-    throw error;
-  }
-}
-
-// Process scraped content
+// Process scraped content through consumer canister
 async function processContent(url, html, topic) {
   try {
-    const actor = await initAdminActor();
-    
-    const result = await actor.process_content({
+    const actor = await initConsumerActor();
+    const result = await actor.submitScrapedData({
       url,
       html,
-      topic_id: topic.id
+      topic_id: topic.id,
+      timestamp: Date.now()
     });
-    
     console.log('Content processed:', result);
     return result;
   } catch (error) {
@@ -101,100 +64,94 @@ async function processContent(url, html, topic) {
   }
 }
 
-// Check if a URL matches any topic patterns
-function findMatchingTopic(url) {
-  for (const topic of topics) {
-    if (!topic.active) continue;
-    
-    for (const pattern of topic.urlPatterns) {
-      try {
-        const regex = new RegExp(pattern);
-        if (regex.test(url)) {
-          return topic;
-        }
-      } catch (error) {
-        console.error(`Invalid pattern ${pattern}:`, error);
-      }
-    }
+// Get topics from consumer canister
+async function getTopics() {
+  try {
+    const actor = await initConsumerActor();
+    const result = await actor.getTopics();
+    return result;
+  } catch (error) {
+    console.error('Failed to get topics:', error);
+    throw error;
   }
-  return null;
+}
+
+// Get AI config from consumer canister
+async function getAIConfig() {
+  try {
+    const actor = await initConsumerActor();
+    const result = await actor.getAIConfig();
+    return result;
+  } catch (error) {
+    console.error('Failed to get AI config:', error);
+    throw error;
+  }
 }
 
 // Listen for messages from content script and popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('Received message:', message);
   
+  if (message.type === 'GET_SCRAPING_CONFIG') {
+    // Return default config for now
+    sendResponse({
+      success: true,
+      data: {
+        enabled: true,
+        maxRequestsPerDay: 1000,
+        maxBandwidthPerDay: 100 * 1024 * 1024, // 100MB
+        urls: ['*://*.example.com/*']
+      }
+    });
+    return true;
+  }
+
+  if (message.type === 'UPDATE_SCRAPING_CONFIG') {
+    // Update config
+    sendResponse({
+      success: true,
+      data: message.data
+    });
+    return true;
+  }
+  
   if (message.type === 'login') {
-    // Handle login
     authManager.login(message.windowFeatures)
       .then(result => {
-        if (result.isAuthenticated) {
-          updateTopics()
-            .catch(error => console.error('Failed to update topics:', error));
-        }
         sendResponse({ success: true, data: result });
       })
       .catch(error => {
         console.error('Login failed:', error);
         sendResponse({ success: false, error: error.message });
       });
-    return true; // Keep channel open for async response
+    return true;
   }
 
   if (message.type === 'logout') {
-    // Handle logout
     authManager.logout()
       .then(() => {
-        adminActor = null;
-        topics = [];
+        consumerActor = null;
         sendResponse({ success: true });
       })
       .catch(error => {
         console.error('Logout failed:', error);
         sendResponse({ success: false, error: error.message });
       });
-    return true; // Keep channel open for async response
+    return true;
   }
 
   if (message.type === 'AUTH_STATE_CHANGED') {
-    console.log('Auth state changed:', message.data);
-    
-    if (message.data.isAuthenticated) {
-      // Initialize auth and update topics
-      initializeAuth()
-        .then(() => {
-          console.log('Auth initialized after state change');
-          return updateTopics();
-        })
-        .then(() => {
-          console.log('Topics updated after auth state change');
-          // Close any open II tabs
-          chrome.tabs.query({ url: 'https://identity.ic0.app/*' }, (tabs) => {
-            tabs.forEach(tab => chrome.tabs.remove(tab.id));
-          });
-          sendResponse({ success: true });
-        })
-        .catch(error => {
-          console.error('Failed to handle auth state change:', error);
-          sendResponse({ success: false, error: error.message });
-        });
-      return true;
-    } else {
-      console.log('Auth state changed to not authenticated');
-      adminActor = null;
-      topics = [];
-      sendResponse({ success: true });
-    }
-    return true;
+    handleAuthStateChange(message.data).catch(error => {
+      console.error('Failed to handle auth state change:', error);
+    });
   }
   
   if (message.type === 'getAuthState') {
-    authManager.initialize()
-      .then((state) => {
+    initializeAuth()
+      .then(state => {
         sendResponse({ success: true, data: state });
       })
-      .catch((error) => {
-        console.error('Failed to get auth state:', error);
+      .catch(error => {
         sendResponse({ success: false, error: error.message });
       });
     return true;
@@ -205,39 +162,53 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   
-  if (message.type === 'CHECK_URL') {
-    const topic = findMatchingTopic(message.url);
-    if (topic) {
-      console.log('Found matching topic:', topic);
-      sendResponse({ match: true, topic });
-    } else {
-      console.log('No matching topic found');
-      sendResponse({ match: false });
-    }
+  if (message.type === 'GET_TOPICS') {
+    getTopics()
+      .then(topics => {
+        sendResponse({ success: true, data: topics });
+      })
+      .catch(error => {
+        sendResponse({ success: false, error: error.message });
+      });
+    return true;
+  }
+
+  if (message.type === 'GET_AI_CONFIG') {
+    getAIConfig()
+      .then(config => {
+        sendResponse({ success: true, data: config });
+      })
+      .catch(error => {
+        sendResponse({ success: false, error: error.message });
+      });
     return true;
   }
   
   if (message.type === 'SCRAPE_PAGE') {
     const { url, html, topic } = message;
     console.log('Processing page:', { url, topic: topic.name });
-    processContent(url, html, topic);
+    processContent(url, html, topic)
+      .then(result => {
+        sendResponse({ success: true, data: result });
+      })
+      .catch(error => {
+        sendResponse({ success: false, error: error.message });
+      });
     return true;
   }
   
-  if (message.type === 'UPDATE_AUTH_STATE') {
-    console.log('Received auth state update:', message.state);
-    if (message.state.isAuthenticated) {
-      updateTopics();
-    } else {
-      topics = [];
-    }
-    sendResponse({ success: true });
-    return true;
-  }
-  
-  // Return false to indicate no async response
   return false;
 });
+
+// Handle auth state changes
+async function handleAuthStateChange(authState) {
+  if (!authState.isAuthenticated) {
+    consumerActor = null;
+  }
+}
+
+// Initialize on extension load
+initializeAuth().catch(console.error);
 
 // Initialize on install/update
 chrome.runtime.onInstalled.addListener(() => {

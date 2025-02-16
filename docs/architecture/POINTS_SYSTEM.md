@@ -1,131 +1,214 @@
-# RhinoSpider Points System
+# Points System Architecture
 
 ## Overview
 
-The RhinoSpider points system rewards users for contributing their bandwidth and computing resources to the network. Points are calculated based on various metrics and can be used for rewards or privileges within the system.
+The points system rewards users for contributing their bandwidth and processing power to RhinoSpider's background scraping operations. Points are calculated based on various factors including uptime, successful scrapes, and resource usage.
 
 ## Points Calculation
 
-### Base Points
+### 1. Base Points
 
-1. **Bandwidth Contribution**
-   - 1 point per MB of data processed
-   - Calculated from both uploaded and downloaded bytes
-   - Formula: `points = (bytesProcessed / (1024 * 1024)) * POINTS_PER_MB`
+```typescript
+interface BasePoints {
+  uptime: number;          // Minutes the extension is active
+  uptimeMultiplier: number;// Configurable in admin (default: 1)
+  basePointsPerMinute: number; // Default: 1
+}
 
-2. **Request Processing**
-   - 10 points per successful request
-   - Formula: `points = requestCount * POINTS_PER_REQUEST`
+// Example calculation
+const basePoints = uptime * uptimeMultiplier * basePointsPerMinute;
+```
 
-### Multipliers and Bonuses
+### 2. Scraping Bonus
 
-1. **Quality Multiplier (20%)**
-   - Based on successful vs failed requests
-   - Success rate affects point earning
-   - Formula: `successRate = successCount / (successCount + failureCount)`
-   - Bonus: `(basePoints) * (successRate * 0.2)`
+```typescript
+interface ScrapingPoints {
+  successfulScrapes: number;   // Number of successful scrapes
+  scrapeMultiplier: number;    // Configurable in admin (default: 5)
+  failedScrapes: number;       // Failed scrape attempts
+  penaltyMultiplier: number;   // Default: 0.5
+}
 
-2. **Streak Bonus (10% per day)**
-   - +10% points for each consecutive day
-   - Caps at 100% (10 days)
-   - Formula: `bonus = basePoints * (streak * 0.1)`
+// Example calculation
+const scrapePoints = (successfulScrapes * scrapeMultiplier) - 
+                    (failedScrapes * penaltyMultiplier);
+```
 
-3. **Peak Hours Bonus (20%)**
-   - +20% points during high-demand periods (9 AM - 5 PM local time)
-   - Formula: `bonus = basePoints * 0.2` (if during peak hours)
+### 3. Resource Contribution
 
-4. **Resource Optimization (5% per topic)**
-   - +5% points per additional topic being processed
-   - Caps at 25% (5 topics)
-   - Formula: `bonus = basePoints * (0.05 * min(topicsCount, 5))`
+```typescript
+interface ResourcePoints {
+  bandwidthUsed: number;      // MB of bandwidth used
+  bandwidthMultiplier: number;// Configurable in admin (default: 0.1)
+  cpuUsage: number;           // Average CPU usage percentage
+  cpuMultiplier: number;      // Default: 0.2
+}
 
-## Daily Points Cap
+// Example calculation
+const resourcePoints = (bandwidthUsed * bandwidthMultiplier) +
+                      (cpuUsage * cpuMultiplier);
+```
 
-To ensure fair distribution and prevent abuse:
-- Maximum 1000 points per day
-- Points reset at UTC midnight
-- All bonuses are calculated before cap is applied
+## Admin Configuration
 
-## Real-time Tracking
+The admin portal allows configuration of:
 
-The system tracks the following metrics in real-time:
-1. Bandwidth usage (MB)
-2. Requests processed
-3. Success/failure rates
-4. Points earned
-5. Active streak
-
-Updates occur:
-- Every 5 seconds for real-time stats
-- Daily for point calculations and rewards
-
-## Points Distribution
-
-1. **Daily Rewards**
-   - Points are calculated and distributed daily
-   - Rewards are based on:
-     - Total points earned
-     - Quality of contribution
-     - Consistency (streak)
-
-2. **Bonus Periods**
-   - Peak hours (9 AM - 5 PM local time)
-   - High-demand topics
-   - Special events
+```typescript
+interface PointsConfig {
+  uptimeMultiplier: number;    // Points per minute multiplier
+  scrapeMultiplier: number;    // Points per successful scrape
+  bandwidthMultiplier: number; // Points per MB of bandwidth
+  cpuMultiplier: number;       // Points per % CPU usage
+  dailyPointsCap: number;      // Maximum points per day
+  minimumUptimeForReward: number; // Minimum minutes for any points
+}
+```
 
 ## Implementation
 
-### Extension Analytics
-- Real-time bandwidth tracking
-- Points calculation
-- Success rate monitoring
-- Streak tracking
+### 1. Points Tracking
 
-### Storage Canister
-- Daily points storage
-- Analytics data
-- User statistics
-- Reward distribution
+```typescript
+class PointsTracker {
+  private uptimeStart: number;
+  private scrapeResults: ScrapeResult[];
+  private resourceUsage: ResourceUsage[];
 
-## User Interface
+  // Called when extension is activated
+  startTracking() {
+    this.uptimeStart = Date.now();
+    this.monitorResources();
+  }
 
-1. **Extension Popup**
-   - Current day's points
-   - Real-time bandwidth usage
-   - Active streak
-   - Today's contribution stats
+  // Called after each scrape
+  recordScrape(result: ScrapeResult) {
+    this.scrapeResults.push(result);
+    this.calculateAndUpdatePoints();
+  }
 
-2. **Analytics Dashboard**
-   - 7-day activity graph
-   - Total points earned
-   - Detailed breakdown of points
-   - Performance metrics
+  // Called periodically
+  private monitorResources() {
+    // Monitor bandwidth and CPU usage
+    // Update resourceUsage array
+  }
+}
+```
 
-## Security and Validation
+### 2. Points Storage
 
-1. **Data Validation**
-   - Server-side verification of points
-   - Rate limiting
-   - Anomaly detection
+Points are stored in the storage canister:
 
-2. **Anti-abuse Measures**
-   - Daily points cap
-   - Quality requirements
-   - Minimum contribution thresholds
+```typescript
+interface UserPoints {
+  userId: string;
+  totalPoints: number;
+  dailyPoints: {
+    date: string;
+    points: number;
+  }[];
+  pointsHistory: {
+    timestamp: number;
+    points: number;
+    reason: string;
+  }[];
+}
+```
+
+### 3. Background Process
+
+The background script manages points:
+
+```typescript
+// background.js
+class PointsManager {
+  private tracker: PointsTracker;
+  private config: PointsConfig;
+
+  async initialize() {
+    this.config = await this.loadAdminConfig();
+    this.tracker = new PointsTracker(this.config);
+    this.startPeriodicSync();
+  }
+
+  private startPeriodicSync() {
+    // Sync points to storage canister every 5 minutes
+    setInterval(() => this.syncPoints(), 5 * 60 * 1000);
+  }
+}
+```
+
+## Points Rewards
+
+### 1. Daily Rewards
+- Points are calculated and awarded daily
+- Subject to daily points cap from admin config
+- Requires minimum uptime threshold
+
+### 2. Bonus Points
+- Extra points for consistent daily usage
+- Bonus multiplier for high-quality scrapes
+- Special rewards for discovering new topics
+
+### 3. Penalties
+- Points reduction for excessive failed scrapes
+- Temporary suspension for suspicious activity
+- Reset of bonus multipliers
+
+## Security Measures
+
+### 1. Anti-Gaming
+- Rate limiting on points accumulation
+- Verification of resource usage claims
+- Detection of artificial uptime
+
+### 2. Validation
+- Cross-check scraping results
+- Verify bandwidth usage claims
+- Monitor for suspicious patterns
+
+## Analytics
+
+### 1. User Stats
+```typescript
+interface UserStats {
+  dailyAveragePoints: number;
+  totalContribution: {
+    uptime: number;
+    scrapes: number;
+    bandwidth: number;
+  };
+  rank: number;
+  achievements: string[];
+}
+```
+
+### 2. System Stats
+```typescript
+interface SystemStats {
+  totalPointsAwarded: number;
+  averagePointsPerUser: number;
+  topContributors: string[];
+  dailyStats: {
+    date: string;
+    pointsAwarded: number;
+    activeUsers: number;
+  }[];
+}
+```
 
 ## Future Improvements
 
-1. **Dynamic Scoring**
-   - Adjust point values based on network demand
-   - Implement machine learning for fraud detection
-   - Add topic-specific point multipliers
+### 1. Enhanced Rewards
+- Dynamic multipliers based on demand
+- Achievement-based bonuses
+- Team/group rewards
 
-2. **Rewards Program**
-   - Implement token economics
-   - Add marketplace for point redemption
-   - Create partnership program
+### 2. Advanced Analytics
+- Predictive point forecasting
+- User behavior analysis
+- Performance optimization
 
-3. **Gamification**
-   - Add achievement system
-   - Implement competitive challenges
-   - Create team-based competitions
+### 3. Gamification
+- Leaderboards
+- Achievements/badges
+- Challenges and competitions

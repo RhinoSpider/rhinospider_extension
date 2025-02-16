@@ -14,7 +14,7 @@ export interface AuthConfig {
 
 export interface AuthState {
   isAuthenticated: boolean;
-  identity: SerializableIdentity | null;
+  principal: string | null;
   isInitialized: boolean;
-  error: Error | null;
+  error: string | null;
 }

@@ -5,7 +5,7 @@ import { useAuth } from '@rhinospider/web3-client';
 
 const Profile = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { principal, logout } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -23,69 +23,70 @@ const Profile = () => {
     loadProfile();
   }, []);
 
+  const handleLogout = async () => {
+    try {
+      await logout();
+      window.close();
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
+  };
+
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-4 w-[300px]">
+      <div className="flex justify-between items-center mb-4">
         <button
-          onClick={() => navigate('/')}
-          className="flex items-center text-gray-400 hover:text-white transition-colors"
+          onClick={() => navigate(-1)}
+          className="text-gray-600 hover:text-gray-900 transition-colors"
         >
-          <ArrowLeft className="w-5 h-5 mr-2" />
-          <span className="text-sm">Back</span>
+          <ArrowLeft size={20} />
+        </button>
+        <button
+          onClick={handleLogout}
+          className="text-red-600 hover:text-red-700 transition-colors text-sm"
+        >
+          Logout
         </button>
       </div>
 
-      <div className="space-y-6">
+      <div className="space-y-4">
+        <h2 className="text-lg font-semibold">Profile</h2>
+
         <div className="space-y-4">
-          <h2 className="text-xl font-semibold text-white">Profile</h2>
-          <div className="bg-white/5 rounded-lg p-4 space-y-4">
-            <div className="flex items-center space-x-4">
-              <div className="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center">
-                <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                  <circle cx="12" cy="7" r="4" />
-                </svg>
+          <div>
+            <div className="text-sm text-gray-500">Principal ID</div>
+            <div className="text-sm font-medium break-all">{principal}</div>
+          </div>
+
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium text-white">Account Details</h3>
+            <div className="bg-white/5 rounded-lg divide-y divide-white/5">
+              <div className="p-4">
+                <div className="text-sm text-gray-400">Account ID</div>
+                <div className="mt-1 font-mono text-sm">
+                  {principal}
+                </div>
               </div>
-              <div>
-                <div className="font-medium text-white">
-                  {user?.name || 'Anonymous User'}
+              <div className="p-4">
+                <div className="text-sm text-gray-400">Member Since</div>
+                <div className="mt-1">
+                  {new Date().toLocaleDateString()}
                 </div>
-                <div className="text-sm text-gray-400">
-                  {user?.email || 'No email provided'}
-                </div>
+              </div>
+              <div className="p-4">
+                <div className="text-sm text-gray-400">Total Points Earned</div>
+                <div className="mt-1">9,130 points</div>
               </div>
             </div>
           </div>
-        </div>
 
-        <div className="space-y-4">
-          <h3 className="text-lg font-medium text-white">Account Details</h3>
-          <div className="bg-white/5 rounded-lg divide-y divide-white/5">
-            <div className="p-4">
-              <div className="text-sm text-gray-400">Account ID</div>
-              <div className="mt-1 font-mono text-sm">
-                {user?.id || 'Not available'}
-              </div>
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium text-white">Security</h3>
+            <div className="bg-white/5 rounded-lg p-4">
+              <button className="w-full bg-white/10 hover:bg-white/20 text-white py-2 px-4 rounded transition-colors text-sm">
+                Change Password
+              </button>
             </div>
-            <div className="p-4">
-              <div className="text-sm text-gray-400">Member Since</div>
-              <div className="mt-1">
-                {new Date().toLocaleDateString()}
-              </div>
-            </div>
-            <div className="p-4">
-              <div className="text-sm text-gray-400">Total Points Earned</div>
-              <div className="mt-1">9,130 points</div>
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          <h3 className="text-lg font-medium text-white">Security</h3>
-          <div className="bg-white/5 rounded-lg p-4">
-            <button className="w-full bg-white/10 hover:bg-white/20 text-white py-2 px-4 rounded transition-colors text-sm">
-              Change Password
-            </button>
           </div>
         </div>
       </div>

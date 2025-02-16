@@ -1,123 +1,227 @@
 # Extraction Testing Guide
 
+## Overview
+
+RhinoSpider provides two testing modes for content extraction:
+1. Local Development Mode (using `testExtractionLocal`)
+2. Production Mode (using `testExtraction`)
+
 ## Testing Modes
 
-### Local Development Mode
-When running locally (`dfx start`), the system uses `testExtractionLocal` which:
-- Doesn't require cycles
-- Can handle both URLs and direct HTML content
-- Uses mock responses for URLs
-- Processes actual HTML content directly
+### 1. Local Development Mode
 
-#### Testing with URLs
-```bash
-# The URL will be mocked with sample content
-https://example.com/product
+When running locally (`dfx start`), use `testExtractionLocal` which:
+- No cycles required
+- Accepts URLs or HTML content
+- Uses mock responses
+- Fast development cycle
+
+#### Example: Testing with Topic
+
+```typescript
+interface TestTopic {
+  name: string;
+  url: string;
+  extractionRules: ExtractionConfig;
+}
+
+const testTopic = {
+  name: "Product Details",
+  url: "https://example.com/product",
+  extractionRules: {
+    fields: [
+      {
+        name: "title",
+        fieldType: "text",
+        required: true,
+        aiPrompt: "Extract the product title"
+      },
+      {
+        name: "price",
+        fieldType: "number",
+        required: true,
+        aiPrompt: "Extract the product price"
+      }
+    ]
+  }
+};
 ```
 
-#### Testing with HTML
-```html
-<!-- Direct HTML content will be processed as is -->
+#### Example: Testing with HTML
+
+```typescript
+const testHTML = `
 <div class="product">
   <h1>Test Product</h1>
   <div class="price">$99</div>
   <div class="description">Test description</div>
 </div>
+`;
+
+const result = await testExtractionLocal({
+  html: testHTML,
+  topic: testTopic
+});
 ```
 
-### Production Mode
-When deployed to ICP (`dfx deploy --network ic`), the system uses `testExtraction` which:
-- Requires cycles (1.6B cycles per request)
+### 2. Production Mode
+
+When deployed to IC mainnet, use `testExtraction` which:
+- Requires cycles (1.6B per request)
 - Only accepts valid URLs
-- Makes actual HTTP requests
-- Returns real webpage content
+- Makes real HTTP requests
+- Full production pipeline
 
-## Migration to Production
+#### Example: Testing Production
 
-### 1. Environment Setup
-The system automatically switches between local and production modes based on the environment:
 ```typescript
-// Local development
-IS_LOCAL = true  // Uses testExtractionLocal
-HOST = "http://127.0.0.1:8000"
-
-// Production
-IS_LOCAL = false  // Uses testExtraction
-HOST = "https://ic0.app"
+const result = await testExtraction({
+  url: "https://example.com/product",
+  topic: testTopic
+});
 ```
 
-### 2. Cycles Requirements
-When deploying to production:
-1. Convert ICP to cycles:
+## Testing Process
+
+### 1. Local Development
+
+1. **Start Local Environment**
    ```bash
-   dfx cycles convert --amount <ICP_AMOUNT> --network=ic
+   dfx start --clean
+   dfx deploy
    ```
 
-2. Top up the canister:
+2. **Run Tests**
    ```bash
-   dfx canister --network=ic deposit-cycles <AMOUNT> <CANISTER_ID>
+   npm run test:extraction
    ```
 
-3. Estimate cycles needed:
-   - Each HTTP request: 1.6B cycles
-   - Daily requests × 1.6B = Daily cycles needed
-   - Add 20% buffer for other operations
-
-### 3. Deployment Steps
-1. Update environment variables:
-   ```bash
-   # .env.production
-   VITE_IC_HOST=https://ic0.app
+3. **Check Results**
+   ```typescript
+   interface TestResult {
+     success: boolean;
+     data?: ExtractedData;
+     error?: string;
+     metrics: {
+       processingTime: number;
+       tokensUsed: number;
+       aiCalls: number;
+     };
+   }
    ```
 
-2. Deploy to ICP network:
+### 2. Production Testing
+
+1. **Deploy to IC**
    ```bash
-   dfx deploy --network=ic
+   dfx deploy --network ic
    ```
 
-3. Verify extraction testing:
-   - Test with real URLs
-   - Monitor cycles consumption
-   - Check response times
+2. **Ensure Sufficient Cycles**
+   ```bash
+   # Check cycles balance
+   dfx canister --network ic status admin
 
-### 4. Monitoring
-Monitor in production:
-- Cycles balance
-- Request success rate
-- Response times
-- Error rates
+   # Top up if needed
+   dfx ledger --network ic top-up admin --amount 1.0
+   ```
+
+3. **Run Production Tests**
+   ```bash
+   npm run test:extraction:prod
+   ```
+
+## Error Handling
+
+### 1. Common Issues
+
+1. **URL Access**
+   - Blocked by robots.txt
+   - Rate limiting
+   - Network errors
+
+2. **Content Issues**
+   - Dynamic content
+   - JavaScript required
+   - Invalid HTML
+
+3. **Extraction Issues**
+   - Missing required fields
+   - Invalid data types
+   - AI processing errors
+
+### 2. Solutions
+
+1. **URL Access**
+   ```typescript
+   // Add delay between requests
+   const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+   await delay(1000); // 1 second delay
+   
+   // Handle rate limiting
+   if (response.status === 429) {
+     const retryAfter = response.headers.get('Retry-After');
+     await delay(parseInt(retryAfter) * 1000);
+   }
+   ```
+
+2. **Content Issues**
+   ```typescript
+   // Use puppeteer for dynamic content
+   const browser = await puppeteer.launch();
+   const page = await browser.newPage();
+   await page.goto(url);
+   await page.waitForSelector('.product');
+   const html = await page.content();
+   ```
+
+3. **Extraction Issues**
+   ```typescript
+   // Validate extracted data
+   const validateData = (data: ExtractedData): boolean => {
+     for (const field of requiredFields) {
+       if (!data[field]) return false;
+     }
+     return true;
+   };
+   ```
 
 ## Best Practices
 
-### Local Testing
-1. Test with various HTML structures
-2. Use sample templates for common scenarios
-3. Verify extraction rules work as expected
-4. Test error handling
+### 1. Testing Strategy
+- Start with local tests
+- Use real HTML samples
+- Test edge cases
+- Validate all fields
 
-### Production Testing
-1. Start with low-traffic URLs
-2. Monitor cycles consumption
-3. Implement rate limiting
-4. Add error handling for failed requests
+### 2. Performance
+- Monitor processing time
+- Track AI token usage
+- Optimize requests
+- Cache results
 
-## Troubleshooting
+### 3. Maintenance
+- Regular test updates
+- Monitor success rates
+- Update extraction rules
+- Track changes in sites
 
-### Common Issues
+## Future Improvements
 
-1. **Cycles Error**
-   ```
-   Error: http_request request sent with 0 cycles
-   ```
-   Solution: Ensure canister has sufficient cycles
+### 1. Testing Features
+- Automated test suite
+- Performance benchmarks
+- Coverage tracking
+- Error analytics
 
-2. **Invalid URL**
-   ```
-   Error: Invalid URL format
-   ```
-   Solution: Use complete URLs with protocol (http/https)
+### 2. Tools
+- Visual test runner
+- Result comparison
+- Batch testing
+- Error reporting
 
-3. **Local Testing Issues**
-   - Check if dfx is running
-   - Verify canister is deployed
-   - Check HTML content format
+### 3. Integration
+- CI/CD pipeline
+- Monitoring system
+- Alert system
+- Analytics dashboard
