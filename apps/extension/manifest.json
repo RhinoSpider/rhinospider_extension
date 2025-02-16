@@ -6,14 +6,20 @@
     "permissions": [
         "storage",
         "tabs",
-        "identity"
+        "scripting",
+        "activeTab",
+        "identity",
+        "windows"
     ],
     "host_permissions": [
-        "http://127.0.0.1:8000/*",
         "https://identity.ic0.app/*",
         "https://icp0.io/*",
+        "https://*.icp0.io/*",
         "https://ic0.app/*"
     ],
+    "content_security_policy": {
+        "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://identity.ic0.app https://icp0.io https://*.icp0.io 'wasm-unsafe-eval'"
+    },
     "action": {
         "default_popup": "popup.html",
         "default_icon": {
@@ -46,8 +52,5 @@
             ],
             "matches": ["<all_urls>"]
         }
-    ],
-    "content_security_policy": {
-        "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
-    }
+    ]
 }

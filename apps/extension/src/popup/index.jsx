@@ -6,14 +6,12 @@ import '../index.css';
 import './Popup.css';
 
 // Get environment variables
-const II_URL = import.meta.env.VITE_II_URL || 'https://identity.ic0.app';
+const II_URL = 'https://identity.ic0.app';
 console.log('Identity Provider URL:', II_URL);
 
 // Auth configuration
 const authConfig = {
-  appName: 'RhinoSpider',
-  iiUrl: II_URL,
-  debug: true,
+  idleTimeout: 30 * 60 * 1000, // 30 minutes
 };
 
 console.log('Auth Config:', authConfig);
