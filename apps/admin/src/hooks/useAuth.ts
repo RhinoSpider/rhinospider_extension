@@ -24,6 +24,16 @@ export const useAuth = () => {
       const authenticated = await checkAuth();
       if (authenticated) {
         const identity = await getIdentity();
+        if (!identity) {
+          throw new Error('Identity not found after authentication');
+        }
+
+        // Verify delegation chain
+        const delegationChain = identity.getDelegation();
+        if (!delegationChain) {
+          throw new Error('No valid delegation chain found');
+        }
+
         setState(prev => ({
           ...prev,
           isAuthenticated: true,
@@ -48,6 +58,8 @@ export const useAuth = () => {
       console.error('Auth check error:', error);
       setState(prev => ({
         ...prev,
+        isAuthenticated: false,
+        identity: null,
         error: error instanceof Error ? error.message : 'Failed to check auth state',
         isLoading: false,
         isInitialized: true,
@@ -55,6 +67,14 @@ export const useAuth = () => {
       return false;
     }
   }, []);
+
+  // Set up periodic auth check
+  useEffect(() => {
+    if (state.isAuthenticated) {
+      const interval = setInterval(checkAuthState, 5 * 60 * 1000); // Check every 5 minutes
+      return () => clearInterval(interval);
+    }
+  }, [state.isAuthenticated, checkAuthState]);
 
   useEffect(() => {
     const initAuth = async () => {
@@ -109,6 +129,5 @@ export const useAuth = () => {
     ...state,
     login,
     logout,
-    checkAuthState,
   };
 };
