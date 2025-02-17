@@ -48,7 +48,7 @@ function Settings() {
     <div className="p-4 w-[300px]">
       <div className="flex justify-between items-center mb-4">
         <button
-          onClick={() => navigate(-1)}
+          onClick={() => navigate('/')}
           className="text-gray-600 hover:text-gray-900 transition-colors"
         >
           <ArrowLeft size={20} />
