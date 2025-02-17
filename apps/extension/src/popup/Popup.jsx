@@ -188,13 +188,21 @@ const Popup = () => {
         await authClient.logout();
         setIsAuthenticated(false);
         setPrincipal(null);
+
+        // Clear all auth-related storage
         localStorage.removeItem('authState');
+        await chrome.storage.local.remove(['authState', 'delegationChain', 'identity']);
         
         // Notify background script
         await chrome.runtime.sendMessage({
           type: 'AUTH_STATE_CHANGED',
-          data: { isAuthenticated: false }
+          data: { isAuthenticated: false, principal: null }
         });
+
+        // Reset UI state
+        setAvatar(null);
+        setIsUserMenuOpen(false);
+        navigate('/');
       }
     } catch (error) {
       console.error('Logout error:', error);

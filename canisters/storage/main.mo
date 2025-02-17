@@ -96,6 +96,8 @@ actor class Storage() = this {
         source: Text;
         timestamp: Int;
         client_id: Principal;
+        status: Text;
+        scraping_time: Int;
     };
 
     // Request type for storing URLs
@@ -401,6 +403,8 @@ actor class Storage() = this {
                                 content = content.content;
                                 timestamp = content.publish_date;
                                 client_id = Principal.fromText("2vxsx-fae"); // Default system principal
+                                status = "success"; // Default to success for existing data
+                                scraping_time = 0;  // Default to 0 for existing data
                             };
                             buffer.add(legacyItem);
                         };
@@ -461,7 +465,9 @@ actor class Storage() = this {
                             content = content.content;
                             source = content.source;
                             timestamp = content.publish_date;
-                            client_id = Principal.fromText("2vxsx-fae")
+                            client_id = Principal.fromText("2vxsx-fae");
+                            status = "success"; // Default to success for existing data
+                            scraping_time = 0;  // Default to 0 for existing data
                         });
                         break topicLoop;
                     }
@@ -474,7 +480,9 @@ actor class Storage() = this {
                     content = content.content;
                     source = content.source;
                     timestamp = content.publish_date;
-                    client_id = Principal.fromText("2vxsx-fae")
+                    client_id = Principal.fromText("2vxsx-fae");
+                    status = "success"; // Default to success for existing data
+                    scraping_time = 0;  // Default to 0 for existing data
                 });
             };
         };

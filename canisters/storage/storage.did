@@ -5,7 +5,9 @@ type ScrapedData = record {
     source: text;
     content: text;
     timestamp: int;
-    clientId: principal;
+    client_id: principal;
+    status: text;
+    scraping_time: int;
 };
 
 type ScrapedContent = record {

@@ -68,6 +68,8 @@ module {
         source: Text;
         timestamp: Int;
         client_id: Principal;
+        status: Text;
+        scraping_time: Int;
     };
 
     public type Storage = actor {

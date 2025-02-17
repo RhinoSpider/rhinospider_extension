@@ -56,8 +56,10 @@ export interface ScrapedData {
   topic: string;
   content: string;
   source: string;
-  timestamp: number;
-  client_id: string;
+  timestamp: bigint;
+  client_id: Principal;
+  status: string;
+  scraping_time: bigint;
 }
 
 // Response types from the canister

@@ -137,7 +137,7 @@ actor class Storage() = this {
         };
         let buffer = Buffer.Buffer<SharedTypes.ScrapedData>(0);
         for ((_, data) in scrapedData.entries()) {
-            if (topicIds.size() == 0 or Array.find<Text>(topicIds, func(id) = id == data.topicId) != null) {
+            if (topicIds.size() == 0 or Array.find<Text>(topicIds, func(id) = id == data.topic) != null) {
                 buffer.add(data);
             };
         };

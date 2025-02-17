@@ -31,7 +31,7 @@ actor Admin {
     type AIConfig = StorageTypes.AIConfig;
     type ScrapingTopic = StorageTypes.ScrapingTopic;
     type StorageActor = actor {
-        getScrapedData: shared ([Text]) -> async [StorageTypes.ScrapedData];
+        getScrapedData: shared ([Text]) -> async Result.Result<[StorageTypes.ScrapedData], Text>;
         setTopicActive: shared (Text, Bool) -> async Result.Result<(), Text>;
     };
 
@@ -122,7 +122,7 @@ actor Admin {
     private func _isAuthorized(caller: Principal) : Bool {
         let callerStr = Principal.toText(caller);
         if (Principal.isAnonymous(caller)) {
-            return true; // Allow anonymous access for local development
+            return false; // Never allow anonymous access in production
         };
         switch (users.get(caller)) {
             case (?user) {
@@ -201,7 +201,10 @@ actor Admin {
             return #err("Unauthorized");
         };
         let result = await storage.getScrapedData(topicIds);
-        #ok(result)
+        switch (result) {
+            case (#ok(data)) { #ok(data) };
+            case (#err(msg)) { #err(msg) };
+        }
     };
 
     type CreateTopicRequest = {

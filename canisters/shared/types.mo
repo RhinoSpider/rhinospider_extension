@@ -43,16 +43,14 @@ module {
 
     public type ScrapedData = {
         id: Text;
-        topicId: Text;
         url: Text;
+        topic: Text;
+        content: Text;
+        source: Text;
         timestamp: Int;
-        content: {
-            raw: Text;
-            extracted: [(Text, Text)];
-        };
+        client_id: Principal;
         status: Text;
-        retries: Nat;
-        error: ?Text;
+        scraping_time: Int;
     };
 
     public type Error = {

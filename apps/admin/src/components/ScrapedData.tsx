@@ -14,7 +14,9 @@ type ScrapedData = {
   source: string;
   content: string;
   timestamp: bigint;
-  client_id: string;
+  client_id: Principal;
+  status: string;
+  scraping_time: bigint;
 };
 
 type TopicStats = {
@@ -22,6 +24,8 @@ type TopicStats = {
   count: number;
   totalBytes: number;
   clients: Set<string>;
+  avgScrapingTime: number;
+  successRate: number;
 };
 
 const ITEMS_PER_PAGE = 10;
@@ -76,12 +80,24 @@ export const ScrapedData: React.FC = () => {
               name: topic?.name || 'Unknown Topic',
               count: 0,
               totalBytes: 0,
-              clients: new Set()
+              clients: new Set(),
+              avgScrapingTime: 0,
+              successRate: 0
             };
           }
           stats[item.topic].count++;
           stats[item.topic].totalBytes += item.content.length;
-          stats[item.topic].clients.add(item.client_id);
+          stats[item.topic].clients.add(item.client_id.toText());
+          
+          // Update scraping stats
+          const scrapingTime = Number(item.scraping_time);
+          stats[item.topic].avgScrapingTime = 
+            ((stats[item.topic].avgScrapingTime * (stats[item.topic].count - 1)) + scrapingTime) / 
+            stats[item.topic].count;
+          
+          stats[item.topic].successRate = 
+            ((stats[item.topic].successRate * (stats[item.topic].count - 1)) + 
+            (item.status === 'success' ? 1 : 0)) / stats[item.topic].count;
         });
         setTopicStats(stats);
         
@@ -216,8 +232,16 @@ export const ScrapedData: React.FC = () => {
                       <div className="text-white">{formatBytes(stats.totalBytes)}</div>
                     </div>
                     <div>
-                      <div className="text-gray-400">Unique Users</div>
+                      <div className="text-gray-400">Unique Clients</div>
                       <div className="text-white">{stats.clients.size}</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-400">Avg. Scraping Time</div>
+                      <div className="text-white">{(stats.avgScrapingTime / 1000).toFixed(2)}s</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-400">Success Rate</div>
+                      <div className="text-white">{(stats.successRate * 100).toFixed(1)}%</div>
                     </div>
                   </div>
                 </div>
@@ -272,14 +296,28 @@ export const ScrapedData: React.FC = () => {
                         {item.content}
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-3 gap-4">
                       <div>
                         <div className="text-sm text-[#B692F6] mb-1">Client ID</div>
-                        <div className="text-white text-sm">{item.client_id}</div>
+                        <div className="text-white text-sm">{item.client_id.toText()}</div>
                       </div>
                       <div>
                         <div className="text-sm text-[#B692F6] mb-1">Source</div>
                         <div className="text-white text-sm">{item.source}</div>
+                      </div>
+                      <div>
+                        <div className="text-sm text-[#B692F6] mb-1">Status</div>
+                        <div className={`text-sm ${
+                          item.status === 'success' ? 'text-green-400' : 'text-red-400'
+                        }`}>
+                          {item.status}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-sm text-[#B692F6] mb-1">Scraping Time</div>
+                        <div className="text-white text-sm">
+                          {(Number(item.scraping_time) / 1000).toFixed(2)}s
+                        </div>
                       </div>
                     </div>
                   </div>

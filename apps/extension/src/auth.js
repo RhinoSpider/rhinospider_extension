@@ -11,6 +11,7 @@ class BackgroundAuthManager {
   constructor() {
     this.authClient = null;
     this.agent = null;
+    this.isBackground = !globalThis.window;
   }
 
   static getInstance() {
@@ -21,28 +22,59 @@ class BackgroundAuthManager {
   }
 
   async initialize() {
-    if (!this.authClient) {
-      this.authClient = await AuthClient.create();
-    }
+    try {
+      // In background script, try to restore auth state from storage
+      if (this.isBackground) {
+        const stored = await chrome.storage.local.get('authState');
+        if (stored.authState) {
+          const authState = JSON.parse(stored.authState);
+          if (authState.isAuthenticated && authState.principal) {
+            // Create agent with stored principal
+            await this.createAgent(authState.principal);
+            return {
+              isAuthenticated: true,
+              principal: authState.principal
+            };
+          }
+        }
+        return { isAuthenticated: false };
+      }
 
-    const isAuthenticated = await this.isAuthenticated();
-    
-    if (isAuthenticated) {
-      const identity = this.authClient.getIdentity();
-      await this.createAgent(identity);
-    }
+      // In popup/content script, create auth client normally
+      if (!this.authClient) {
+        this.authClient = await AuthClient.create();
+      }
 
-    return {
-      isAuthenticated,
-      principal: isAuthenticated ? this.authClient.getIdentity().getPrincipal().toText() : null
-    };
+      const isAuthenticated = await this.isAuthenticated();
+      
+      if (isAuthenticated) {
+        const identity = this.authClient.getIdentity();
+        await this.createAgent(identity);
+      }
+
+      return {
+        isAuthenticated,
+        principal: isAuthenticated ? this.authClient.getIdentity().getPrincipal().toText() : null
+      };
+    } catch (error) {
+      console.error('Failed to initialize auth:', error);
+      return { isAuthenticated: false, error: error.message };
+    }
   }
 
-  async createAgent(identity) {
-    this.agent = new HttpAgent({
-      identity,
-      host: IC_HOST
-    });
+  async createAgent(identityOrPrincipal) {
+    if (typeof identityOrPrincipal === 'string') {
+      // Create anonymous agent for background
+      this.agent = new HttpAgent({
+        host: IC_HOST
+      });
+    } else {
+      // Create authenticated agent for popup/content
+      this.agent = new HttpAgent({
+        identity: identityOrPrincipal,
+        host: IC_HOST
+      });
+    }
 
     if (import.meta.env.DEV) {
       await this.agent.fetchRootKey();
@@ -54,12 +86,26 @@ class BackgroundAuthManager {
   }
 
   async refreshAgent() {
-    const identity = this.authClient.getIdentity();
-    await this.createAgent(identity);
+    if (this.isBackground) {
+      const stored = await chrome.storage.local.get('authState');
+      if (stored.authState) {
+        const authState = JSON.parse(stored.authState);
+        if (authState.isAuthenticated && authState.principal) {
+          await this.createAgent(authState.principal);
+        }
+      }
+    } else {
+      const identity = this.authClient.getIdentity();
+      await this.createAgent(identity);
+    }
     return this.agent;
   }
 
   async login(windowFeatures) {
+    if (this.isBackground) {
+      throw new Error('Login can only be initiated from popup');
+    }
+
     if (!this.authClient) {
       await this.initialize();
     }
@@ -93,7 +139,7 @@ class BackgroundAuthManager {
             await this.createAgent(identity);
             const principal = identity.getPrincipal().toText();
             
-            // Store only serializable auth state
+            // Store auth state
             const authState = {
               isAuthenticated: true,
               principal,
@@ -121,14 +167,26 @@ class BackgroundAuthManager {
   async logout() {
     if (this.authClient) {
       await this.authClient.logout();
-      this.agent = null;
-      await chrome.storage.local.remove('authState');
-      return true;
     }
-    return false;
+    this.agent = null;
+    this.authClient = null;
+
+    // Clear all auth-related storage
+    try {
+      await chrome.storage.local.remove(['authState', 'delegationChain', 'identity']);
+      localStorage.removeItem('authState');
+    } catch (error) {
+      console.error('Error clearing auth storage:', error);
+    }
+
+    return true;
   }
 
   async isAuthenticated() {
+    if (this.isBackground) {
+      const stored = await chrome.storage.local.get('authState');
+      return stored.authState ? JSON.parse(stored.authState).isAuthenticated : false;
+    }
     return this.authClient ? await this.authClient.isAuthenticated() : false;
   }
 
@@ -138,6 +196,11 @@ class BackgroundAuthManager {
 
   async getAuthState() {
     try {
+      if (this.isBackground) {
+        const stored = await chrome.storage.local.get('authState');
+        return stored.authState ? JSON.parse(stored.authState) : { isAuthenticated: false };
+      }
+
       const isAuthenticated = await this.isAuthenticated();
       if (!isAuthenticated) {
         return { isAuthenticated: false };
@@ -145,7 +208,6 @@ class BackgroundAuthManager {
 
       const identity = this.getIdentity();
       const principal = identity.getPrincipal().toText();
-
       return {
         isAuthenticated: true,
         principal

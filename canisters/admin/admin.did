@@ -42,6 +42,18 @@ type ScrapingTopic = record {
     createdAt: int;
 };
 
+type ScrapedData = record {
+    id: text;
+    url: text;
+    topic: text;
+    content: text;
+    source: text;
+    timestamp: int;
+    client_id: principal;
+    status: text;
+    scraping_time: int;
+};
+
 type CreateTopicRequest = record {
     id: text;
     name: text;
@@ -80,6 +92,11 @@ type Result_4 = variant {
     err: text;
 };
 
+type Result_5 = variant {
+    ok: vec ScrapedData;
+    err: text;
+};
+
 type UserRole = variant {
     Admin;
     User;
@@ -95,24 +112,12 @@ service : {
     createTopic: (CreateTopicRequest) -> (Result_3);
     deleteTopic: (text) -> (Result_1);
     getAIConfig: () -> (Result_2);
-    getScrapedData: (vec text) -> (Result_4);
+    getScrapedData: (vec text) -> (Result_5);
     getTopics: () -> (Result_4);
     get_users: () -> (Result_4);
     remove_user: (principal) -> (Result_1);
     setTopicActive: (text, bool) -> (Result_1);
-    testExtraction: (record {
-        url: text;
-        extraction_rules: record {
-            fields: vec ExtractionField;
-            customPrompt: opt text;
-        };
-    }) -> (Result);
+    testExtraction: (text, text) -> (Result);
     updateAIConfig: (AIConfig) -> (Result_2);
-    updateTopic: (text, record {
-        name: opt text;
-        description: opt text;
-        urlPatterns: opt vec text;
-        status: opt text;
-        extractionRules: opt ExtractionRules;
-    }) -> (Result_3);
+    updateTopic: (text, CreateTopicRequest) -> (Result_3);
 };
