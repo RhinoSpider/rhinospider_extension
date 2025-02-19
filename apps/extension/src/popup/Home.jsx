@@ -65,8 +65,8 @@ const Home = ({ points, uptime, isPluginActive, togglePlugin, bandwidthSpeed, cu
         </div>
         <div className="text-sm text-gray-200 mt-2">
           <span className="font-medium">Current Speed:</span>{' '}
-          <span className={getBandwidthColor(bandwidthSpeed)}>
-            {currentSpeed} ({bandwidthSpeed})
+          <span className={`font-semibold ${getBandwidthColor(bandwidthSpeed)}`}>
+            {currentSpeed}
           </span>
         </div>
         <div className="text-sm text-gray-300 mt-1">
