@@ -35,19 +35,14 @@ type ScrapingField =
  };
 type ScrapedData = 
  record {
-   content: record {
-              extracted: vec record {
-                               text;
-                               text;
-                             };
-              raw: text;
-            };
-   error: opt text;
+   client_id: principal;
+   content: text;
    id: text;
-   retries: nat;
+   scraping_time: int;
+   source: text;
    status: text;
    timestamp: int;
-   topicId: text;
+   topic: text;
    url: text;
  };
 type Result_3 = 

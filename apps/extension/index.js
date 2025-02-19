@@ -13,10 +13,10 @@ app.use(cors({
   methods: ['POST', 'GET'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 
-// Create scraping queue
-const scrapingQueue = new Queue('scraping', {
+// Create processing queue
+const processingQueue = new Queue('processing', {
   redis: {
     host: process.env.REDIS_HOST || 'localhost',
     port: parseInt(process.env.REDIS_PORT) || 6379
@@ -32,22 +32,23 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Scraping endpoint
-app.post('/scrape', async (req, res) => {
-  const { url, topic, extractionRules } = req.body;
+// Process HTML endpoint
+app.post('/process', async (req, res) => {
+  const { url, topic, extractionRules, html } = req.body;
   
-  if (!url || !topic || !extractionRules) {
+  if (!url || !topic || !extractionRules || !html) {
     return res.status(400).json({ 
       error: 'Missing required fields',
-      required: ['url', 'topic', 'extractionRules']
+      required: ['url', 'topic', 'extractionRules', 'html']
     });
   }
 
   try {
-    const job = await scrapingQueue.add({
+    const job = await processingQueue.add({
       url,
       topic,
       extractionRules,
+      html,
       timestamp: Date.now()
     }, {
       attempts: 3,
@@ -64,11 +65,11 @@ app.post('/scrape', async (req, res) => {
     });
   } catch (error) {
     console.error('Error queueing job:', error);
-    res.status(500).json({ error: 'Failed to queue scraping job' });
+    res.status(500).json({ error: 'Failed to queue processing job' });
   }
 });
 
-// Process scraped content using extraction rules
+// Process content using extraction rules
 async function processContent(page, extractionRules) {
   const result = {
     data: {},
@@ -84,14 +85,12 @@ async function processContent(page, extractionRules) {
 
         // Handle different types of extraction
         if (rule.type === 'array') {
-          // Extract array of items
           result.data[rule.field] = await page.$$eval(rule.selector, (elements, attr) => {
             return elements.map(el => attr ? el.getAttribute(attr) : el.textContent.trim())
               .filter(Boolean);
           }, rule.attribute);
         } 
         else if (rule.type === 'object') {
-          // Extract object with key-value pairs
           result.data[rule.field] = await page.$$eval(rule.selector, (elements, config) => {
             const obj = {};
             elements.forEach(el => {
@@ -105,7 +104,6 @@ async function processContent(page, extractionRules) {
           }, { keyAttribute: rule.keyAttribute, valueSelector: rule.valueSelector });
         }
         else {
-          // Extract single value
           const element = await page.$(rule.selector);
           if (element) {
             const value = rule.attribute ?
@@ -151,9 +149,9 @@ async function processContent(page, extractionRules) {
   return result;
 }
 
-// Process scraping jobs
-scrapingQueue.process(async (job) => {
-  const { url, topic, extractionRules } = job.data;
+// Process jobs
+processingQueue.process(async (job) => {
+  const { url, topic, extractionRules, html } = job.data;
   
   const browser = await puppeteer.launch({
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
@@ -161,17 +159,13 @@ scrapingQueue.process(async (job) => {
   });
   
   try {
-    console.log(`Processing ${url} for topic ${topic.id}`);
+    console.log(`Processing HTML from ${url} for topic ${topic}`);
     const page = await browser.newPage();
     
-    // Set viewport and user agent
-    await page.setViewport({ width: 1920, height: 1080 });
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
-    
-    // Navigate to page
-    await page.goto(url, { 
+    // Load HTML into virtual page
+    await page.setContent(html, { 
       waitUntil: 'networkidle0',
-      timeout: 30000
+      timeout: 30000 
     });
     
     // Process content
@@ -180,23 +174,23 @@ scrapingQueue.process(async (job) => {
     // Prepare final result
     const result = {
       url,
-      topic: topic.id,
+      topic,
       title: processed.title || '',
       text: processed.text || '',
       timestamp: Date.now(),
       metadata: {
         source: 'do_service',
-        scrapeTime: Date.now(),
+        processTime: Date.now(),
         ...processed.metadata
       },
       data: processed.data
     };
     
-    console.log(`Successfully processed ${url}`);
+    console.log(`Successfully processed HTML from ${url}`);
     return result;
     
   } catch (error) {
-    console.error('Scraping error:', error);
+    console.error('Processing error:', error);
     throw error;
   } finally {
     await browser.close();
@@ -208,7 +202,7 @@ app.get('/status/:jobId', async (req, res) => {
   const { jobId } = req.params;
   
   try {
-    const job = await scrapingQueue.getJob(jobId);
+    const job = await processingQueue.getJob(jobId);
     if (!job) {
       return res.status(404).json({ error: 'Job not found' });
     }
@@ -230,5 +224,5 @@ app.get('/status/:jobId', async (req, res) => {
 
 // Start server
 app.listen(port, () => {
-  console.log(`Scraper service running on port ${port}`);
+  console.log(`Processing service running on port ${port}`);
 });

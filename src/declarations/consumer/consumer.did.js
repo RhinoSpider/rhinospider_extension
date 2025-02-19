@@ -60,14 +60,12 @@ export const idlFactory = ({ IDL }) => {
     'id' : IDL.Text,
     'url' : IDL.Text,
     'status' : IDL.Text,
-    'content' : IDL.Record({
-      'raw' : IDL.Text,
-      'extracted' : IDL.Vec(IDL.Tuple(IDL.Text, IDL.Text)),
-    }),
-    'error' : IDL.Opt(IDL.Text),
+    'topic' : IDL.Text,
+    'content' : IDL.Text,
+    'source' : IDL.Text,
     'timestamp' : IDL.Int,
-    'topicId' : IDL.Text,
-    'retries' : IDL.Nat,
+    'client_id' : IDL.Principal,
+    'scraping_time' : IDL.Int,
   });
   return IDL.Service({
     'getAIConfig' : IDL.Func([], [Result_3], []),

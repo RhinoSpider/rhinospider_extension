@@ -32,11 +32,12 @@ export interface ScrapedData {
   'id' : string,
   'url' : string,
   'status' : string,
-  'content' : { 'raw' : string, 'extracted' : Array<[string, string]> },
-  'error' : [] | [string],
+  'topic' : string,
+  'content' : string,
+  'source' : string,
   'timestamp' : bigint,
-  'topicId' : string,
-  'retries' : bigint,
+  'client_id' : Principal,
+  'scraping_time' : bigint,
 }
 export interface ScrapingField {
   'name' : string,

@@ -9,224 +9,504 @@ import { parsePublicKeyDer, parseSignatureDer } from './utils/der';
 // Environment variables
 const CONSUMER_CANISTER_ID = import.meta.env.VITE_CONSUMER_CANISTER_ID;
 const IC_HOST = import.meta.env.VITE_IC_HOST;
+const SCRAPER_URL = import.meta.env.VITE_SCRAPER_URL;
 
 let consumerActor = null;
+let isEnabled = false;
+let scrapeQueue = [];
+let scrapedCount = 0;
+let lastScrapedTime = Date.now();
+let currentSpeed = 0;
 
-// Create delegation chain from stored data
-const createDelegationChain = (storedChain) => {
-  try {
-    console.log('Creating delegation chain from:', storedChain);
-    
-    // Convert stored arrays back to Uint8Arrays
-    const delegations = storedChain.delegations.map(d => ({
-      delegation: {
-        pubkey: new Uint8Array(d.delegation.pubkey),
-        expiration: BigInt('0x' + d.delegation.expiration),
-        targets: d.delegation.targets || []
-      },
-      signature: new Uint8Array(d.signature)
-    }));
-    
-    // Get the root public key from the first delegation
-    const publicKey = delegations[0].delegation.pubkey;
-    
-    // Create DelegationChain instance using fromDelegations
-    const chain = DelegationChain.fromDelegations(
-      publicKey,
-      delegations
-    );
-    
-    console.log('Created delegation chain:', chain);
-    console.log('Chain delegations:', chain.delegations);
-    console.log('Chain public key:', chain.publicKey);
-    return chain;
-  } catch (error) {
-    console.error('Error creating delegation chain:', error);
-    throw error;
-  }
+// Helper to serialize BigInts for logging
+const serializeForLogging = (obj) => {
+  return JSON.stringify(obj, (key, value) => {
+    if (typeof value === 'bigint') {
+      return value.toString(16); // Convert BigInt to hex string
+    }
+    // For Uint8Arrays, just show length
+    if (value instanceof Uint8Array) {
+      return `Uint8Array(${value.length})`;
+    }
+    // For large objects like signatures, just show type
+    if (key === 'signature') {
+      return '[Signature]';
+    }
+    return value;
+  }, 2); // Pretty print with 2 space indent
 };
 
-// Helper to serialize delegation chain
-const serializeDelegationChain = (chain) => {
-  if (!chain || !chain.delegations || !chain.publicKey) {
-    console.error('Invalid delegation chain:', chain);
-    throw new Error('Invalid delegation chain structure');
-  }
-
-  return {
-    delegations: chain.delegations.map(d => {
-      if (!d.delegation || !d.delegation.pubkey || !d.signature) {
-        console.error('Invalid delegation:', d);
-        throw new Error('Invalid delegation structure');
-      }
-      return {
-        delegation: {
-          pubkey: Array.from(d.delegation.pubkey),
-          expiration: d.delegation.expiration.toString(16),
-          targets: d.delegation.targets || []
-        },
-        signature: Array.from(d.signature)
-      };
-    }),
-    publicKey: Array.from(chain.publicKey)
-  };
-};
-
-// Helper to recursively serialize BigInts
-const serializeBigInts = (obj) => {
-  if (obj === null || obj === undefined) {
-    return obj;
-  }
-  
+// Helper function to serialize BigInts and ensure proper CBOR encoding
+function serializeBigInt(obj) {
   if (typeof obj === 'bigint') {
-    return obj.toString(16);
+    return Number(obj); // Convert BigInt to Number for CBOR compatibility
   }
-  
-  if (obj instanceof Uint8Array) {
-    return Array.from(obj);
-  }
-  
   if (Array.isArray(obj)) {
-    return obj.map(serializeBigInts);
+    return obj.map(serializeBigInt);
   }
-  
-  if (typeof obj === 'object') {
+  if (obj !== null && typeof obj === 'object') {
+    if (obj instanceof Uint8Array) {
+      return Array.from(obj); // Convert Uint8Array to regular array
+    }
     const result = {};
-    for (const [key, value] of Object.entries(obj)) {
-      result[key] = serializeBigInts(value);
+    for (const key in obj) {
+      result[key] = serializeBigInt(obj[key]);
     }
     return result;
   }
-  
   return obj;
+}
+
+// Create delegation chain from stored data
+const createDelegationChain = (storedChain) => {
+  const delegations = storedChain.delegations.map(d => ({
+    delegation: {
+      pubkey: new Uint8Array(d.delegation.pubkey),
+      expiration: BigInt('0x' + d.delegation.expiration), // Critical: convert hex to BigInt
+      targets: d.delegation.targets || []
+    },
+    signature: new Uint8Array(d.signature)
+  }));
+  
+  const publicKey = new Uint8Array(storedChain.publicKey);
+  return DelegationChain.fromDelegations(publicKey, delegations);
 };
 
-const initializeActor = async () => {
+// Create identity for IC requests
+function createIdentity(delegationChain) {
   try {
-    console.log('Background: Getting stored identity info...');
-    const result = await chrome.storage.local.get(['identityInfo']);
-    if (!result.identityInfo?.delegationChain) {
-      throw new Error('No delegation chain found');
-    }
-
-    console.log('Background: Raw stored chain:', JSON.stringify(result.identityInfo.delegationChain, null, 2));
+    // Create base key identity with signing capability
+    const secretKey = crypto.getRandomValues(new Uint8Array(32));
+    const baseIdentity = Secp256k1KeyIdentity.fromSecretKey(secretKey);
     
-    // Create delegation chain
-    const delegationChain = createDelegationChain(result.identityInfo.delegationChain);
-    
-    if (!delegationChain.delegations || !delegationChain.delegations[0]) {
-      throw new Error('Invalid delegation chain: missing delegations');
-    }
-    
-    // Create base identity with sign method
-    const baseIdentity = {
-      _delegationChain: delegationChain,
-      getDelegation: () => delegationChain,
-      getPrincipal: () => Principal.selfAuthenticating(delegationChain.publicKey),
-      sign: async (blob) => {
-        try {
-          // Get first delegation
-          const delegation = delegationChain.delegations[0];
-          if (!delegation || !delegation.delegation || !delegation.delegation.pubkey || !delegation.signature) {
-            throw new Error('Invalid delegation structure');
-          }
-          
-          return {
-            signature: delegation.signature,
-            public_key: delegation.delegation.pubkey
-          };
-        } catch (error) {
-          console.error('Error in sign method:', error);
-          throw error;
-        }
-      },
-      transformRequest: async (request) => {
-        try {
-          // Convert request body to proper format
-          let bodyBytes;
-          if (request.body instanceof ArrayBuffer) {
-            bodyBytes = new Uint8Array(request.body);
-          } else if (request.body instanceof Uint8Array) {
-            bodyBytes = request.body;
-          } else {
-            const encoder = new TextEncoder();
-            bodyBytes = encoder.encode(
-              typeof request.body === 'string' 
-                ? request.body 
-                : JSON.stringify(serializeBigInts(request.body))
-            );
-          }
-          
-          // Create request ID
-          const requestId = new Uint8Array(
-            await crypto.subtle.digest('SHA-256', bodyBytes)
-          );
-          
-          // Get delegation info and signature
-          const signed = await baseIdentity.sign(bodyBytes);
-          
-          // Serialize delegation chain
-          const requestDelegation = serializeDelegationChain(delegationChain);
-          
-          // Create transformed request with all BigInts serialized
-          const transformedRequest = serializeBigInts({
-            ...request,
-            body: Array.from(bodyBytes),
-            sender: Array.from(signed.public_key),
-            request_id: Array.from(requestId),
-            delegation: requestDelegation,
-            signature: Array.from(signed.signature)
-          });
-          
-          console.log('Transformed request:', transformedRequest);
-          return transformedRequest;
-        } catch (error) {
-          console.error('Error in transformRequest:', error);
-          throw error;
-        }
-      }
-    };
-    
-    // Create agent with base identity
-    console.log('Background: Creating agent...');
-    const agent = new HttpAgent({
-      identity: baseIdentity,
-      host: IC_HOST
-    });
-    
-    console.log('Background: Fetching root key...');
-    await agent.fetchRootKey();
-    
-    console.log('Background: Creating actor...');
-    return Actor.createActor(consumerIdlFactory, {
-      agent,
-      canisterId: CONSUMER_CANISTER_ID,
-    });
+    // Create delegation identity
+    return new DelegationIdentity(baseIdentity, delegationChain);
   } catch (error) {
-    console.error('Background: Error in initializeActor:', error);
-    console.error('Background: Error stack:', error.stack);
+    console.error('Failed to create identity:', error);
     throw error;
   }
-};
+}
 
-async function checkExistingAuth() {
+// Initialize actor and start scraping
+async function initializeActor() {
   try {
-    console.log('Background: Checking existing auth...');
-    const result = await chrome.storage.local.get(['identityInfo', 'authState']);
-    
-    if (result.identityInfo && result.authState) {
-      const authState = JSON.parse(result.authState);
-      console.log('Background: Found auth state:', { isAuthenticated: authState.isAuthenticated });
-      return authState.isAuthenticated;
+    const authInfo = await checkAuthentication();
+    if (!authInfo) {
+      console.log('Not authenticated');
+      return null;
     }
+
+    const { delegationChain } = authInfo;
+
+    // Create base identity
+    const baseIdentity = createIdentity(delegationChain);
     
-    console.log('Background: No existing auth found');
-    return false;
+    // Create principal from canister ID
+    const canisterPrincipal = Principal.fromText(CONSUMER_CANISTER_ID);
+
+    // Create agent with base identity
+    const agent = new HttpAgent({
+      host: IC_HOST,
+      identity: baseIdentity
+    });
+
+    // Fetch root key
+    console.log('Fetching root key...');
+    await agent.fetchRootKey();
+
+    // Create consumer actor
+    console.log('Creating consumer actor...');
+    consumerActor = Actor.createActor(consumerIdlFactory, {
+      agent,
+      canisterId: canisterPrincipal
+    });
+
+    console.log('Consumer actor initialized');
+    return consumerActor;
   } catch (error) {
-    console.error('Background: Error checking auth:', error);
-    return false;
+    console.error('Failed to initialize actor:', error);
+    throw error;
   }
 }
+
+// Initialize the scraping system
+async function initializeScrapingSystem() {
+  try {
+    console.log('Initializing scraping system...');
+    console.log('Fetching topics...');
+    
+    // Ensure we have a valid consumer actor
+    if (!consumerActor) {
+      await initializeActor();
+      if (!consumerActor) {
+        throw new Error('Failed to initialize consumer actor');
+      }
+    }
+
+    // Get topics with proper request transformation
+    const topics = await consumerActor.getTopics();
+    console.log('Got topics:', serializeForLogging(topics));
+
+    // Check if extension is enabled
+    const result = await chrome.storage.local.get(['extensionEnabled']);
+    if (result.extensionEnabled !== false) {
+      console.log('Starting scraping...');
+      startScraping(topics);
+    } else {
+      console.log('Extension is disabled, not starting scraping');
+    }
+  } catch (error) {
+    console.error('Failed to initialize scraping system:', error);
+    // Store error state
+    await chrome.storage.local.set({
+      scrapingError: error.message
+    });
+    throw error;
+  }
+}
+
+// Process scraped content
+async function processScrapedContent(tab, topic, html) {
+  try {
+    console.log('Processing content for topic:', serializeForLogging(topic));
+    
+    // Create parser for HTML
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    
+    // Process content according to extraction rules
+    const processedData = {
+      url: tab.url,
+      topic: topic.id,
+      title: '',
+      text: '',
+      timestamp: Date.now(),
+      data: {},
+      metadata: {
+        source: 'extension',
+        scrapeTime: Date.now(),
+        userAgent: navigator.userAgent
+      }
+    };
+
+    // Apply extraction rules
+    if (topic.extractionRules) {
+      for (const rule of topic.extractionRules) {
+        try {
+          if (!rule.selector) continue;
+
+          const elements = doc.querySelectorAll(rule.selector);
+          
+          if (rule.type === 'array') {
+            // Extract array of items
+            processedData.data[rule.field] = Array.from(elements).map(el => {
+              return rule.attribute ? 
+                el.getAttribute(rule.attribute) : 
+                el.textContent.trim();
+            }).filter(Boolean);
+          } 
+          else if (rule.type === 'object') {
+            // Extract object with key-value pairs
+            processedData.data[rule.field] = {};
+            elements.forEach(el => {
+              const key = rule.keyAttribute ? 
+                el.getAttribute(rule.keyAttribute) : 
+                el.tagName;
+              const value = rule.valueSelector ? 
+                el.querySelector(rule.valueSelector)?.textContent.trim() : 
+                el.textContent.trim();
+              if (key && value) {
+                processedData.data[rule.field][key] = value;
+              }
+            });
+          }
+          else {
+            // Extract single value
+            const element = elements[0];
+            if (element) {
+              const value = rule.attribute ? 
+                element.getAttribute(rule.attribute) : 
+                element.textContent.trim();
+              
+              if (rule.field === 'title') {
+                processedData.title = value;
+              } else if (rule.field === 'text') {
+                processedData.text = value;
+              } else {
+                processedData.data[rule.field] = value;
+              }
+            }
+          }
+        } catch (ruleError) {
+          console.error('Error applying extraction rule:', ruleError);
+          processedData.metadata.errors = processedData.metadata.errors || [];
+          processedData.metadata.errors.push({
+            rule: rule.field,
+            error: ruleError.message
+          });
+        }
+      }
+    }
+
+    // Add page metadata
+    const metaTags = doc.querySelectorAll('meta');
+    const pageMetadata = {};
+    metaTags.forEach(meta => {
+      const name = meta.getAttribute('name') || meta.getAttribute('property');
+      const content = meta.getAttribute('content');
+      if (name && content) {
+        pageMetadata[name] = content;
+      }
+    });
+    processedData.metadata.page = pageMetadata;
+
+    // Submit directly to consumer canister
+    await submitScrapedContent(processedData);
+
+    console.log('Content processed and submitted successfully');
+  } catch (error) {
+    console.error('Error processing content:', error);
+    throw error;
+  }
+}
+
+// Submit scraped content to consumer canister
+async function submitScrapedContent(content) {
+  try {
+    if (!consumerActor) {
+      throw new Error('Consumer actor not initialized');
+    }
+    
+    console.log('Submitting scraped content:', serializeForLogging(content));
+    
+    // Format content according to consumer.did ScrapedData type
+    const formattedContent = {
+      id: content.id || crypto.randomUUID(),
+      url: content.url,
+      topicId: content.topic,
+      status: 'pending',
+      timestamp: Number(Date.now()),
+      retries: 0,
+      content: {
+        raw: content.text || '',
+        extracted: Object.entries(content.data || {})
+      },
+      error: content.error ? [content.error] : [] // opt text in Candid
+    };
+    
+    // Submit to consumer canister
+    const result = await consumerActor.submitScrapedData(formattedContent);
+    console.log('Content submission result:', serializeForLogging(result));
+    
+    // Update metrics
+    const metrics = await chrome.storage.local.get(['metrics']) || { metrics: {} };
+    metrics.totalSubmissions = (metrics.totalSubmissions || 0) + 1;
+    metrics.lastSubmission = Date.now();
+    await chrome.storage.local.set({ metrics });
+    
+    return result;
+  } catch (error) {
+    console.error('Failed to submit scraped content:', error);
+    throw error;
+  }
+}
+
+// Start scraping process
+function startScraping(topics) {
+  const activeTopics = topics.filter(t => t.active);
+  console.log('Starting scraping for topics:', serializeForLogging(activeTopics));
+  
+  activeTopics.forEach(topic => {
+    console.log('Processing topic:', topic.name);
+    topic.urlPatterns.forEach(pattern => {
+      console.log('Processing pattern:', pattern);
+      // Convert wildcard pattern to regex
+      const regexPattern = new RegExp(
+        pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&') // escape special chars
+              .replace(/\*/g, '.*') // convert * to .*
+      );
+      
+      // Queue initial URLs based on pattern
+      if (pattern.includes('*')) {
+        // For wildcard patterns, we'll rely on tab updates to match URLs
+        console.log('Wildcard pattern registered:', pattern);
+      } else {
+        // For exact URLs, queue them immediately
+        queueScrape(pattern, topic);
+      }
+    });
+  });
+  
+  // Set up tab update listener to catch matching URLs
+  chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    if (changeInfo.status === 'complete' && tab.url) {
+      activeTopics.forEach(topic => {
+        topic.urlPatterns.forEach(pattern => {
+          const regexPattern = new RegExp(
+            pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+                  .replace(/\*/g, '.*')
+          );
+          if (regexPattern.test(tab.url)) {
+            queueScrape(tab.url, topic);
+          }
+        });
+      });
+    }
+  });
+}
+
+// Queue a URL for scraping
+async function queueScrape(url, topic) {
+  console.log('Starting scrape for:', url);
+  
+  try {
+    // Scrape HTML using user's bandwidth
+    console.log('Fetching HTML from:', url);
+    const response = await fetch(url);
+    const html = await response.text();
+    
+    // Send raw HTML to DO for processing
+    console.log('Sending to DO for processing');
+    const doResponse = await fetch(SCRAPER_URL + '/process', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        url,
+        topic: topic.id,
+        html,
+        extractionRules: topic.extractionRules
+      })
+    });
+
+    if (!doResponse.ok) {
+      throw new Error(`DO processing failed: ${doResponse.statusText}`);
+    }
+
+    console.log('DO successfully processed HTML');
+
+    // Update metrics
+    scrapedCount++;
+    const now = Date.now();
+    const timeDiff = now - lastScrapedTime;
+    currentSpeed = (timeDiff > 0) ? (1000 / timeDiff) : 0;
+    lastScrapedTime = now;
+    
+    // Send speed update to UI
+    chrome.runtime.sendMessage({
+      type: 'SPEED_UPDATE',
+      speed: currentSpeed,
+      totalScraped: scrapedCount
+    }).catch(() => {}); // Ignore if popup is closed
+    
+    console.log('Updated metrics:', {
+      speed: currentSpeed.toFixed(2),
+      totalScraped: scrapedCount
+    });
+
+  } catch (error) {
+    console.error('Error in scraping process:', error);
+    throw error;
+  }
+}
+
+// Check if user is authenticated
+async function checkAuthentication() {
+  try {
+    console.log('Checking auth state:', await chrome.storage.local.get(['identityInfo']));
+    
+    // Get stored identity info
+    const result = await chrome.storage.local.get(['identityInfo']);
+    if (!result.identityInfo?.delegationChain) {
+      console.log('No auth state found');
+      return null;
+    }
+
+    // Get raw delegation chain
+    const rawDelegationChain = result.identityInfo.delegationChain;
+    console.log('Raw delegation chain:', rawDelegationChain);
+
+    // Create delegation chain from stored data
+    const delegationChain = createDelegationChain(rawDelegationChain);
+    console.log('Created delegation chain:', delegationChain);
+
+    return {
+      delegationChain
+    };
+  } catch (error) {
+    console.error('Error checking authentication:', error);
+    throw error;
+  }
+}
+
+// Initialize extension state
+async function initializeExtension() {
+  try {
+    console.log('Background: Starting background script...');
+    console.log('Background: Checking existing auth...');
+    
+    const isAuthenticated = await checkAuthentication();
+    console.log('Background: Authentication status:', isAuthenticated);
+    
+    if (!isAuthenticated) {
+      console.log('Background: Not authenticated, waiting for login...');
+      return;
+    }
+    
+    const result = await chrome.storage.local.get(['extensionEnabled']);
+    const isEnabled = result.extensionEnabled !== false; // Default to true if not set
+    
+    if (isEnabled) {
+      console.log('Extension is enabled, initializing actor...');
+      const actor = await initializeActor();
+      if (actor) {
+        console.log('Actor initialized, starting scraping system...');
+        await initializeScrapingSystem();
+      }
+    } else {
+      console.log('Extension is disabled, skipping initialization');
+    }
+  } catch (error) {
+    console.error('Failed to initialize extension:', error);
+  }
+}
+
+// Handle extension installation/update
+chrome.runtime.onInstalled.addListener(async (details) => {
+  console.log('Extension installed/updated:', details.reason);
+  await initializeExtension();
+});
+
+// Handle extension startup
+chrome.runtime.onStartup.addListener(async () => {
+  console.log('Extension starting up');
+  await initializeExtension();
+});
+
+// Listen for messages from popup
+chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
+  console.log('Background: Received message:', message);
+  
+  if (message.type === 'LOGIN_COMPLETE') {
+    console.log('Background: Login complete, initializing actor...');
+    await initializeExtension();
+  }
+  
+  // Always return true to indicate we'll send a response asynchronously
+  return true;
+});
+
+// Initialize on script load
+initializeExtension();
+
+// Update topics periodically
+setInterval(() => {
+  if (isEnabled && consumerActor) {
+    console.log('Periodic update: fetching new topics...');
+    initializeScrapingSystem();
+  }
+}, 5 * 60 * 1000); // Every 5 minutes
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('Background: Received message:', message);
@@ -238,8 +518,3 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     consumerActor = null;
   }
 });
-
-console.log('Background: Starting background script...');
-checkExistingAuth();
-
-export { consumerActor };
