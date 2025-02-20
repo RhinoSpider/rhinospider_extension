@@ -1,10 +1,10 @@
 import { Actor, HttpAgent, AnonymousIdentity } from '@dfinity/agent';
 import { DelegationChain, DelegationIdentity } from '@dfinity/identity';
 import { Secp256k1KeyIdentity } from '@dfinity/identity-secp256k1';
-import { idlFactory as consumerIdlFactory } from './declarations/consumer/consumer.did.js';
 import { Principal } from '@dfinity/principal';
 import { toHex } from './utils/hex';
 import { parsePublicKeyDer, parseSignatureDer } from './utils/der';
+import { createBackgroundIdentity } from './auth.js';
 
 // Environment variables
 const CONSUMER_CANISTER_ID = import.meta.env.VITE_CONSUMER_CANISTER_ID;
@@ -58,19 +58,74 @@ function serializeBigInt(obj) {
 }
 
 // Create delegation chain from stored data
-const createDelegationChain = (storedChain) => {
-  const delegations = storedChain.delegations.map(d => ({
-    delegation: {
-      pubkey: new Uint8Array(d.delegation.pubkey),
-      expiration: BigInt('0x' + d.delegation.expiration), // Critical: convert hex to BigInt
-      targets: d.delegation.targets || []
-    },
-    signature: new Uint8Array(d.signature)
-  }));
-  
-  const publicKey = new Uint8Array(storedChain.publicKey);
-  return DelegationChain.fromDelegations(publicKey, delegations);
-};
+function createDelegationChain(storedChain) {
+  try {
+    console.log('Creating delegation chain from:', JSON.stringify(storedChain, (key, value) => {
+      if (value instanceof Uint8Array) {
+        return Array.from(value);
+      }
+      if (typeof value === 'bigint') {
+        return value.toString(16);
+      }
+      return value;
+    }, 2));
+    
+    // Validate stored chain structure
+    if (!storedChain || !Array.isArray(storedChain.delegations) || !Array.isArray(storedChain.publicKey)) {
+      throw new Error('Invalid stored chain structure');
+    }
+
+    // Convert stored arrays to proper types
+    const delegations = storedChain.delegations
+      .filter(d => d && d.delegation && d.delegation.pubkey && d.signature)
+      .map(d => ({
+        delegation: {
+          pubkey: new Uint8Array(d.delegation.pubkey),
+          expiration: BigInt('0x' + d.delegation.expiration),
+          targets: Array.isArray(d.delegation.targets) 
+            ? d.delegation.targets
+                .map(t => {
+                  try {
+                    return Principal.fromText(t);
+                  } catch (error) {
+                    console.error('Failed to convert target to Principal:', t, error);
+                    return null;
+                  }
+                })
+                .filter(Boolean)
+            : []
+        },
+        signature: new Uint8Array(d.signature)
+      }));
+
+    // Ensure we have valid delegations
+    if (!delegations.length) {
+      throw new Error('No valid delegations found in stored chain');
+    }
+
+    const publicKey = new Uint8Array(storedChain.publicKey);
+    
+    // Create delegation chain using DelegationChain.fromDelegations
+    console.log('Creating chain with public key:', Array.from(publicKey));
+    const chain = DelegationChain.fromDelegations(publicKey, delegations);
+    console.log('Created delegation chain successfully');
+    
+    // Log chain details for debugging - only log what we know exists
+    console.log('Chain details:', {
+      publicKey: Array.from(publicKey),
+      delegationCount: delegations.length,
+      delegations: delegations.map(d => ({
+        expiration: d.delegation.expiration.toString(16),
+        targetCount: d.delegation.targets.length
+      }))
+    });
+
+    return chain;
+  } catch (error) {
+    console.error('Failed to create delegation chain:', error);
+    throw error;
+  }
+}
 
 // Create identity for IC requests
 function createIdentity(delegationChain) {
@@ -87,47 +142,56 @@ function createIdentity(delegationChain) {
   }
 }
 
-// Initialize actor and start scraping
-async function initializeActor() {
+async function getStoredDelegationChain() {
+  const result = await chrome.storage.local.get('delegationChain');
+  if (!result.delegationChain) return null;
+  
   try {
-    const authInfo = await checkAuthentication();
-    if (!authInfo) {
-      console.log('Not authenticated');
-      return null;
-    }
-
-    const { delegationChain } = authInfo;
-
-    // Create base identity
-    const baseIdentity = createIdentity(delegationChain);
-    
-    // Create principal from canister ID
-    const canisterPrincipal = Principal.fromText(CONSUMER_CANISTER_ID);
-
-    // Create agent with base identity
-    const agent = new HttpAgent({
-      host: IC_HOST,
-      identity: baseIdentity
-    });
-
-    // Fetch root key
-    console.log('Fetching root key...');
-    await agent.fetchRootKey();
-
-    // Create consumer actor
-    console.log('Creating consumer actor...');
-    consumerActor = Actor.createActor(consumerIdlFactory, {
-      agent,
-      canisterId: canisterPrincipal
-    });
-
-    console.log('Consumer actor initialized');
-    return consumerActor;
+    return JSON.parse(result.delegationChain);
   } catch (error) {
-    console.error('Failed to initialize actor:', error);
-    throw error;
+    console.error('Failed to parse delegation chain:', error);
+    return null;
   }
 }
+
+const initializeActor = async () => {
+  const storedChain = await getStoredDelegationChain();
+  const identity = createBackgroundIdentity(storedChain);
+  
+  // If using anonymous identity, we're not authenticated
+  if (identity instanceof AnonymousIdentity) {
+    console.log('No stored delegation chain, using anonymous identity');
+    return null;
+  }
+  
+  const agent = new HttpAgent({ 
+    identity,
+    host: IC_HOST,
+    fetch: (...args) => {
+      const [resource, init = {}] = args;
+      init.headers = {
+        ...init.headers,
+        'Accept': 'application/cbor',
+        'Content-Type': 'application/cbor'
+      };
+      return fetch(resource, init);
+    }
+  });
+  
+  // Import the proper actor creator
+  const { createActor } = await import('../declarations/consumer/index.js');
+  
+  // Create actor with our configured agent
+  consumerActor = await createActor(CONSUMER_CANISTER_ID, {
+    agent,
+    actorOptions: {
+      blsVerify: false
+    }
+  });
+
+  console.log('Consumer actor initialized');
+  return consumerActor;
+};
 
 // Initialize the scraping system
 async function initializeScrapingSystem() {
@@ -144,12 +208,17 @@ async function initializeScrapingSystem() {
     }
 
     // Get topics with proper request transformation
-    const topics = await consumerActor.getTopics();
+    const result = await consumerActor.getTopics();
+    if ('err' in result) {
+      throw new Error('Failed to get topics: ' + JSON.stringify(result.err));
+    }
+    
+    const topics = result.ok;
     console.log('Got topics:', serializeForLogging(topics));
 
     // Check if extension is enabled
-    const result = await chrome.storage.local.get(['extensionEnabled']);
-    if (result.extensionEnabled !== false) {
+    const extensionState = await chrome.storage.local.get(['extensionEnabled']);
+    if (extensionState.extensionEnabled !== false) {
       console.log('Starting scraping...');
       startScraping(topics);
     } else {
@@ -390,7 +459,7 @@ async function queueScrape(url, topic) {
     scrapedCount++;
     const now = Date.now();
     const timeDiff = now - lastScrapedTime;
-    currentSpeed = (timeDiff > 0) ? (1000 / timeDiff) : 0;
+    currentSpeed = (timeDiff > 0) ? (timeDiff / 1000) : 0;
     lastScrapedTime = now;
     
     // Send speed update to UI

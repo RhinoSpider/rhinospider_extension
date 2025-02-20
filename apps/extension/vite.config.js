@@ -99,11 +99,12 @@ export default defineConfig({
         assetFileNames: (assetInfo) => {
           const info = assetInfo.name.split('.');
           const extType = info[info.length - 1];
-          
-          if (extType === 'css') {
+          if (/\.(jpe?g|png|gif|svg|ico)$/i.test(assetInfo.name)) {
+            return `assets/images/[name][extname]`;
+          }
+          if (/\.css$/i.test(assetInfo.name)) {
             return `assets/[name][extname]`;
           }
-          
           return `assets/[name]-[hash][extname]`;
         },
         format: 'es',
@@ -111,17 +112,25 @@ export default defineConfig({
       }
     },
     target: 'esnext',
-    minify: false
+    commonjsOptions: {
+      transformMixedEsModules: true
+    }
   },
   resolve: {
     alias: {
-      '@': resolve(__dirname, 'src')
+      '@': resolve(__dirname, 'src'),
+      '@dfinity/agent': resolve(__dirname, 'node_modules/@dfinity/agent'),
+      '@dfinity/candid': resolve(__dirname, 'node_modules/@dfinity/candid'),
+      '@dfinity/principal': resolve(__dirname, 'node_modules/@dfinity/principal'),
+      '@dfinity/auth-client': resolve(__dirname, 'node_modules/@dfinity/auth-client'),
+      '@dfinity/identity': resolve(__dirname, 'node_modules/@dfinity/identity'),
+      '@dfinity/identity-secp256k1': resolve(__dirname, 'node_modules/@dfinity/identity-secp256k1')
     }
   },
   define: {
-    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV),
-    'process.env.NODE_DEBUG': JSON.stringify(process.env.NODE_DEBUG),
-    'global': 'globalThis',
-    'process.env': env
+    'process.env': {
+      ...env,
+      NODE_ENV: JSON.stringify(process.env.NODE_ENV)
+    }
   }
 });

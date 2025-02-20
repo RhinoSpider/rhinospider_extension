@@ -1,0 +1,76 @@
+type UserProfile = record {
+    principal: principal;
+    devices: vec text;
+    created: int;
+    lastLogin: int;
+    preferences: record {
+        notificationsEnabled: bool;
+        theme: text;
+    };
+};
+
+type Error = variant {
+    NotFound;
+    AlreadyExists;
+    NotAuthorized;
+    InvalidInput: text;
+    SystemError: text;
+};
+
+type ScrapingField = record {
+    name: text;
+    fieldType: text;
+    required: bool;
+    aiPrompt: opt text;
+};
+
+type ExtractionRules = record {
+    fields: vec ScrapingField;
+    customPrompt: opt text;
+};
+
+type AIConfig = record {
+    apiKey: text;
+    model: text;
+    costLimits: record {
+        maxDailyCost: float64;
+        maxMonthlyCost: float64;
+        maxConcurrent: nat;
+    };
+};
+
+type ScrapingTopic = record {
+    id: text;
+    status: text;
+    name: text;
+    description: text;
+    scrapingInterval: nat;
+    maxRetries: nat;
+    activeHours: record {
+        start: nat;
+        end: nat;
+    };
+    urlPatterns: vec text;
+    extractionRules: ExtractionRules;
+    aiConfig: AIConfig;
+    createdAt: int;
+};
+
+type ScrapedData = record {
+    id: text;
+    url: text;
+    topic: text;
+    content: text;
+    source: text;
+    timestamp: int;
+    client_id: principal;
+    status: text;
+    scraping_time: int;
+};
+
+service : {
+    getTopics: () -> (variant { ok: vec ScrapingTopic; err: Error });
+    getAIConfig: () -> (variant { ok: AIConfig; err: Error });
+    getProfile: () -> (variant { ok: UserProfile; err: Error });
+    submitScrapedData: (ScrapedData) -> (variant { ok; err: Error });
+}
