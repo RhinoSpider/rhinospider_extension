@@ -42,36 +42,50 @@ const logger = {
 async function createIdentity(delegationChain) {
     logger.group('Creating Identity');
     try {
-        // Create base identity
+        logger.debug('Received delegation chain:', {
+            isDefined: !!delegationChain,
+            hasPublicKey: delegationChain?.publicKey ? 'yes' : 'no',
+            hasDelegations: delegationChain?.delegations ? 'yes' : 'no',
+            delegationsLength: delegationChain?.delegations?.length
+        });
+
+        if (!delegationChain?.delegations) {
+            throw new Error('Invalid delegation chain');
+        }
+
+        // Create base identity with signing capability
         const secretKey = crypto.getRandomValues(new Uint8Array(32));
         const baseIdentity = Secp256k1KeyIdentity.fromSecretKey(secretKey);
-        logger.log('Base identity created');
+        logger.success('Base identity created');
         
-        // Process delegations
+        // Log first delegation for debugging
+        if (delegationChain.delegations[0]) {
+            logger.debug('Processing delegation:', {
+                pubkeyLength: delegationChain.delegations[0].delegation?.pubkey?.length,
+                expiration: delegationChain.delegations[0].delegation?.expiration?.toString(16),
+                signatureLength: delegationChain.delegations[0].signature?.length,
+                pubkeyType: typeof delegationChain.delegations[0].delegation?.pubkey,
+                signatureType: typeof delegationChain.delegations[0].signature
+            });
+        }
+
+        // Convert binary data to Uint8Arrays
+        const publicKey = new Uint8Array(delegationChain.publicKey);
+        
         const delegations = delegationChain.delegations.map(d => {
-            // Ensure pubkey is Uint8Array
-            const pubkey = d.delegation.pubkey instanceof Uint8Array 
-                ? d.delegation.pubkey 
-                : new Uint8Array(Object.values(d.delegation.pubkey));
-            
-            // Ensure signature is Uint8Array
-            const signature = d.signature instanceof Uint8Array
-                ? d.signature
-                : new Uint8Array(Object.values(d.signature));
-            
+            // Ensure pubkey and signature are Uint8Arrays
+            const pubkey = d.delegation.pubkey instanceof Uint8Array ? 
+                d.delegation.pubkey : 
+                new Uint8Array(d.delegation.pubkey);
+                
+            const signature = d.signature instanceof Uint8Array ?
+                d.signature :
+                new Uint8Array(d.signature);
+
             // Convert expiration to BigInt
-            let expiration;
-            if (typeof d.delegation.expiration === 'string') {
-                // Handle hex string (remove 0x if present)
-                const hexString = d.delegation.expiration.replace('0x', '');
-                expiration = BigInt('0x' + hexString);
-            } else if (typeof d.delegation.expiration === 'number') {
-                expiration = BigInt(d.delegation.expiration);
-            } else if (typeof d.delegation.expiration === 'bigint') {
-                expiration = d.delegation.expiration;
-            } else {
-                throw new Error(`Invalid expiration type: ${typeof d.delegation.expiration}`);
-            }
+            const expiration = typeof d.delegation.expiration === 'string' ?
+                BigInt('0x' + d.delegation.expiration) :
+                d.delegation.expiration;
 
             return {
                 delegation: {
@@ -83,29 +97,34 @@ async function createIdentity(delegationChain) {
             };
         });
 
-        // Create chain with root public key
-        const publicKey = delegationChain.publicKey instanceof Uint8Array
-            ? delegationChain.publicKey
-            : new Uint8Array(Object.values(delegationChain.publicKey));
-        
-        logger.log('Creating delegation chain with:', {
-            publicKey: Array.from(publicKey).map(b => b.toString(16).padStart(2, '0')).join(''),
-            delegations: delegations.map(d => ({
-                pubkey: Array.from(d.delegation.pubkey).map(b => b.toString(16).padStart(2, '0')).join(''),
-                expiration: d.delegation.expiration.toString(16),
-                signature: Array.from(d.signature).map(b => b.toString(16).padStart(2, '0')).join('')
-            }))
+        // Create DelegationChain
+        logger.debug('Creating DelegationChain:', {
+            publicKeyLength: publicKey.length,
+            delegationsCount: delegations.length,
+            firstDelegation: delegations[0] ? {
+                pubkeyLength: delegations[0].delegation.pubkey.length,
+                signatureLength: delegations[0].signature.length,
+                expiration: delegations[0].delegation.expiration.toString(16)
+            } : null
         });
         
         const chain = DelegationChain.fromDelegations(publicKey, delegations);
         
-        // Create identity
+        logger.debug('DelegationChain created:', {
+            chainValid: !!chain,
+            delegationCount: chain?.delegations?.length,
+            publicKeyLength: chain?.publicKey?.length
+        });
+
+        // Create delegation identity
         const identity = new DelegationIdentity(baseIdentity, chain);
-        logger.log('Identity created with principal:', identity.getPrincipal().toText());
+        logger.success('Identity created successfully');
+        
         logger.groupEnd();
         return identity;
     } catch (error) {
         logger.error('Failed to create identity:', error);
+        logger.error('Error stack:', error.stack);
         logger.groupEnd();
         throw error;
     }
@@ -118,15 +137,23 @@ async function createAgent(identity) {
         logger.debug('Initializing HttpAgent', { host: IC_HOST });
         const agent = new HttpAgent({
             identity,
-            host: IC_HOST
+            host: IC_HOST,
+            fetch: async (resource, init) => {
+                const headers = new Headers(init.headers);
+                headers.set('Content-Type', 'application/cbor');
+                return fetch(resource, {
+                    ...init,
+                    headers
+                });
+            }
         });
 
-        // Fetch root key in development
-        if (process.env.NODE_ENV !== 'production') {
-            logger.debug('Development environment detected, fetching root key');
-            await agent.fetchRootKey();
-            logger.success('Root key fetched successfully');
-        }
+        // Always fetch root key for mainnet
+        logger.debug('Fetching root key');
+        await agent.fetchRootKey().catch(error => {
+            logger.warn('Failed to fetch root key, using fallback', error);
+        });
+        logger.success('Agent initialized');
 
         logger.success('Agent created successfully');
         logger.groupEnd();
@@ -169,28 +196,32 @@ async function initializeActor(identity) {
     }
 }
 
-// Initialize IC agent
-async function initializeIC(delegationChain) {
+// Initialize IC connection with delegation chain
+export async function initializeIC(delegationChain) {
     logger.group('Initializing IC Connection');
     try {
-        if (!delegationChain) {
-            logger.error('No delegation chain provided');
-            throw new Error('Delegation chain is required for IC initialization');
-        }
-
-        logger.debug('Creating identity with delegation chain');
-        currentIdentity = await createIdentity(delegationChain);
-        
-        logger.debug('Initializing actor with identity');
-        const actor = await initializeActor(currentIdentity);
-        
-        logger.success('IC Connection initialized successfully', {
-            principal: currentIdentity.getPrincipal().toText()
+        logger.debug('Creating identity with delegation chain', {
+            isDefined: !!delegationChain,
+            type: typeof delegationChain
         });
+        
+        // Create identity
+        const identity = await createIdentity(delegationChain);
+        
+        // Create agent
+        await createAgent(identity);
+        
+        // Create actor
+        await initializeActor(identity);
+        
+        logger.success('IC connection initialized successfully');
         logger.groupEnd();
-        return actor;
+        
+        // Return the identity for consumer service
+        return identity;
     } catch (error) {
         logger.error('Failed to initialize IC connection:', error);
+        logger.error('Error stack:', error.stack);
         logger.groupEnd();
         throw error;
     }
@@ -222,11 +253,17 @@ function clearSession() {
 }
 
 // Initialize namespace for content script access
-window.rhinoSpiderIC = {
+const rhinoSpiderIC = {
     initializeIC,
     getCurrentActor,
     clearSession
 };
+
+// Export for module usage
+export { rhinoSpiderIC };
+
+// Make available on window for content script access
+window.rhinoSpiderIC = rhinoSpiderIC;
 
 // Listen for messages from background script
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {

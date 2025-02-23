@@ -28,12 +28,20 @@ export class ConsumerService {
             
             logger.log('Using consumer canister:', canisterId);
             
-            // Create agent
+            // Create agent with proper fetch handler
             this.agent = new HttpAgent({
                 identity,
                 host: config.dfx_network === 'ic' 
                     ? config.network.ic.host 
-                    : config.network.local.host
+                    : config.network.local.host,
+                fetch: async (resource, init) => {
+                    const headers = new Headers(init.headers);
+                    headers.set('Content-Type', 'application/cbor');
+                    return fetch(resource, {
+                        ...init,
+                        headers
+                    });
+                }
             });
             
             // Initialize agent
@@ -52,11 +60,17 @@ export class ConsumerService {
         }
     }
     
-    // Initialize agent with root key if needed
     async initAgent() {
-        if (config.dfx_network !== 'ic') {
-            logger.log('Fetching root key for local network');
-            await this.agent.fetchRootKey();
+        try {
+            // Always fetch root key for mainnet
+            if (config.dfx_network === 'ic') {
+                await this.agent.fetchRootKey().catch(error => {
+                    logger.error('Failed to fetch root key:', error);
+                });
+            }
+        } catch (error) {
+            logger.error('Failed to initialize agent:', error);
+            throw error;
         }
     }
     
