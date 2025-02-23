@@ -175,9 +175,6 @@ importers:
       recharts:
         specifier: ^2.15.1
         version: 2.15.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      tailwindcss:
-        specifier: ^3.4.1
-        version: 3.4.17(ts-node@10.9.2(@types/node@18.19.74)(typescript@5.7.3))
     devDependencies:
       '@crxjs/vite-plugin':
         specifier: ^2.0.0-beta.30
@@ -192,17 +189,20 @@ importers:
         specifier: ^4.2.1
         version: 4.3.4(vite@5.4.14(@types/node@18.19.74))
       autoprefixer:
-        specifier: ^10.4.17
+        specifier: ^10.4.20
         version: 10.4.20(postcss@8.5.1)
       dotenv:
         specifier: ^16.4.7
         version: 16.4.7
       postcss:
-        specifier: ^8.4.35
+        specifier: ^8.5.1
         version: 8.5.1
       sharp:
         specifier: ^0.33.5
         version: 0.33.5
+      tailwindcss:
+        specifier: ^3.4.17
+        version: 3.4.17(ts-node@10.9.2(@types/node@18.19.74)(typescript@5.7.3))
       vite:
         specifier: ^5.1.0
         version: 5.4.14(@types/node@18.19.74)
