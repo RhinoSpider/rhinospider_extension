@@ -151,20 +151,18 @@ async function handleAuthComplete(delegationChain) {
             delegationsCount: delegationChain?.delegations?.length
         });
 
-        if (!delegationChain?.delegations) {
-            throw new Error('Invalid delegation chain received from auth');
+        // Validate delegation chain structure
+        if (!delegationChain?.delegations?.length || !delegationChain?.publicKey) {
+            throw new Error('Invalid delegation chain structure');
         }
 
-        // Log first delegation for debugging
-        if (delegationChain.delegations[0]) {
-            logger.debug('First delegation:', {
-                hasPubkey: !!delegationChain.delegations[0].delegation?.pubkey,
-                hasExpiration: !!delegationChain.delegations[0].delegation?.expiration,
-                hasSignature: !!delegationChain.delegations[0].signature
-            });
+        // Validate first delegation
+        const firstDelegation = delegationChain.delegations[0];
+        if (!firstDelegation?.delegation?.pubkey || !firstDelegation?.delegation?.expiration || !firstDelegation?.signature) {
+            throw new Error('Invalid delegation structure');
         }
 
-        // Initialize consumer service with raw delegation chain
+        // Initialize consumer service with validated delegation chain
         await initConsumerService(delegationChain);
         
         // Show dashboard
@@ -299,12 +297,37 @@ async function handleLogin() {
                     logger.log('Login successful');
                     const identity = client.getIdentity();
                     
-                    // Get delegation chain from identity
+                    // Get raw delegation chain from identity
                     if (identity instanceof DelegationIdentity) {
-                        const delegationChain = identity.getDelegation();
+                        const chain = identity.getDelegation();
+                        const userPublicKey = identity.getPublicKey().toDer();
                         
-                        // Initialize consumer service with chain
-                        await initConsumerService(delegationChain);
+                        // Log chain details for debugging
+                        logger.debug('Chain details:', {
+                            publicKey: userPublicKey ? userPublicKey.length : 'missing',
+                            delegationsCount: chain.delegations?.length,
+                            firstDelegation: chain.delegations?.[0] ? {
+                                hasPubkey: chain.delegations[0].delegation.pubkey.length,
+                                expiration: chain.delegations[0].delegation.expiration.toString(),
+                                hasSignature: chain.delegations[0].signature.length
+                            } : 'missing'
+                        });
+
+                        // Get raw chain data in correct format
+                        const rawChain = {
+                            publicKey: userPublicKey,
+                            delegations: chain.delegations.map(d => ({
+                                delegation: {
+                                    pubkey: d.delegation.pubkey.buffer,
+                                    expiration: d.delegation.expiration.toString(16),
+                                    targets: d.delegation.targets
+                                },
+                                signature: d.signature.buffer
+                            }))
+                        };
+                        
+                        // Initialize consumer service with raw chain
+                        await initConsumerService(rawChain);
                         
                         // Show dashboard
                         showDashboard();

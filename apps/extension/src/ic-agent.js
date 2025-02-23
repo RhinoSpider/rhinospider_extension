@@ -1,6 +1,6 @@
 // Import dependencies
 const { Actor, HttpAgent } = await import('@dfinity/agent');
-const { DelegationChain, DelegationIdentity } = await import('@dfinity/identity');
+const { DelegationChain, DelegationIdentity, Delegation } = await import('@dfinity/identity');
 const { Secp256k1KeyIdentity } = await import('@dfinity/identity-secp256k1');
 const { idlFactory } = await import('./declarations/consumer/consumer.did.js');
 const { config } = await import('./config.js');
@@ -26,15 +26,41 @@ const logger = {
 };
 
 // Create identity with delegation chain
-async function createIdentity(delegationChain) {
+async function createIdentity(storedChain) {
     logger.group('Creating Identity');
     try {
-        // Create base identity with signing capability
-        const secretKey = crypto.getRandomValues(new Uint8Array(32));
-        const baseIdentity = Secp256k1KeyIdentity.fromSecretKey(secretKey);
-        
+        // Log raw chain for debugging
+        logger.debug('Raw delegation chain:', {
+            hasPublicKey: !!storedChain.publicKey,
+            delegationsLength: storedChain.delegations?.length,
+            firstDelegation: storedChain.delegations?.[0]
+        });
+
+        // Convert stored chain to proper format
+        const delegations = storedChain.delegations.map(d => ({
+            delegation: new Delegation(
+                new Uint8Array(d.delegation.pubkey),
+                BigInt('0x' + d.delegation.expiration),
+                d.delegation.targets
+            ),
+            signature: new Uint8Array(d.signature)
+        }));
+
+        // Create delegation chain
+        const delegationChain = DelegationChain.fromDelegations(
+            delegations,
+            new Uint8Array(storedChain.publicKey)
+        );
+
+        // Create session identity using Secp256k1KeyIdentity
+        const sessionIdentity = Secp256k1KeyIdentity.generate();
+
         // Create delegation identity
-        const identity = new DelegationIdentity(baseIdentity, delegationChain);
+        const identity = DelegationIdentity.fromDelegation(
+            sessionIdentity,
+            delegationChain
+        );
+        
         logger.success('Identity created successfully');
 
         // Verify identity
