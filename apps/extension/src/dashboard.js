@@ -26,6 +26,9 @@ const logger = {
     },
     success: (msg) => {
         console.log(`✅ [Dashboard] ${msg}`);
+    },
+    info: (msg) => {
+        console.info(`🕷️ [Dashboard] ${msg}`);
     }
 };
 
@@ -48,75 +51,73 @@ async function initAuthClient() {
 
 // Initialize consumer service
 async function initConsumerService(delegationChain) {
-    logger.group('Consumer Service Initialization');
     try {
+        logger.info('Consumer Service Initialization');
+        
+        // Check for existing service
         if (consumerService) {
-            logger.debug('Using existing consumer service');
-            logger.groupEnd();
             return consumerService;
         }
-
-        logger.debug('No existing consumer service, creating new one');
+        logger.info('No existing consumer service, creating new one');
 
         // Validate delegation chain
-        logger.debug('Validating delegation chain:', {
+        if (!delegationChain || !delegationChain.delegations || !delegationChain.sessionKey) {
+            throw new Error('Invalid delegation chain');
+        }
+        logger.info('Validating delegation chain:', {
             isDefined: !!delegationChain,
-            hasDelegations: !!delegationChain?.delegations,
-            publicKeyExists: !!delegationChain?.publicKey
+            hasDelegations: !!delegationChain.delegations,
+            hasSessionKey: !!delegationChain.sessionKey
         });
 
-        if (!delegationChain || !delegationChain.delegations || !delegationChain.publicKey) {
-            throw new Error('Invalid delegation chain structure');
-        }
-
-        // Inject IC agent script if not already loaded
+        // Check for IC agent
         if (!window.rhinoSpiderIC) {
-            logger.debug('IC agent not found, injecting script');
-            await new Promise((resolve, reject) => {
-                const script = document.createElement('script');
-                script.src = chrome.runtime.getURL('ic-agent.js');
-                script.type = 'module';
-                script.onload = () => {
-                    logger.success('IC agent script loaded');
-                    resolve();
-                };
-                script.onerror = (error) => {
-                    logger.error('Failed to load IC agent script:', error);
-                    reject(error);
-                };
-                document.head.appendChild(script);
-            });
-
-            // Give the script time to initialize
-            await new Promise(resolve => setTimeout(resolve, 500));
+            logger.info('IC agent not found, injecting script');
+            await injectIcAgent();
+            logger.success('IC agent script loaded');
         }
 
-        // Wait for IC agent to be available
-        logger.debug('Waiting for IC agent initialization');
-        if (!window.rhinoSpiderIC) {
-            throw new Error('IC agent not initialized');
-        }
+        // Wait for IC agent
+        logger.info('Waiting for IC agent initialization');
+        await waitForIcAgent();
 
-        // Initialize IC agent with delegation chain
-        logger.debug('Initializing IC agent with delegation chain');
+        // Initialize IC agent
+        logger.info('Initializing IC agent with delegation chain');
         const identity = await window.rhinoSpiderIC.initializeIC(delegationChain);
-        
-        if (!identity) {
-            throw new Error('Failed to get identity from IC agent');
-        }
 
-        // Create consumer service with identity
-        logger.debug('Creating consumer service with identity');
+        // Create consumer service
+        logger.info('Creating consumer service with identity');
         consumerService = new ConsumerService(identity);
         logger.success('Consumer service initialized');
 
-        logger.groupEnd();
         return consumerService;
     } catch (error) {
         logger.error('Failed to initialize consumer service:', error);
         logger.error('Error stack:', error.stack);
-        logger.groupEnd();
         throw error;
+    }
+}
+
+// Inject IC agent script
+async function injectIcAgent() {
+    return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = chrome.runtime.getURL('ic-agent.js');
+        script.type = 'module';
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+    });
+}
+
+// Wait for IC agent to be available
+async function waitForIcAgent(timeout = 5000) {
+    const start = Date.now();
+    while (!window.rhinoSpiderIC) {
+        if (Date.now() - start > timeout) {
+            throw new Error('Timeout waiting for IC agent');
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
     }
 }
 
@@ -146,13 +147,13 @@ async function handleAuthComplete(delegationChain) {
         logger.debug('Received delegation chain:', {
             isDefined: !!delegationChain,
             type: typeof delegationChain,
-            hasPublicKey: !!delegationChain?.publicKey,
+            hasSessionKey: !!delegationChain?.sessionKey,
             hasDelegations: !!delegationChain?.delegations,
             delegationsCount: delegationChain?.delegations?.length
         });
 
         // Validate delegation chain structure
-        if (!delegationChain?.delegations?.length || !delegationChain?.publicKey) {
+        if (!delegationChain?.delegations?.length || !delegationChain?.sessionKey) {
             throw new Error('Invalid delegation chain structure');
         }
 
@@ -270,85 +271,79 @@ async function checkLogin() {
             // Initialize consumer service with raw delegation chain
             await initConsumerService(delegationChain);
             
-            // Show dashboard
+            // Show dashboard and initialize data
             showDashboard();
-            
-            // Initialize dashboard data
             await initializeDashboardData();
-        } else {
-            showLogin();
+            return true;
         }
-    } catch (error) {
-        logger.error('Failed to check login:', error);
+
+        // Show login page if no delegation chain
         showLogin();
+        return false;
+    } catch (error) {
+        logger.error('Failed to check login state:', error);
+        showLogin();
+        return false;
     }
 }
 
 // Handle login
 async function handleLogin() {
     try {
-        logger.log('Initiating login');
-        const client = await initAuthClient();
+        logger.info('Initiating login');
         
-        await new Promise((resolve, reject) => {
-            client.login({
-                identityProvider: II_URL,
-                onSuccess: async () => {
-                    logger.log('Login successful');
-                    const identity = client.getIdentity();
-                    
-                    // Get raw delegation chain from identity
-                    if (identity instanceof DelegationIdentity) {
-                        const chain = identity.getDelegation();
-                        const userPublicKey = identity.getPublicKey().toDer();
-                        
-                        // Log chain details for debugging
-                        logger.debug('Chain details:', {
-                            publicKey: userPublicKey ? userPublicKey.length : 'missing',
-                            delegationsCount: chain.delegations?.length,
-                            firstDelegation: chain.delegations?.[0] ? {
-                                hasPubkey: chain.delegations[0].delegation.pubkey.length,
-                                expiration: chain.delegations[0].delegation.expiration.toString(),
-                                hasSignature: chain.delegations[0].signature.length
-                            } : 'missing'
-                        });
-
-                        // Get raw chain data in correct format
-                        const rawChain = {
-                            publicKey: userPublicKey,
-                            delegations: chain.delegations.map(d => ({
-                                delegation: {
-                                    pubkey: d.delegation.pubkey.buffer,
-                                    expiration: d.delegation.expiration.toString(16),
-                                    targets: d.delegation.targets
-                                },
-                                signature: d.signature.buffer
-                            }))
-                        };
-                        
-                        // Initialize consumer service with raw chain
-                        await initConsumerService(rawChain);
-                        
-                        // Show dashboard
-                        showDashboard();
-                        
-                        // Initialize dashboard data
-                        await initializeDashboardData();
-                    } else {
-                        throw new Error('Invalid identity type');
-                    }
-                    
-                    resolve();
-                },
-                onError: (error) => {
-                    logger.error('Login failed:', error);
-                    reject(error);
+        // Create auth client
+        logger.info('Creating auth client');
+        const authClient = await AuthClient.create();
+        
+        // Login with Internet Identity
+        await authClient.login({
+            identityProvider: II_URL,
+            onSuccess: async () => {
+                logger.success('Login successful');
+                
+                // Get identity and delegation chain
+                const identity = authClient.getIdentity();
+                if (!(identity instanceof DelegationIdentity)) {
+                    throw new Error('Invalid identity type');
                 }
-            });
+
+                // Get delegation chain
+                const chain = identity.getDelegation();
+                const sessionKey = Array.from(identity.getPublicKey().toDer());
+
+                // Format chain for storage
+                const rawChain = {
+                    sessionKey,
+                    delegations: chain.delegations.map(d => ({
+                        delegation: {
+                            pubkey: Array.from(d.delegation.pubkey),
+                            expiration: d.delegation.expiration.toString(16),
+                            targets: d.delegation.targets || []
+                        },
+                        signature: Array.from(d.signature)
+                    }))
+                };
+
+                // Store delegation chain
+                await chrome.storage.local.set({ delegationChain: rawChain });
+
+                // Initialize consumer service
+                logger.info('Consumer Service Initialization');
+                await initConsumerService(rawChain);
+
+                // Show dashboard
+                showDashboard();
+                await initializeDashboardData();
+            },
+            onError: (error) => {
+                logger.error('Login error:', error);
+                throw error;
+            }
         });
     } catch (error) {
-        logger.error('Failed to login:', error);
-        showLogin();
+        logger.error('Login failed:', error);
+        throw error;
     }
 }
 
