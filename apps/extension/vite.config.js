@@ -6,8 +6,15 @@ import packageJson from './package.json';
 import dotenv from 'dotenv';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
-// Load environment variables
-const env = dotenv.config({ path: resolve(__dirname, '../../.env') }).parsed || {};
+// Load environment variables from the extension directory
+const env = dotenv.config({ path: resolve(__dirname, '.env') }).parsed || {};
+
+// Define environment variables for the build
+const envDefines = {};
+for (const key in env) {
+  envDefines[`process.env.${key}`] = JSON.stringify(env[key]);
+  envDefines[`import.meta.env.${key}`] = JSON.stringify(env[key]);
+}
 
 // Extension manifest
 const manifest = {
@@ -47,7 +54,9 @@ const manifest = {
     resources: [
       'assets/*',
       'pages/*',
-      'src/*'
+      'src/*',
+      'icons/*',
+      'ii-content.js'
     ],
     matches: ['<all_urls>']
   }]
@@ -69,6 +78,11 @@ export default defineConfig(({ command, mode }) => {
       {
         name: 'copy-html',
         closeBundle() {
+          // Create build directory if it doesn't exist
+          if (!fs.existsSync('build')) {
+            fs.mkdirSync('build');
+          }
+
           // Write manifest.json
           fs.writeFileSync(
             resolve(__dirname, 'build/manifest.json'),
@@ -93,6 +107,10 @@ export default defineConfig(({ command, mode }) => {
         }
       }
     ],
+    define: {
+      ...envDefines,
+      global: 'globalThis'
+    },
     build: {
       outDir: 'build',
       emptyOutDir: true,

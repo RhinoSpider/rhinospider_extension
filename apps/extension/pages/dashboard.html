@@ -257,6 +257,7 @@
         <div class="login-container">
             <h2>Welcome to RhinoSpider</h2>
             <p>Access your dashboard</p>
+            <div id="loginError" style="display: none; color: red; margin-bottom: 10px;"></div>
             <button id="loginButton">Login with Internet Identity</button>
         </div>
     </div>
@@ -284,6 +285,10 @@
                     <h2 class="section-title">Dashboard</h2>
                 </div>
                 <div class="dashboard-stats">
+                    <div class="stat-card">
+                        <h3>User Profile</h3>
+                        <pre id="userProfile" style="white-space: pre-wrap; word-break: break-all;"></pre>
+                    </div>
                     <div class="stat-card">
                         <h3>Points Earned</h3>
                         <div class="stat-value" id="pointsEarned">0</div>

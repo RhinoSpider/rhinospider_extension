@@ -1,151 +1,64 @@
-// Import dependencies
-const { Actor, HttpAgent } = await import('@dfinity/agent');
-const { DelegationChain, DelegationIdentity, Delegation } = await import('@dfinity/identity');
-const { Secp256k1KeyIdentity } = await import('@dfinity/identity-secp256k1');
-const { idlFactory } = await import('./declarations/consumer/consumer.did.js');
-const { config } = await import('./config.js');
+// Polyfill global
+const _global = typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : typeof self !== 'undefined' ? self : {};
+(window).global = _global;
 
-// Constants from environment
+import { Actor, HttpAgent } from '@dfinity/agent';
+import { idlFactory } from './declarations/consumer/consumer.did.js';
+
+// Constants
 const IC_HOST = import.meta.env.VITE_IC_HOST || 'https://icp0.io';
 const CONSUMER_CANISTER_ID = import.meta.env.VITE_CONSUMER_CANISTER_ID;
-const DFX_NETWORK = import.meta.env.VITE_DFX_NETWORK || 'ic';
 
-// Global state
-let currentActor = null;
-
-// Logger setup
+// Logger utility
 const logger = {
-    group: (msg) => console.group(`🔒 [IC Agent] ${msg}`),
-    log: (msg, data) => console.log(`🔒 [IC Agent] ${msg}`, data || ''),
-    debug: (msg, data) => console.log(`🔍 [IC Agent] ${msg}`, data || ''),
-    error: (msg, error) => console.error(`❌ [IC Agent] ${msg}`, error || ''),
-    success: (msg) => console.log(`✅ [IC Agent] ${msg}`),
-    warn: (msg) => console.warn(`⚠️ [IC Agent] ${msg}`),
-    groupEnd: () => console.groupEnd(),
-    info: (msg) => console.info(`🔒 [IC Agent] ${msg}`)
+    log: (msg) => console.log(`${msg}`),
+    error: (msg, error) => console.error(`${msg}`, error),
+    debug: (msg) => console.debug(`${msg}`),
 };
 
-// Get crypto API, handling both window and worker contexts
-const getCrypto = () => {
-    // Check window.crypto first
-    if (typeof window !== 'undefined' && window.crypto) {
-        return window.crypto;
-    }
-    // Check self.crypto for worker context
-    if (typeof self !== 'undefined' && self.crypto) {
-        return self.crypto;
-    }
-    // Fallback to global crypto
-    if (typeof crypto !== 'undefined') {
-        return crypto;
-    }
-    throw new Error('Web Crypto API not available');
-};
+let agent = null;
+let actor = null;
 
-// Create identity with delegation chain
-async function createIdentity(rawChain) {
+export async function initializeIC(identity) {
     try {
-        logger.info('Creating Identity');
-        
-        // Validate chain
-        if (!rawChain?.delegations?.length) {
-            throw new Error('Invalid delegation chain format');
-        }
-
-        // Create base identity with signing capability
-        const secretKey = new Uint8Array(32);
-        window.crypto.getRandomValues(secretKey);
-        const baseIdentity = Secp256k1KeyIdentity.fromSecretKey(secretKey);
-
-        // Convert session key from raw format
-        const sessionKey = new Uint8Array(rawChain.sessionKey);
-
-        // Format delegations
-        const delegations = rawChain.delegations.map(d => ({
-            delegation: {
-                ...d.delegation,
-                pubkey: new Uint8Array(d.delegation.pubkey),
-                expiration: BigInt('0x' + d.delegation.expiration)
-            },
-            signature: new Uint8Array(d.signature)
-        }));
-
-        // Create delegation chain
-        const chain = DelegationChain.fromDelegations(sessionKey, delegations);
-
-        // Create delegation identity
-        const identity = new DelegationIdentity(baseIdentity, chain);
-
-        // Verify identity was created successfully
-        const principal = identity.getPrincipal().toString();
-        logger.debug('Identity verified:', {
-            principal,
-            sessionKey: rawChain.sessionKey?.length
-        });
-
-        return identity;
-    } catch (error) {
-        logger.error('Failed to create identity:', error);
-        throw error;
-    }
-}
-
-// Initialize IC connection
-async function initializeIC(delegationChain) {
-    try {
-        logger.info('Initializing IC Connection');
-
-        // Get identity from delegation chain
-        const identity = await createIdentity(delegationChain);
+        logger.log('Initializing IC Connection');
         
         // Create agent
-        logger.info('Creating Agent');
-        const agent = new HttpAgent({
-            identity,
-            host: IC_HOST
+        agent = new HttpAgent({
+            host: IC_HOST,
+            identity
         });
 
-        // Only fetch root key in development
-        if (process.env.NODE_ENV !== 'production') {
-            await agent.fetchRootKey();
-        }
-        logger.success('Agent created successfully');
+        logger.log('Fetching root key');
+        await agent.fetchRootKey();
+        logger.log('Root key fetched successfully');
 
         // Create actor
-        logger.info('Initializing Actor');
-        const actor = Actor.createActor(idlFactory, {
+        if (!CONSUMER_CANISTER_ID) {
+            throw new Error('Consumer canister ID not found');
+        }
+
+        actor = Actor.createActor(idlFactory, {
             agent,
             canisterId: CONSUMER_CANISTER_ID
         });
-        logger.success('Actor initialized successfully');
+        logger.log('Actor initialized successfully');
 
-        // Store current actor
-        currentActor = actor;
-        logger.success('IC connection initialized successfully');
-
-        return identity;
+        return actor;
     } catch (error) {
         logger.error('Failed to initialize IC connection:', error);
         throw error;
     }
 }
 
-// Get current actor
-function getCurrentActor() {
-    return currentActor;
+export function getCurrentActor() {
+    if (!actor) {
+        throw new Error('Actor not initialized');
+    }
+    return actor;
 }
 
-// Clear session
-function clearSession() {
-    currentActor = null;
-    logger.success('Session cleared');
+export function clearSession() {
+    agent = null;
+    actor = null;
 }
-
-// Export functions for content script
-window.rhinoSpiderIC = {
-    initializeIC,
-    getCurrentActor,
-    clearSession
-};
-
-logger.success('IC agent script loaded');

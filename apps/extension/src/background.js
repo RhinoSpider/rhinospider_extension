@@ -45,39 +45,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             break;
             
         case 'GET_STATE':
-            chrome.storage.local.get(['isActive', 'delegationChain'], (result) => {
+            chrome.storage.local.get(['isActive'], (result) => {
                 sendResponse({
                     isActive: result.isActive,
-                    isLoggedIn: !!result.delegationChain
+                    isLoggedIn: false // Let dashboard handle auth state
                 });
             });
-            return true; // Keep channel open for async response
+            return true;
             
-        case 'UPDATE_STATE':
+        case 'SET_STATE':
             chrome.storage.local.set({
                 isActive: message.isActive
+            }, () => {
+                sendResponse({ success: true });
             });
-            break;
-            
-        case 'II_AUTH_COMPLETE':
-            // Forward auth result to dashboard
-            chrome.tabs.query({ url: chrome.runtime.getURL('pages/dashboard.html') }, (tabs) => {
+            return true;
+
+        case 'INIT_IC_AGENT':
+            // Forward to content script
+            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
                 if (tabs.length > 0) {
                     chrome.tabs.sendMessage(tabs[0].id, {
-                        type: 'II_AUTH_COMPLETE',
-                        delegationChain: message.delegationChain
-                    });
-                }
-            });
-            break;
-            
-        case 'II_AUTH_ERROR':
-            // Forward auth error to dashboard
-            chrome.tabs.query({ url: chrome.runtime.getURL('pages/dashboard.html') }, (tabs) => {
-                if (tabs.length > 0) {
-                    chrome.tabs.sendMessage(tabs[0].id, {
-                        type: 'II_AUTH_ERROR',
-                        error: message.error
+                        type: 'INIT_IC_AGENT',
+                        identity: message.identity
                     });
                 }
             });
@@ -85,8 +75,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 });
 
-// Initialize on install/update
-chrome.runtime.onInstalled.addListener(async (details) => {
+// Handle extension install/update
+chrome.runtime.onInstalled.addListener((details) => {
     logger.log('Extension installed/updated:', details.reason);
-    await chrome.storage.local.remove('delegationChain');
+    
+    // Set initial state
+    chrome.storage.local.set({
+        isActive: true
+    });
 });
