@@ -12,20 +12,20 @@ export const idlFactory = ({ IDL }) => {
   const Result = IDL.Variant({ 'ok' : IDL.Null, 'err' : Error });
 
   const UserProfile = IDL.Record({
-    'created' : IDL.Nat64,
+    'created' : IDL.Int,
     'principal' : IDL.Principal,
     'preferences' : IDL.Record({
       'theme' : IDL.Text,
       'notificationsEnabled' : IDL.Bool,
     }),
-    'lastLogin' : IDL.Nat64,
+    'lastLogin' : IDL.Int,
     'devices' : IDL.Vec(IDL.Text),
   });
 
   const Result_2 = IDL.Variant({ 'ok' : UserProfile, 'err' : Error });
 
   const CostLimits = IDL.Record({
-    'maxConcurrent' : IDL.Nat32,
+    'maxConcurrent' : IDL.Nat,
     'maxDailyCost' : IDL.Float64,
     'maxMonthlyCost' : IDL.Float64,
   });
@@ -54,11 +54,11 @@ export const idlFactory = ({ IDL }) => {
     'id' : IDL.Text,
     'status' : IDL.Text,
     'name' : IDL.Text,
-    'createdAt' : IDL.Nat64,
-    'scrapingInterval' : IDL.Nat32,
+    'createdAt' : IDL.Int,
+    'scrapingInterval' : IDL.Nat,
     'description' : IDL.Text,
-    'maxRetries' : IDL.Nat32,
-    'activeHours' : IDL.Record({ 'end' : IDL.Nat32, 'start' : IDL.Nat32 }),
+    'maxRetries' : IDL.Nat,
+    'activeHours' : IDL.Record({ 'end' : IDL.Nat, 'start' : IDL.Nat }),
     'urlPatterns' : IDL.Vec(IDL.Text),
     'extractionRules' : ExtractionRules,
     'aiConfig' : AIConfig,
@@ -75,9 +75,9 @@ export const idlFactory = ({ IDL }) => {
       'extracted' : IDL.Vec(IDL.Tuple([IDL.Text, IDL.Text])),
     }),
     'error' : IDL.Opt(IDL.Text),
-    'timestamp' : IDL.Nat64,
+    'timestamp' : IDL.Int,
     'topicId' : IDL.Text,
-    'retries' : IDL.Nat32,
+    'retries' : IDL.Nat,
   });
 
   return IDL.Service({

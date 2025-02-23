@@ -11,13 +11,13 @@ const DFX_NETWORK = import.meta.env.VITE_DFX_NETWORK || 'ic';
 // Logger utility
 const logger = {
     log: (msg, data) => {
-        console.log(`🕷️ [Consumer] ${msg}`, data || '');
+        console.log(` [Consumer] ${msg}`, data || '');
     },
     error: (msg, error) => {
-        console.error(`❌ [Consumer] ${msg}`, error);
+        console.error(` [Consumer] ${msg}`, error);
     },
     debug: (msg, data) => {
-        console.debug(`🕷️ [Consumer] ${msg}`, data || '');
+        console.debug(` [Consumer] ${msg}`, data || '');
     }
 };
 
@@ -45,21 +45,15 @@ export class ConsumerService {
             
             logger.log('Using consumer canister:', CONSUMER_CANISTER_ID);
 
-            // Create agent with proper fetch handler
-            const host = DFX_NETWORK === 'ic' ? IC_HOST : 'http://localhost:4943';
-            logger.debug('Creating agent:', { host });
+            // Get actor from IC agent
+            if (!window.rhinoSpiderIC) {
+                throw new Error('IC agent not initialized');
+            }
 
-            this.agent = new HttpAgent({
-                identity: this.identity,
-                host,
-                verifyQuerySignatures: false
-            });
-
-            // Create actor
-            this.actor = Actor.createActor(idlFactory, {
-                agent: this.agent,
-                canisterId: CONSUMER_CANISTER_ID
-            });
+            this.actor = window.rhinoSpiderIC.getCurrentActor();
+            if (!this.actor) {
+                throw new Error('Failed to get actor from IC agent');
+            }
 
             logger.debug('Consumer service initialized successfully');
         } catch (error) {
@@ -68,31 +62,13 @@ export class ConsumerService {
         }
     }
 
-    async initAgent() {
-        try {
-            // Always fetch root key for mainnet
-            if (DFX_NETWORK === 'ic') {
-                logger.debug('Fetching root key for mainnet');
-                await this.agent.fetchRootKey().catch(error => {
-                    logger.error('Failed to fetch root key:', error);
-                    throw error;
-                });
-            }
-        } catch (error) {
-            logger.error('Failed to initialize agent:', error);
-            throw error;
-        }
-    }
-    
     // Get topics from admin through consumer
     async getTopics() {
         try {
             logger.log('Getting topics');
-            await this.initAgent(); // Ensure agent is initialized
             const result = await this.actor.getTopics();
             
             if ('ok' in result) {
-                logger.log('Got topics:', result.ok);
                 return result.ok;
             } else {
                 throw new Error(result.err);
@@ -102,16 +78,14 @@ export class ConsumerService {
             throw error;
         }
     }
-    
+
     // Get AI configuration from admin through consumer
     async getAIConfig() {
         try {
             logger.log('Getting AI config');
-            await this.initAgent(); // Ensure agent is initialized
             const result = await this.actor.getAIConfig();
             
             if ('ok' in result) {
-                logger.log('Got AI config:', result.ok);
                 return result.ok;
             } else {
                 throw new Error(result.err);
@@ -126,12 +100,27 @@ export class ConsumerService {
     async getProfile() {
         try {
             logger.log('Getting profile');
-            await this.initAgent(); // Ensure agent is initialized
             const result = await this.actor.getProfile();
             
             if ('ok' in result) {
-                logger.log('Got profile:', result.ok);
                 return result.ok;
+            } else if (result.err === 'NotFound') {
+                // Profile doesn't exist, register device
+                logger.debug('Profile not found, registering device');
+                const deviceId = crypto.randomUUID();
+                const registerResult = await this.actor.registerDevice(deviceId);
+                
+                if ('ok' in registerResult) {
+                    // Try getting profile again
+                    logger.debug('Device registered, getting profile');
+                    const profileResult = await this.actor.getProfile();
+                    
+                    if ('ok' in profileResult) {
+                        return profileResult.ok;
+                    }
+                }
+                
+                throw new Error('Failed to create profile');
             } else {
                 throw new Error(result.err);
             }
@@ -144,18 +133,16 @@ export class ConsumerService {
     // Submit scraped data through consumer
     async submitScrapedData(data) {
         try {
-            logger.log('Submitting scraped data:', data);
-            await this.initAgent(); // Ensure agent is initialized
+            logger.log('Submitting scraped data');
             const result = await this.actor.submitScrapedData(data);
             
             if ('ok' in result) {
-                logger.log('Data submitted successfully');
                 return true;
             } else {
                 throw new Error(result.err);
             }
         } catch (error) {
-            logger.error('Failed to submit data:', error);
+            logger.error('Failed to submit scraped data:', error);
             throw error;
         }
     }

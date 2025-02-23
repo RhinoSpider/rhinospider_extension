@@ -107,7 +107,7 @@ async function initConsumerService(delegationChain) {
 
         // Create consumer service with identity
         logger.debug('Creating consumer service with identity');
-        consumerService = new ConsumerService(identity, { II_URL });
+        consumerService = new ConsumerService(identity);
         logger.success('Consumer service initialized');
 
         logger.groupEnd();
@@ -164,9 +164,6 @@ async function handleAuthComplete(delegationChain) {
             });
         }
 
-        // Store raw delegation chain without conversion
-        await chrome.storage.local.set({ delegationChain });
-        
         // Initialize consumer service with raw delegation chain
         await initConsumerService(delegationChain);
         
@@ -272,14 +269,7 @@ async function checkLogin() {
         logger.log('Delegation chain from storage:', delegationChain);
         
         if (delegationChain) {
-            // Create base identity with signing capability
-            const secretKey = crypto.getRandomValues(new Uint8Array(32));
-            const baseIdentity = Secp256k1KeyIdentity.fromSecretKey(secretKey);
-            
-            // Create delegation identity
-            const identity = new DelegationIdentity(baseIdentity, delegationChain);
-            
-            // Initialize consumer service
+            // Initialize consumer service with raw delegation chain
             await initConsumerService(delegationChain);
             
             // Show dashboard
@@ -313,22 +303,7 @@ async function handleLogin() {
                     if (identity instanceof DelegationIdentity) {
                         const delegationChain = identity.getDelegation();
                         
-                        // Store delegation chain
-                        await chrome.storage.local.set({
-                            delegationChain: {
-                                publicKey: Array.from(delegationChain.publicKey),
-                                delegations: delegationChain.delegations.map(d => ({
-                                    delegation: {
-                                        pubkey: Array.from(d.delegation.pubkey),
-                                        expiration: d.delegation.expiration.toString(16),
-                                        targets: d.delegation.targets || []
-                                    },
-                                    signature: Array.from(d.signature)
-                                }))
-                            }
-                        });
-                        
-                        // Initialize consumer service
+                        // Initialize consumer service with chain
                         await initConsumerService(delegationChain);
                         
                         // Show dashboard
