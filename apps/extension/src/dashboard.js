@@ -1,8 +1,11 @@
-// Dashboard script
+// Import dependencies
 import { AuthClient } from '@dfinity/auth-client';
 import { DelegationIdentity } from '@dfinity/identity';
 import { Secp256k1KeyIdentity } from '@dfinity/identity-secp256k1';
 import { ConsumerService } from './services/consumer';
+
+// Constants from environment
+const II_URL = import.meta.env.VITE_II_URL || 'https://identity.ic0.app';
 
 // Logger utility
 const logger = {
@@ -47,69 +50,66 @@ async function initAuthClient() {
 async function initConsumerService(delegationChain) {
     logger.group('Consumer Service Initialization');
     try {
-        if (!consumerService) {
-            logger.debug('No existing consumer service, creating new one');
-            
-            // Validate delegation chain
-            logger.debug('Validating delegation chain:', {
-                isDefined: !!delegationChain,
-                hasDelegations: !!delegationChain?.delegations,
-                publicKeyExists: !!delegationChain?.publicKey
+        if (consumerService) {
+            logger.debug('Using existing consumer service');
+            logger.groupEnd();
+            return consumerService;
+        }
+
+        logger.debug('No existing consumer service, creating new one');
+
+        // Validate delegation chain
+        logger.debug('Validating delegation chain:', {
+            isDefined: !!delegationChain,
+            hasDelegations: !!delegationChain?.delegations,
+            publicKeyExists: !!delegationChain?.publicKey
+        });
+
+        if (!delegationChain || !delegationChain.delegations || !delegationChain.publicKey) {
+            throw new Error('Invalid delegation chain structure');
+        }
+
+        // Inject IC agent script if not already loaded
+        if (!window.rhinoSpiderIC) {
+            logger.debug('IC agent not found, injecting script');
+            await new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = chrome.runtime.getURL('ic-agent.js');
+                script.type = 'module';
+                script.onload = () => {
+                    logger.success('IC agent script loaded');
+                    resolve();
+                };
+                script.onerror = (error) => {
+                    logger.error('Failed to load IC agent script:', error);
+                    reject(error);
+                };
+                document.head.appendChild(script);
             });
 
-            if (!delegationChain?.delegations) {
-                throw new Error('Invalid delegation chain for consumer service');
-            }
-
-            // Inject IC agent script
-            if (!window.rhinoSpiderIC) {
-                logger.debug('IC agent not found, injecting script');
-                await new Promise((resolve, reject) => {
-                    const script = document.createElement('script');
-                    script.src = chrome.runtime.getURL('ic-agent.js');
-                    script.type = 'module';  
-                    script.onload = () => {
-                        logger.success('IC agent script loaded');
-                        resolve();
-                    };
-                    script.onerror = (error) => {
-                        logger.error('Failed to load IC agent script:', error);
-                        reject(error);
-                    };
-                    (document.head || document.documentElement).appendChild(script);
-                }).catch(error => {
-                    logger.error('Script injection failed:', error);
-                    throw error;
-                });
-
-                // Wait for initialization
-                logger.debug('Waiting for IC agent initialization');
-                await new Promise(resolve => setTimeout(resolve, 100));
-            }
-            
-            // Verify IC agent availability
-            if (!window.rhinoSpiderIC) {
-                logger.error('IC agent not available after script load');
-                throw new Error('IC agent initialization failed');
-            }
-            
-            // Initialize IC agent and get identity
-            logger.debug('Initializing IC agent with delegation chain');
-            const identity = await window.rhinoSpiderIC.initializeIC(delegationChain);
-            logger.success('IC agent initialized');
-            
-            if (!identity?.getPrincipal) {
-                logger.error('Invalid identity returned from IC agent');
-                throw new Error('Identity initialization failed');
-            }
-            
-            // Create consumer service with identity
-            logger.debug('Creating consumer service with identity');
-            consumerService = new ConsumerService(identity);
-            logger.success('Consumer service created');
+            // Give the script time to initialize
+            await new Promise(resolve => setTimeout(resolve, 500));
         }
+
+        // Wait for IC agent to be available
+        logger.debug('Waiting for IC agent initialization');
+        if (!window.rhinoSpiderIC) {
+            throw new Error('IC agent not initialized');
+        }
+
+        // Initialize IC agent with delegation chain
+        logger.debug('Initializing IC agent with delegation chain');
+        const identity = await window.rhinoSpiderIC.initializeIC(delegationChain);
         
-        logger.success('Consumer service initialization complete');
+        if (!identity) {
+            throw new Error('Failed to get identity from IC agent');
+        }
+
+        // Create consumer service with identity
+        logger.debug('Creating consumer service with identity');
+        consumerService = new ConsumerService(identity, { II_URL });
+        logger.success('Consumer service initialized');
+
         logger.groupEnd();
         return consumerService;
     } catch (error) {
@@ -164,18 +164,16 @@ async function handleAuthComplete(delegationChain) {
             });
         }
 
-        // Store delegation chain first
-        logger.debug('Storing delegation chain');
+        // Store raw delegation chain without conversion
         await chrome.storage.local.set({ delegationChain });
-        logger.debug('Delegation chain stored');
-
-        // Initialize consumer service
-        logger.debug('Initializing consumer service');
-        await initConsumerService(delegationChain);
-        logger.debug('Consumer service initialized');
         
-        // Show dashboard and initialize data
+        // Initialize consumer service with raw delegation chain
+        await initConsumerService(delegationChain);
+        
+        // Show dashboard
         showDashboard();
+        
+        // Initialize dashboard data
         await initializeDashboardData();
         
         logger.success('Authentication flow completed');
@@ -306,7 +304,7 @@ async function handleLogin() {
         
         await new Promise((resolve, reject) => {
             client.login({
-                identityProvider: 'https://identity.ic0.app',
+                identityProvider: II_URL,
                 onSuccess: async () => {
                     logger.log('Login successful');
                     const identity = client.getIdentity();
