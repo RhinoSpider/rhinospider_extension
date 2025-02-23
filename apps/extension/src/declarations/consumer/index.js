@@ -1,8 +1,37 @@
 import { Actor, HttpAgent } from "@dfinity/agent";
+import { IDL } from '@dfinity/candid';
 
-// Imports and re-exports candid interface
-import { idlFactory } from "./consumer.did.js";
-export { idlFactory } from "./consumer.did.js";
+export const idlFactory = ({ IDL }) => {
+  const Error = IDL.Variant({
+    'InvalidInput' : IDL.Text,
+    'SystemError' : IDL.Text,
+    'NotFound' : IDL.Null,
+    'NotAuthorized' : IDL.Null,
+    'AlreadyExists' : IDL.Null,
+  });
+
+  const Result = IDL.Variant({ 'ok' : IDL.Null, 'err' : Error });
+
+  const UserProfile = IDL.Record({
+    'created' : IDL.Nat64,
+    'principal' : IDL.Principal,
+    'preferences' : IDL.Record({
+      'theme' : IDL.Text,
+      'notificationsEnabled' : IDL.Bool,
+    }),
+    'lastLogin' : IDL.Nat64,
+    'devices' : IDL.Vec(IDL.Text),
+  });
+
+  const Result_2 = IDL.Variant({ 'ok' : UserProfile, 'err' : Error });
+
+  return IDL.Service({
+    'getProfile' : IDL.Func([], [Result_2], ['query']),
+    'registerDevice' : IDL.Func([IDL.Text], [Result], []),
+  });
+};
+
+export const init = ({ IDL }) => { return []; };
 
 /* CANISTER_ID is replaced by webpack based on node environment
  * Note: canister environment variable will be standardized as

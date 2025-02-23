@@ -125,146 +125,92 @@ const Popup = () => {
         principal: identity?.getPrincipal()?.toText()
       });
 
-      // Get delegation chain for background script
-      console.log('Getting delegation chain...');
+      // Get delegation chain from identity
       const delegation = await identity.getDelegation();
-      console.log('Raw delegation:', delegation);
-
+      console.log('Raw delegation:', {
+        type: delegation?.constructor?.name,
+        hasDelegations: !!delegation?.delegations,
+        delegationsLength: delegation?.delegations?.length
+      });
+      
       // Validate delegation chain
-      if (!delegation) {
-        throw new Error('No delegation received from Internet Identity');
+      if (!delegation?.delegations?.length) {
+        throw new Error('Invalid delegation chain from Internet Identity');
       }
 
-      if (!Array.isArray(delegation.delegations)) {
-        throw new Error(`Invalid delegations format: ${typeof delegation.delegations}`);
+      // Extract first delegation
+      const firstDelegation = delegation.delegations[0];
+      if (!firstDelegation?.delegation?.pubkey || !firstDelegation?.signature) {
+        throw new Error('Missing required fields in delegation');
       }
 
-      if (!delegation.delegations.length) {
-        throw new Error('Empty delegations array from Internet Identity');
-      }
-
-      // Store delegation chain exactly as documented
+      // Convert binary data to arrays for Chrome message passing
       const delegationChain = {
-        delegations: delegation.delegations.map((d, index) => {
-          if (!d?.delegation?.pubkey || !d?.signature) {
-            console.error(`Invalid delegation ${index}:`, {
-              hasDelegation: !!d?.delegation,
-              hasPubkey: !!d?.delegation?.pubkey,
-              hasSignature: !!d?.signature,
-              delegation: d
-            });
-            throw new Error(`Missing required fields in delegation ${index}`);
-          }
-
-          // Get raw bytes
-          const pubkeyBytes = d.delegation.pubkey.buffer || d.delegation.pubkey;
-          const signatureBytes = d.signature.buffer || d.signature;
-
-          // Log raw values
-          console.log(`Raw delegation ${index}:`, {
-            pubkey: {
-              type: d.delegation.pubkey.constructor.name,
-              buffer: pubkeyBytes,
-              hex: toHex(new Uint8Array(pubkeyBytes))
-            },
-            signature: {
-              type: d.signature.constructor.name,
-              buffer: signatureBytes,
-              hex: toHex(new Uint8Array(signatureBytes))
-            }
-          });
-
-          // Convert to arrays for storage
-          const pubkeyArray = Array.from(new Uint8Array(pubkeyBytes));
-          const signatureArray = Array.from(new Uint8Array(signatureBytes));
-
-          // Validate converted arrays
-          if (!pubkeyArray.length) {
-            console.error(`Empty pubkey array in delegation ${index}:`, {
-              original: d.delegation.pubkey,
-              buffer: pubkeyBytes,
-              converted: pubkeyArray
-            });
-            throw new Error(`Empty pubkey array in delegation ${index}`);
-          }
-          if (!signatureArray.length) {
-            console.error(`Empty signature array in delegation ${index}:`, {
-              original: d.signature,
-              buffer: signatureBytes,
-              converted: signatureArray
-            });
-            throw new Error(`Empty signature array in delegation ${index}`);
-          }
-
-          return {
-            delegation: {
-              pubkey: pubkeyArray,
-              expiration: d.delegation.expiration.toString(16),
-              targets: d.delegation.targets ? d.delegation.targets.map(t => t.toText()) : []
-            },
-            signature: signatureArray
-          };
-        }),
-        publicKey: Array.from(new Uint8Array(delegation.delegations[0].delegation.pubkey.buffer || delegation.delegations[0].delegation.pubkey))
+        delegations: [{
+          delegation: {
+            pubkey: Array.from(new Uint8Array(firstDelegation.delegation.pubkey)),
+            expiration: firstDelegation.delegation.expiration.toString(), // Send as decimal string
+            targets: firstDelegation.delegation.targets ? firstDelegation.delegation.targets.map(t => t.toText()) : []
+          },
+          signature: Array.from(new Uint8Array(firstDelegation.signature))
+        }]
       };
 
-      // Validate final structure
-      if (!delegationChain.publicKey.length) {
-        console.error('Empty public key array in final chain:', {
-          originalPubkey: delegation.delegations[0].delegation.pubkey,
-          buffer: delegation.delegations[0].delegation.pubkey.buffer || delegation.delegations[0].delegation.pubkey,
-          convertedPubkey: delegationChain.publicKey
-        });
-        throw new Error('Empty public key array in final chain');
-      }
+      // Use same pubkey for chain public key
+      delegationChain.publicKey = delegationChain.delegations[0].delegation.pubkey;
 
-      // Log final structure
-      console.log('Final delegation chain:', {
+      // Log what we're sending
+      console.log('Sending delegation chain:', {
         publicKey: {
+          type: 'Array',
           length: delegationChain.publicKey.length,
-          firstByte: delegationChain.publicKey[0]?.toString(16),
-          hex: toHex(new Uint8Array(delegationChain.publicKey))
+          sample: delegationChain.publicKey.slice(0, 5)
         },
-        delegations: delegationChain.delegations.map((d, index) => ({
-          index,
+        delegations: delegationChain.delegations.map(d => ({
           pubkey: {
+            type: 'Array',
             length: d.delegation.pubkey.length,
-            firstByte: d.delegation.pubkey[0]?.toString(16),
-            hex: toHex(new Uint8Array(d.delegation.pubkey))
+            sample: d.delegation.pubkey.slice(0, 5)
           },
           expiration: d.delegation.expiration,
           signature: {
+            type: 'Array',
             length: d.signature.length,
-            firstByte: d.signature[0]?.toString(16),
-            hex: toHex(new Uint8Array(d.signature))
+            sample: d.signature.slice(0, 5)
           }
         }))
       });
+
+      // Send to background script using Chrome messaging
+      await chrome.runtime.sendMessage({
+        type: 'LOGIN_COMPLETE',
+        delegationChain
+      });
+
+      // Store auth state and notify background
+      const principal = identity.getPrincipal().toText();
+      
+      // Create delegation chain with principal
+      const delegationChainWithPrincipal = {
+        ...delegationChain,
+        principal  // Add principal as string
+      };
 
       // Store auth state
       await chrome.storage.local.set({
         authState: JSON.stringify({
           isAuthenticated: true,
-          principal: identity.getPrincipal().toText(),
+          principal,
           isInitialized: true,
           error: null
-        }),
-        identityInfo: {
-          delegationChain,
-          principal: identity.getPrincipal().toText()
-        }
+        })
       });
 
       // Update UI state
       setIsAuthenticated(true);
-      setPrincipal(identity.getPrincipal().toText());
+      setPrincipal(principal);
       setError(null);
       setIsLoading(false);
-
-      // Notify background to start using delegation
-      console.log('Notifying background...');
-      await chrome.runtime.sendMessage({ type: 'LOGIN_COMPLETE' });
-      console.log('Auth flow complete');
     } catch (error) {
       console.error('Error in handleAuthenticated:', {
         name: error?.name,
@@ -545,13 +491,15 @@ const Popup = () => {
           </div>
 
           <div className="p-4">
-            <Routes>
-              <Route path="/" element={<Home points={points} uptime={uptime} isPluginActive={isPluginActive} togglePlugin={togglePlugin} />} />
-              <Route path="/settings" element={<Settings />} />
-              <Route path="/profile" element={<Profile />} />
-              <Route path="/referrals" element={<Referrals />} />
-              <Route path="/analytics" element={<Analytics bandwidthSpeed={bandwidthSpeed} currentSpeed={currentSpeed} />} />
-            </Routes>
+            {isAuthenticated && (
+              <Routes>
+                <Route path="/" element={<Home points={points} uptime={uptime} isPluginActive={isPluginActive} togglePlugin={togglePlugin} bandwidthSpeed={bandwidthSpeed} currentSpeed={currentSpeed} />} />
+                <Route path="/settings" element={<Settings />} />
+                <Route path="/profile" element={<Profile />} />
+                <Route path="/analytics" element={<Analytics />} />
+                <Route path="/referrals" element={<Referrals />} />
+              </Routes>
+            )}
           </div>
         </div>
       )}

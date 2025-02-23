@@ -48,48 +48,22 @@ export default function App() {
   if (isPopup) {
     return (
       <AuthProvider config={authConfig}>
-        <Popup />
+        <HashRouter>
+          <Popup />
+        </HashRouter>
       </AuthProvider>
     );
   }
 
-  // Pages mode (settings, analytics, etc)
+  // For all other pages, use full routing with auth guard
   return (
     <AuthProvider config={authConfig}>
       <HashRouter>
         <Routes>
-          <Route 
-            path="/analytics" 
-            element={
-              <AuthGuard>
-                <Analytics />
-              </AuthGuard>
-            } 
-          />
-          <Route 
-            path="/settings" 
-            element={
-              <AuthGuard>
-                <Settings />
-              </AuthGuard>
-            } 
-          />
-          <Route 
-            path="/profile" 
-            element={
-              <AuthGuard>
-                <Profile />
-              </AuthGuard>
-            } 
-          />
-          <Route 
-            path="/referrals" 
-            element={
-              <AuthGuard>
-                <Referrals />
-              </AuthGuard>
-            } 
-          />
+          <Route path="/analytics" element={<AuthGuard><Analytics /></AuthGuard>} />
+          <Route path="/settings" element={<AuthGuard><Settings /></AuthGuard>} />
+          <Route path="/profile" element={<AuthGuard><Profile /></AuthGuard>} />
+          <Route path="/referrals" element={<AuthGuard><Referrals /></AuthGuard>} />
           <Route path="*" element={<Navigate to="/analytics" replace />} />
         </Routes>
       </HashRouter>

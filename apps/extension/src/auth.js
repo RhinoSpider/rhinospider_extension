@@ -1,39 +1,102 @@
 import { AuthClient } from '@dfinity/auth-client';
-import { HttpAgent, AnonymousIdentity } from '@dfinity/agent';
-import { DelegationIdentity, DelegationChain } from '@dfinity/identity';
+import { HttpAgent } from '@dfinity/agent';
+import { DelegationIdentity, DelegationChain, Ed25519KeyIdentity } from '@dfinity/identity';
 import { Secp256k1KeyIdentity } from '@dfinity/identity-secp256k1';
 import { Principal } from '@dfinity/principal';
 
 const II_URL = import.meta.env.VITE_II_URL;
 const IC_HOST = import.meta.env.VITE_IC_HOST;
 
-// Create base identity with signing capability for background context
-export function createBackgroundIdentity(storedChain) {
-  // If no stored chain, return anonymous identity
-  if (!storedChain) {
-    return new AnonymousIdentity();
+// Store delegation chain in correct format
+export async function storeDelegationChain(chain) {
+  try {
+    // Convert to storage format - CRITICAL: store expiration as hex string
+    const storageFormat = {
+      publicKey: Array.from(chain.publicKey), // Store raw public key bytes
+      delegations: chain.delegations.map(d => ({
+        delegation: {
+          pubkey: Array.from(d.delegation.pubkey),
+          expiration: d.delegation.expiration.toString(16), // Store as hex string
+          targets: d.delegation.targets || []
+        },
+        signature: Array.from(d.signature)
+      }))
+    };
+
+    // Store in identityInfo.delegationChain to match retrieval path
+    await chrome.storage.local.set({
+      identityInfo: {
+        delegationChain: storageFormat,
+        principal: chain.toJSON().delegations[0].delegation.pubkey // Store principal for reference
+      }
+    });
+
+    console.log('Stored delegation chain:', {
+      publicKeyLength: storageFormat.publicKey.length,
+      delegationsCount: storageFormat.delegations.length,
+      firstDelegation: storageFormat.delegations[0] ? {
+        pubkeyLength: storageFormat.delegations[0].delegation.pubkey.length,
+        expiration: storageFormat.delegations[0].delegation.expiration,
+        signatureLength: storageFormat.delegations[0].signature.length
+      } : null
+    });
+  } catch (error) {
+    console.error('Failed to store delegation chain:', error);
+    throw error;
   }
+}
 
-  const secretKey = crypto.getRandomValues(new Uint8Array(32));
-  const baseIdentity = Secp256k1KeyIdentity.fromSecretKey(secretKey);
-  
-  // Convert stored expiration to BigInt
-  const delegations = storedChain.delegations.map(d => ({
-    delegation: {
-      pubkey: Uint8Array.from(d.delegation.pubkey),
-      expiration: BigInt('0x' + d.delegation.expiration),
-      targets: d.delegation.targets
-    },
-    signature: Uint8Array.from(d.signature)
-  }));
+// Create delegation chain from stored data
+const createDelegationChain = (storedChain) => {
+  try {
+    if (!storedChain || !storedChain.delegations) {
+      throw new Error('Invalid stored chain structure');
+    }
 
-  const delegationChain = DelegationChain.fromDelegations(
-    Uint8Array.from(storedChain.publicKey),
-    delegations
-  );
+    // Convert public key to Uint8Array
+    const publicKey = new Uint8Array(storedChain.publicKey);
 
-  // Create delegation identity with base identity and chain
-  return new DelegationIdentity(baseIdentity, delegationChain);
+    // Process each delegation with proper CBOR structure
+    const delegations = storedChain.delegations.map((d, i) => {
+      // Convert binary data to Uint8Array first
+      const pubkey = new Uint8Array(d.delegation.pubkey);
+      const signature = new Uint8Array(d.signature);
+
+      // Create proper SignedDelegation structure
+      return {
+        delegation: {
+          pubkey: pubkey, // Keep as Uint8Array
+          expiration: BigInt('0x' + d.delegation.expiration),
+          targets: [] // Empty array instead of null
+        },
+        signature: signature // Keep as Uint8Array
+      };
+    });
+
+    // Create chain with proper types
+    return DelegationChain.fromDelegations(publicKey, delegations);
+  } catch (error) {
+    console.error('Failed to create delegation chain:', error);
+    throw error;
+  }
+};
+
+// Create identity from delegation chain
+export async function createBackgroundIdentity(storedChain) {
+  try {
+    // Create base key identity with signing capability
+    const secretKey = crypto.getRandomValues(new Uint8Array(32));
+    const baseIdentity = Secp256k1KeyIdentity.fromSecretKey(secretKey);
+
+    // Create delegation chain
+    const chain = createDelegationChain(storedChain);
+
+    // Create delegation identity
+    return new DelegationIdentity(baseIdentity, chain);
+  } catch (error) {
+    console.error('Failed to create background identity:', error);
+    throw error;
+  }
 }
 
 class BackgroundAuthManager {
@@ -57,34 +120,52 @@ class BackgroundAuthManager {
     try {
       // In background script, try to restore auth state from storage
       if (this.isBackground) {
-        const stored = await chrome.storage.local.get(['authState', 'delegationChain']);
-        if (stored.authState && stored.delegationChain) {
+        const stored = await chrome.storage.local.get(['authState', 'identityInfo']);
+        if (stored.authState && stored.identityInfo?.delegationChain) {
           const authState = JSON.parse(stored.authState);
-          const storedChain = JSON.parse(stored.delegationChain);
+          const storedChain = stored.identityInfo.delegationChain;
           
           if (authState.isAuthenticated && storedChain) {
             // Verify delegation chain expiration
             const now = BigInt(Date.now()) * BigInt(1000_000);
-            if (storedChain.delegations.some(d => BigInt('0x' + d.delegation.expiration) < now)) {
+            const chain = createDelegationChain(storedChain);
+            if (chain.delegations.some(d => d.delegation.expiration < now)) {
               console.log('Delegation chain expired, clearing auth state');
-              await chrome.storage.local.remove(['authState', 'delegationChain']);
+              await chrome.storage.local.remove(['authState', 'identityInfo']);
               return { isAuthenticated: false };
             }
 
             // Create base identity with signing capability
-            const identity = createBackgroundIdentity(storedChain);
+            const identity = await createBackgroundIdentity(storedChain);
             
-            // Create agent with delegation identity
+            // Create agent with delegation identity and custom fetch handler
             this.agent = new HttpAgent({
               identity,
               host: IC_HOST,
               fetch: (...args) => {
                 const [resource, init = {}] = args;
+                // Ensure proper CBOR content type
                 init.headers = {
                   ...init.headers,
                   'Content-Type': 'application/cbor'
                 };
-                return fetch(resource, init);
+                // Log request for debugging
+                console.log('Making request:', {
+                  resource,
+                  method: init.method,
+                  headers: init.headers
+                });
+                return fetch(resource, init).then(async response => {
+                  // Log response for debugging
+                  console.log('Got response:', {
+                    status: response.status,
+                    headers: Object.fromEntries(response.headers.entries())
+                  });
+                  return response;
+                }).catch(error => {
+                  console.error('Request failed:', error);
+                  throw error;
+                });
               }
             });
 
@@ -99,25 +180,9 @@ class BackgroundAuthManager {
               agent: this.agent
             });
             
-            // Notify about successful restoration
-            chrome.runtime.sendMessage({
-              type: 'AUTH_STATE_CHANGED',
-              data: {
-                isAuthenticated: true,
-                principal: authState.principal,
-                isInitialized: true,
-                error: null
-              }
-            }).catch(() => {});
-            
-            return {
-              isAuthenticated: true,
-              principal: authState.principal
-            };
+            return authState;
           }
-          return { isAuthenticated: false };
         }
-        return { isAuthenticated: false };
       }
 
       // In popup/content script, create auth client normally
@@ -137,30 +202,37 @@ class BackgroundAuthManager {
         const chain = identity.getDelegation();
         
         // Store delegation chain
-        await chrome.storage.local.set({
-          delegationChain: JSON.stringify({
-            publicKey: Array.from(chain.publicKey),
-            delegations: chain.delegations.map(d => ({
-              delegation: {
-                pubkey: Array.from(d.delegation.pubkey),
-                expiration: d.delegation.expiration.toString(16), // Store as hex string
-                targets: d.delegation.targets || []
-              },
-              signature: Array.from(d.signature)
-            }))
-          }),
-          authState: JSON.stringify({
-            isAuthenticated: true,
-            principal: identity.getPrincipal().toText(),
-            isInitialized: true,
-            error: null
-          })
-        });
-        
-        // Create agent with identity
+        await storeDelegationChain(chain);
+
+        // Create agent with identity and custom fetch handler
         this.agent = new HttpAgent({
           identity,
-          host: IC_HOST
+          host: IC_HOST,
+          fetch: (...args) => {
+            const [resource, init = {}] = args;
+            // Ensure proper CBOR content type
+            init.headers = {
+              ...init.headers,
+              'Content-Type': 'application/cbor'
+            };
+            // Log request for debugging
+            console.log('Making request:', {
+              resource,
+              method: init.method,
+              headers: init.headers
+            });
+            return fetch(resource, init).then(async response => {
+              // Log response for debugging
+              console.log('Got response:', {
+                status: response.status,
+                headers: Object.fromEntries(response.headers.entries())
+              });
+              return response;
+            }).catch(error => {
+              console.error('Request failed:', error);
+              throw error;
+            });
+          }
         });
 
         // Only fetch root key in development
@@ -200,13 +272,13 @@ class BackgroundAuthManager {
   async checkAuthentication() {
     if (this.isBackground) {
       try {
-        const stored = await chrome.storage.local.get(['authState', 'delegationChain']);
-        if (!stored.authState || !stored.delegationChain) {
+        const stored = await chrome.storage.local.get(['authState', 'identityInfo']);
+        if (!stored.authState || !stored.identityInfo?.delegationChain) {
           return { isAuthenticated: false };
         }
 
         // Background authentication
-        const identity = createBackgroundIdentity(JSON.parse(stored.delegationChain));
+        const identity = await createBackgroundIdentity(stored.identityInfo.delegationChain);
         this.agent = new HttpAgent({ identity, host: IC_HOST });
         
         if (import.meta.env.DEV) {
@@ -219,7 +291,7 @@ class BackgroundAuthManager {
         };
       } catch (error) {
         console.error('Background auth failed:', error);
-        await chrome.storage.local.remove(['authState', 'delegationChain']);
+        await chrome.storage.local.remove(['authState', 'identityInfo']);
         return { isAuthenticated: false };
       }
     }
@@ -236,6 +308,7 @@ class BackgroundAuthManager {
       }
 
       const isAuthenticated = await this.isAuthenticated();
+
       if (!isAuthenticated) {
         return { isAuthenticated: false };
       }
@@ -244,19 +317,7 @@ class BackgroundAuthManager {
       const chain = identity.getDelegation();
       
       // Store delegation chain
-      await chrome.storage.local.set({
-        delegationChain: JSON.stringify({
-          publicKey: Array.from(chain.publicKey),
-          delegations: chain.delegations.map(d => ({
-            delegation: {
-              pubkey: Array.from(d.delegation.pubkey),
-              expiration: d.delegation.expiration.toString(16),
-              targets: d.delegation.targets || []
-            },
-            signature: Array.from(d.signature)
-          }))
-        })
-      });
+      await storeDelegationChain(chain);
 
       // Create agent
       this.agent = new HttpAgent({ identity, host: IC_HOST });
@@ -292,19 +353,7 @@ class BackgroundAuthManager {
       const chain = identity.getDelegation();
       
       // Store delegation chain
-      await chrome.storage.local.set({
-        delegationChain: JSON.stringify({
-          publicKey: Array.from(chain.publicKey),
-          delegations: chain.delegations.map(d => ({
-            delegation: {
-              pubkey: Array.from(d.delegation.pubkey),
-              expiration: d.delegation.expiration.toString(16),
-              targets: d.delegation.targets || []
-            },
-            signature: Array.from(d.signature)
-          }))
-        })
-      });
+      await storeDelegationChain(chain);
 
       // Create agent
       this.agent = new HttpAgent({ identity, host: IC_HOST });
@@ -348,7 +397,7 @@ class BackgroundAuthManager {
     }
     this.agent = null;
     this.consumerActor = null;
-    await chrome.storage.local.remove(['authState', 'delegationChain']);
+    await chrome.storage.local.remove(['authState', 'identityInfo']);
   }
 }
 
