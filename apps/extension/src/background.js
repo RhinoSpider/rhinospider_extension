@@ -58,6 +58,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 isActive: message.isActive
             });
             break;
+            
+        case 'II_AUTH_COMPLETE':
+            // Forward auth result to dashboard
+            chrome.tabs.query({ url: chrome.runtime.getURL('pages/dashboard.html') }, (tabs) => {
+                if (tabs.length > 0) {
+                    chrome.tabs.sendMessage(tabs[0].id, {
+                        type: 'II_AUTH_COMPLETE',
+                        delegationChain: message.delegationChain
+                    });
+                }
+            });
+            break;
+            
+        case 'II_AUTH_ERROR':
+            // Forward auth error to dashboard
+            chrome.tabs.query({ url: chrome.runtime.getURL('pages/dashboard.html') }, (tabs) => {
+                if (tabs.length > 0) {
+                    chrome.tabs.sendMessage(tabs[0].id, {
+                        type: 'II_AUTH_ERROR',
+                        error: message.error
+                    });
+                }
+            });
+            break;
     }
 });
 

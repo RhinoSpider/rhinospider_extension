@@ -1,5 +1,7 @@
 // Dashboard script
 import { AuthClient } from '@dfinity/auth-client';
+import { DelegationIdentity } from '@dfinity/identity';
+import { Secp256k1KeyIdentity } from '@dfinity/identity-secp256k1';
 
 // Logger utility
 const logger = {
@@ -21,42 +23,108 @@ async function initAuthClient() {
                 disableIdle: true
             }
         });
-        logger.log('Auth client created');
     }
     return authClient;
+}
+
+// Handle messages from background script
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    logger.log('Message Received');
+    logger.log('Message type:', message.type);
+    
+    switch (message.type) {
+        case 'II_AUTH_COMPLETE':
+            handleAuthComplete(message.delegationChain);
+            break;
+            
+        case 'II_AUTH_ERROR':
+            handleAuthError(message.error);
+            break;
+    }
+});
+
+// Handle successful authentication
+async function handleAuthComplete(delegationChain) {
+    try {
+        logger.log('Authentication successful');
+        
+        // Create base identity with signing capability
+        const secretKey = crypto.getRandomValues(new Uint8Array(32));
+        const baseIdentity = Secp256k1KeyIdentity.fromSecretKey(secretKey);
+        
+        // Create delegation identity
+        const identity = new DelegationIdentity(baseIdentity, delegationChain);
+        
+        // Store delegation chain
+        await chrome.storage.local.set({ delegationChain });
+        
+        // Show dashboard
+        showDashboard();
+        
+        // Initialize dashboard data
+        await initializeDashboardData();
+    } catch (error) {
+        logger.error('Failed to handle authentication:', error);
+        showLogin();
+    }
+}
+
+// Handle authentication error
+function handleAuthError(error) {
+    logger.error('Authentication failed:', error);
+    showLogin();
+}
+
+// Initialize dashboard data
+async function initializeDashboardData() {
+    try {
+        // Get extension status
+        const { extensionEnabled } = await chrome.storage.local.get(['extensionEnabled']);
+        document.getElementById('extensionStatus').checked = extensionEnabled ?? false;
+        document.getElementById('settingsExtensionStatus').checked = extensionEnabled ?? false;
+        
+        // Get points and pages data
+        const { points = 0, pagesScraped = 0 } = await chrome.storage.local.get(['points', 'pagesScraped']);
+        document.getElementById('pointsEarned').textContent = points;
+        document.getElementById('pagesScraped').textContent = pagesScraped;
+        
+        // Set up extension status toggle
+        document.getElementById('extensionStatus').addEventListener('change', async (e) => {
+            const enabled = e.target.checked;
+            await chrome.storage.local.set({ extensionEnabled: enabled });
+            document.getElementById('settingsExtensionStatus').checked = enabled;
+        });
+        
+        document.getElementById('settingsExtensionStatus').addEventListener('change', async (e) => {
+            const enabled = e.target.checked;
+            await chrome.storage.local.set({ extensionEnabled: enabled });
+            document.getElementById('extensionStatus').checked = enabled;
+        });
+    } catch (error) {
+        logger.error('Failed to initialize dashboard data:', error);
+    }
 }
 
 // Check if user is logged in
 async function checkLogin() {
     try {
-        const client = await initAuthClient();
-        const isAuth = await client.isAuthenticated();
+        const { delegationChain } = await chrome.storage.local.get(['delegationChain']);
+        logger.log('Delegation chain from storage:', delegationChain);
         
-        if (isAuth) {
-            const identity = client.getIdentity();
-            // Get delegation chain from identity
-            const delegationChain = identity.getDelegation();
-            if (!delegationChain) {
-                throw new Error('No delegation chain found');
-            }
+        if (delegationChain) {
+            // Create base identity with signing capability
+            const secretKey = crypto.getRandomValues(new Uint8Array(32));
+            const baseIdentity = Secp256k1KeyIdentity.fromSecretKey(secretKey);
             
-            // Store delegation chain
-            await chrome.storage.local.set({ delegationChain: {
-                publicKey: Array.from(delegationChain.publicKey),
-                delegations: delegationChain.delegations.map(d => ({
-                    delegation: {
-                        pubkey: Array.from(d.delegation.pubkey),
-                        expiration: d.delegation.expiration.toString(16),
-                        targets: d.delegation.targets || []
-                    },
-                    signature: Array.from(d.signature)
-                }))
-            }});
+            // Create delegation identity
+            const identity = new DelegationIdentity(baseIdentity, delegationChain);
             
             // Show dashboard
             showDashboard();
+            
+            // Initialize dashboard data
+            await initializeDashboardData();
         } else {
-            // Show login page
             showLogin();
         }
     } catch (error) {
@@ -77,28 +145,35 @@ async function handleLogin() {
                 onSuccess: async () => {
                     logger.log('Login successful');
                     const identity = client.getIdentity();
+                    
                     // Get delegation chain from identity
-                    const delegationChain = identity.getDelegation();
-                    if (!delegationChain) {
-                        reject(new Error('No delegation chain found'));
-                        return;
+                    if (identity instanceof DelegationIdentity) {
+                        const delegationChain = identity.getDelegation();
+                        
+                        // Store delegation chain
+                        await chrome.storage.local.set({
+                            delegationChain: {
+                                publicKey: Array.from(delegationChain.publicKey),
+                                delegations: delegationChain.delegations.map(d => ({
+                                    delegation: {
+                                        pubkey: Array.from(d.delegation.pubkey),
+                                        expiration: d.delegation.expiration.toString(16),
+                                        targets: d.delegation.targets || []
+                                    },
+                                    signature: Array.from(d.signature)
+                                }))
+                            }
+                        });
+                        
+                        // Show dashboard
+                        showDashboard();
+                        
+                        // Initialize dashboard data
+                        await initializeDashboardData();
+                    } else {
+                        throw new Error('Invalid identity type');
                     }
                     
-                    // Store delegation chain
-                    await chrome.storage.local.set({ delegationChain: {
-                        publicKey: Array.from(delegationChain.publicKey),
-                        delegations: delegationChain.delegations.map(d => ({
-                            delegation: {
-                                pubkey: Array.from(d.delegation.pubkey),
-                                expiration: d.delegation.expiration.toString(16),
-                                targets: d.delegation.targets || []
-                            },
-                            signature: Array.from(d.signature)
-                        }))
-                    }});
-                    
-                    // Show dashboard
-                    showDashboard();
                     resolve();
                 },
                 onError: (error) => {
@@ -108,105 +183,78 @@ async function handleLogin() {
             });
         });
     } catch (error) {
-        logger.error('Login error:', error);
+        logger.error('Failed to login:', error);
+        showLogin();
     }
 }
 
 // Handle logout
 async function handleLogout() {
     try {
-        logger.log('Logging out');
         const client = await initAuthClient();
         await client.logout();
-        await chrome.storage.local.remove('delegationChain');
+        await chrome.storage.local.remove(['delegationChain']);
         showLogin();
     } catch (error) {
-        logger.error('Logout error:', error);
+        logger.error('Failed to logout:', error);
     }
 }
 
 // Show login page
 function showLogin() {
     document.getElementById('loginPage').style.display = 'flex';
-    document.getElementById('loginPage').style.justifyContent = 'center';
-    document.getElementById('loginPage').style.alignItems = 'center';
-    document.getElementById('dashboardContent').classList.remove('authenticated');
+    document.getElementById('dashboardContent').style.display = 'none';
 }
 
 // Show dashboard
 function showDashboard() {
     document.getElementById('loginPage').style.display = 'none';
-    document.getElementById('dashboardContent').classList.add('authenticated');
+    document.getElementById('dashboardContent').style.display = 'flex';
 }
 
 // Set up navigation
 function setupNavigation() {
     logger.log('Navigation Setup');
-    const navItems = document.querySelectorAll('.nav-item');
-    const contentSections = document.querySelectorAll('.content-section');
     
-    navItems.forEach(item => {
+    // Handle nav item clicks
+    document.querySelectorAll('.nav-item').forEach(item => {
         item.addEventListener('click', () => {
             // Remove active class from all items
-            navItems.forEach(i => i.classList.remove('active'));
-            contentSections.forEach(s => s.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
             
             // Add active class to clicked item
             item.classList.add('active');
             
-            // Show corresponding section
-            const targetId = item.getAttribute('data-target');
-            document.getElementById(targetId).classList.add('active');
+            // Hide all sections
+            document.querySelectorAll('.content-section').forEach(section => {
+                section.classList.remove('active');
+                section.style.display = 'none';
+            });
+            
+            // Show selected section
+            const target = item.getAttribute('data-target');
+            const section = document.getElementById(target);
+            section.classList.add('active');
+            section.style.display = 'block';
         });
     });
+    
+    // Handle login button click
+    document.getElementById('loginButton').addEventListener('click', handleLogin);
+    
+    // Handle logout button click
+    document.getElementById('logoutButton').addEventListener('click', handleLogout);
 }
 
 // Initialize dashboard
 async function initialize() {
     logger.log('Initialization');
     
-    // Set up navigation
     setupNavigation();
     
     // Check login state
     logger.log('Checking Login State');
-    const { delegationChain } = await chrome.storage.local.get(['delegationChain']);
-    logger.log('Delegation chain from storage:', delegationChain);
-    
-    if (delegationChain) {
-        showDashboard();
-    } else {
-        showLogin();
-    }
-    
-    // Set up login button
-    logger.log('Login Button Setup');
-    const loginButton = document.getElementById('loginButton');
-    if (loginButton) {
-        loginButton.addEventListener('click', handleLogin);
-    }
-    
-    // Set up logout button
-    const logoutButton = document.getElementById('logoutButton');
-    if (logoutButton) {
-        logoutButton.addEventListener('click', handleLogout);
-    }
-    
-    // Listen for messages
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-        logger.log('Message Received');
-        logger.log('Message type:', message.type);
-        
-        switch (message.type) {
-            case 'LOGIN_COMPLETE':
-                showDashboard();
-                break;
-                
-            case 'LOGOUT':
-                showLogin();
-                break;
-        }
-    });
+    await checkLogin();
 }
 
 // Initialize when the page loads

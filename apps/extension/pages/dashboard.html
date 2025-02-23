@@ -139,6 +139,101 @@
             color: white;
         }
         
+        .dashboard-stats {
+            display: flex;
+            gap: 24px;
+        }
+        
+        .stat-card {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 24px;
+            border-radius: 12px;
+            flex: 1;
+        }
+        
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            margin-top: 8px;
+        }
+        
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+        }
+        
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            -webkit-transition: .4s;
+            transition: .4s;
+        }
+        
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            -webkit-transition: .4s;
+            transition: .4s;
+        }
+        
+        input:checked + .slider {
+            background-color: #B692F6;
+        }
+        
+        input:focus + .slider {
+            box-shadow: 0 0 1px #B692F6;
+        }
+        
+        input:checked + .slider:before {
+            -webkit-transform: translateX(26px);
+            -ms-transform: translateX(26px);
+            transform: translateX(26px);
+        }
+        
+        .slider.round {
+            border-radius: 34px;
+        }
+        
+        .slider.round:before {
+            border-radius: 50%;
+        }
+        
+        .settings-container {
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+        
+        .setting-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 24px;
+            border-radius: 12px;
+        }
+        
+        .setting-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
         #logoutButton {
             background: transparent;
             color: rgba(255, 255, 255, 0.8);
@@ -176,29 +271,37 @@
                 <span>&#60;</span>
                 <span>RhinoSpider</span>
             </div>
-            <div class="nav-item active" data-target="topics">Topics</div>
-            <div class="nav-item" data-target="analytics">Analytics</div>
+            <div class="nav-item active" data-target="dashboard">Dashboard</div>
             <div class="nav-item" data-target="settings">Settings</div>
-            <div class="nav-item" data-target="profile">Profile</div>
-            <button id="logoutButton">Logout</button>
+            <button id="logoutButton" class="btn-secondary">Logout</button>
         </div>
-        
+
         <!-- Main Content -->
         <div class="main-content">
-            <!-- Topics Section -->
-            <div id="topics" class="content-section active">
+            <!-- Dashboard Section -->
+            <div id="dashboard" class="content-section active">
                 <div class="section-header">
-                    <h2 class="section-title">Topics</h2>
+                    <h2 class="section-title">Dashboard</h2>
                 </div>
-                <div id="topicsList"></div>
-            </div>
-            
-            <!-- Analytics Section -->
-            <div id="analytics" class="content-section">
-                <div class="section-header">
-                    <h2 class="section-title">Analytics</h2>
+                <div class="dashboard-stats">
+                    <div class="stat-card">
+                        <h3>Points Earned</h3>
+                        <div class="stat-value" id="pointsEarned">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Pages Scraped</h3>
+                        <div class="stat-value" id="pagesScraped">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Extension Status</h3>
+                        <div class="stat-value">
+                            <label class="switch">
+                                <input type="checkbox" id="extensionStatus">
+                                <span class="slider round"></span>
+                            </label>
+                        </div>
+                    </div>
                 </div>
-                <div id="analyticsContent"></div>
             </div>
             
             <!-- Settings Section -->
@@ -206,20 +309,15 @@
                 <div class="section-header">
                     <h2 class="section-title">Settings</h2>
                 </div>
-                <div class="setting-item">
-                    <label style="display: flex; align-items: center; gap: 8px;">
-                        Extension Status:
-                        <input type="checkbox" id="extensionStatus">
-                    </label>
+                <div class="settings-container">
+                    <div class="setting-item">
+                        <h3>Extension Control</h3>
+                        <label class="setting-label">
+                            Enable RhinoSpider
+                            <input type="checkbox" id="settingsExtensionStatus">
+                        </label>
+                    </div>
                 </div>
-            </div>
-            
-            <!-- Profile Section -->
-            <div id="profile" class="content-section">
-                <div class="section-header">
-                    <h2 class="section-title">Profile</h2>
-                </div>
-                <div id="profileContent"></div>
             </div>
         </div>
     </div>
