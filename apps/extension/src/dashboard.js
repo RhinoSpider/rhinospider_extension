@@ -2,6 +2,7 @@
 import { AuthClient } from '@dfinity/auth-client';
 import { DelegationIdentity } from '@dfinity/identity';
 import { Secp256k1KeyIdentity } from '@dfinity/identity-secp256k1';
+import { ConsumerService } from './services/consumer';
 
 // Logger utility
 const logger = {
@@ -13,8 +14,11 @@ const logger = {
     }
 };
 
-// Initialize auth client
+// Initialize services
 let authClient = null;
+let consumerService = null;
+
+// Initialize auth client
 async function initAuthClient() {
     if (!authClient) {
         logger.log('Creating auth client');
@@ -25,6 +29,22 @@ async function initAuthClient() {
         });
     }
     return authClient;
+}
+
+// Initialize consumer service
+async function initConsumerService(identity) {
+    try {
+        if (!consumerService) {
+            logger.log('Creating consumer service');
+            const canisterId = process.env.CONSUMER_CANISTER_ID;
+            consumerService = new ConsumerService(identity, canisterId);
+        }
+        return consumerService;
+    } catch (error) {
+        logger.error('Failed to initialize consumer service:', error);
+        // Don't throw - we'll just show the dashboard without consumer data
+        return null;
+    }
 }
 
 // Handle messages from background script
@@ -55,6 +75,9 @@ async function handleAuthComplete(delegationChain) {
         // Create delegation identity
         const identity = new DelegationIdentity(baseIdentity, delegationChain);
         
+        // Initialize consumer service
+        await initConsumerService(identity);
+        
         // Store delegation chain
         await chrome.storage.local.set({ delegationChain });
         
@@ -83,10 +106,53 @@ async function initializeDashboardData() {
         document.getElementById('extensionStatus').checked = extensionEnabled ?? false;
         document.getElementById('settingsExtensionStatus').checked = extensionEnabled ?? false;
         
-        // Get points and pages data
-        const { points = 0, pagesScraped = 0 } = await chrome.storage.local.get(['points', 'pagesScraped']);
-        document.getElementById('pointsEarned').textContent = points;
-        document.getElementById('pagesScraped').textContent = pagesScraped;
+        // Get user profile and data from consumer
+        if (consumerService) {
+            try {
+                // Get profile with retries
+                let profile = null;
+                let retries = 3;
+                while (retries > 0) {
+                    try {
+                        profile = await consumerService.getProfile();
+                        break;
+                    } catch (error) {
+                        retries--;
+                        if (retries === 0) throw error;
+                        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s between retries
+                    }
+                }
+                
+                // Get topics
+                const topics = await consumerService.getTopics();
+                
+                // Get AI config
+                const aiConfig = await consumerService.getAIConfig();
+                
+                // Store data
+                await chrome.storage.local.set({
+                    profile,
+                    topics,
+                    aiConfig
+                });
+                
+                // Update points display
+                if (profile) {
+                    const pagesScraped = profile.devices?.length || 0;
+                    document.getElementById('pointsEarned').textContent = profile.points || 0;
+                    document.getElementById('pagesScraped').textContent = pagesScraped;
+                }
+            } catch (error) {
+                logger.error('Failed to fetch consumer data:', error);
+                // Use cached data if available
+                const { profile } = await chrome.storage.local.get(['profile']);
+                if (profile) {
+                    const pagesScraped = profile.devices?.length || 0;
+                    document.getElementById('pointsEarned').textContent = profile.points || 0;
+                    document.getElementById('pagesScraped').textContent = pagesScraped;
+                }
+            }
+        }
         
         // Set up extension status toggle
         document.getElementById('extensionStatus').addEventListener('change', async (e) => {
@@ -118,6 +184,9 @@ async function checkLogin() {
             
             // Create delegation identity
             const identity = new DelegationIdentity(baseIdentity, delegationChain);
+            
+            // Initialize consumer service
+            await initConsumerService(identity);
             
             // Show dashboard
             showDashboard();
@@ -165,6 +234,9 @@ async function handleLogin() {
                             }
                         });
                         
+                        // Initialize consumer service
+                        await initConsumerService(identity);
+                        
                         // Show dashboard
                         showDashboard();
                         
@@ -193,7 +265,8 @@ async function handleLogout() {
     try {
         const client = await initAuthClient();
         await client.logout();
-        await chrome.storage.local.remove(['delegationChain']);
+        await chrome.storage.local.remove(['delegationChain', 'profile', 'topics', 'aiConfig']);
+        consumerService = null;
         showLogin();
     } catch (error) {
         logger.error('Failed to logout:', error);
