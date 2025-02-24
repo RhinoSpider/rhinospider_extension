@@ -1,12 +1,5 @@
 // Consumer canister service
-import { Actor, HttpAgent } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
-import { idlFactory } from '../declarations/consumer/consumer.did.js';
-
-// Polyfill global
-const _global = typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : typeof self !== 'undefined' ? self : {};
-window.global = _global;
-
 import { initializeIC, getCurrentActor } from '../ic-agent';
 
 // Constants from environment
@@ -58,9 +51,7 @@ export class ConsumerService {
 
     async getProfile() {
         try {
-            logger.log('Initializing new IC connection');
-            await initializeIC(this.identity);
-            const actor = await getCurrentActor();
+            const actor = await this.getActor();
             const result = await actor.getProfile();
             if ('err' in result) {
                 throw new Error(result.err);
