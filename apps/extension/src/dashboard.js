@@ -47,6 +47,36 @@ function showDashboardView() {
     }
 }
 
+// Create agent and actor
+async function createAgentAndActor(identity) {
+    // Create query agent (no signature verification)
+    const queryAgent = new HttpAgent({
+        host: IC_HOST,
+        identity,
+        disableIngressFilter: true,
+        verifyQuerySignatures: false
+    });
+
+    // Create update agent (with signature verification)
+    const updateAgent = new HttpAgent({
+        host: IC_HOST,
+        identity
+    });
+
+    // Create actors for query and update calls
+    const queryActor = Actor.createActor(idlFactory, {
+        agent: queryAgent,
+        canisterId: CANISTER_ID
+    });
+
+    const updateActor = Actor.createActor(idlFactory, {
+        agent: updateAgent,
+        canisterId: CANISTER_ID
+    });
+
+    return { queryActor, updateActor };
+}
+
 async function handleAuthenticated(authClient) {
     try {
         // Get identity from auth client
@@ -59,49 +89,41 @@ async function handleAuthenticated(authClient) {
         showDashboardView();
         
         try {
-            // Create agent with identity from auth client
-            logger.debug('Creating agent...');
-            const agent = new HttpAgent({
-                host: IC_HOST,
-                identity,
-                disableIngressFilter: true, // Required for Chrome extensions
-                verifyQuerySignatures: false // Required for Chrome extensions
-            });
-
-            // Create actor
-            logger.debug('Creating actor...');
-            actor = Actor.createActor(idlFactory, {
-                agent,
-                canisterId: CANISTER_ID
-            });
-            logger.debug('Created actor');
+            // Create agents and actors
+            logger.debug('Creating agents and actors...');
+            const { queryActor, updateActor } = await createAgentAndActor(identity);
             
-            // Try to get profile
+            // Try to get profile using query actor
             logger.debug('Calling getProfile...');
-            const profile = await actor.getProfile();
+            const profile = await queryActor.getProfile();
             logger.debug('Got profile response:', profile);
             
             if ('ok' in profile) {
                 logger.debug('Profile found:', profile.ok);
+                userProfile.textContent = JSON.stringify(profile.ok, null, 2);
             } else if ('err' in profile) {
                 const error = profile.err;
-                if ('NotAuthorized' in error) {
-                    logger.debug('Profile not authorized, registering device...');
+                if ('NotFound' in error || 'NotAuthorized' in error) {
+                    logger.debug('Profile not found, registering device...');
                     const deviceId = crypto.randomUUID();
-                    const registerResult = await actor.registerDevice(deviceId);
+                    
+                    // Use update actor for registration
+                    const registerResult = await updateActor.registerDevice(deviceId);
                     logger.debug('Register result:', registerResult);
                     
                     if ('err' in registerResult) {
                         throw new Error('Failed to register device: ' + JSON.stringify(registerResult.err));
                     }
                     
-                    // Try getting profile again after registration
-                    const newProfile = await actor.getProfile();
+                    // Try getting profile again after registration using query actor
+                    const newProfile = await queryActor.getProfile();
                     logger.debug('Profile after registration:', newProfile);
                     
                     if ('err' in newProfile) {
                         throw new Error('Failed to get profile after registration: ' + JSON.stringify(newProfile.err));
                     }
+                    
+                    userProfile.textContent = JSON.stringify(newProfile.ok, null, 2);
                 } else {
                     throw new Error('Failed to get profile: ' + JSON.stringify(error));
                 }
