@@ -32,7 +32,7 @@ const logger = {
 
 // Show/hide views
 function showLoginView() {
-    loginView.classList.remove('hidden');
+    loginView.classList.add('visible');
     dashboardView.classList.add('hidden');
     if (loginError) {
         loginError.style.display = 'none';
@@ -40,11 +40,32 @@ function showLoginView() {
 }
 
 function showDashboardView() {
-    loginView.classList.add('hidden');
+    loginView.classList.remove('visible');
     dashboardView.classList.remove('hidden');
     if (loginError) {
         loginError.style.display = 'none';
     }
+}
+
+// Setup navigation
+function setupNavigation() {
+    const navItems = document.querySelectorAll('.nav-item');
+    const contentSections = document.querySelectorAll('.content-section');
+    
+    navItems.forEach(item => {
+        item.addEventListener('click', () => {
+            // Remove active class from all items
+            navItems.forEach(i => i.classList.remove('active'));
+            contentSections.forEach(s => s.classList.remove('active'));
+            
+            // Add active class to clicked item
+            item.classList.add('active');
+            
+            // Show corresponding section
+            const target = item.dataset.target;
+            document.getElementById(target).classList.add('active');
+        });
+    });
 }
 
 // Create agent and actor
@@ -77,6 +98,21 @@ async function createAgentAndActor(identity) {
     return { queryActor, updateActor };
 }
 
+// Format profile data for display
+function formatProfileData(profile) {
+    return JSON.stringify(profile, (key, value) => {
+        // Convert BigInt to string with n suffix
+        if (typeof value === 'bigint') {
+            return value.toString() + 'n';
+        }
+        // Handle Principal objects
+        if (value && value._isPrincipal) {
+            return value.toString();
+        }
+        return value;
+    }, 2);
+}
+
 async function handleAuthenticated(authClient) {
     try {
         // Get identity from auth client
@@ -100,7 +136,7 @@ async function handleAuthenticated(authClient) {
             
             if ('ok' in profile) {
                 logger.debug('Profile found:', profile.ok);
-                userProfile.textContent = JSON.stringify(profile.ok, null, 2);
+                userProfile.textContent = formatProfileData(profile.ok);
             } else if ('err' in profile) {
                 const error = profile.err;
                 if ('NotFound' in error || 'NotAuthorized' in error) {
@@ -112,7 +148,7 @@ async function handleAuthenticated(authClient) {
                     logger.debug('Register result:', registerResult);
                     
                     if ('err' in registerResult) {
-                        throw new Error('Failed to register device: ' + JSON.stringify(registerResult.err));
+                        throw new Error('Failed to register device: ' + formatProfileData(registerResult.err));
                     }
                     
                     // Try getting profile again after registration using query actor
@@ -120,12 +156,12 @@ async function handleAuthenticated(authClient) {
                     logger.debug('Profile after registration:', newProfile);
                     
                     if ('err' in newProfile) {
-                        throw new Error('Failed to get profile after registration: ' + JSON.stringify(newProfile.err));
+                        throw new Error('Failed to get profile after registration: ' + formatProfileData(newProfile.err));
                     }
                     
-                    userProfile.textContent = JSON.stringify(newProfile.ok, null, 2);
+                    userProfile.textContent = formatProfileData(newProfile.ok);
                 } else {
-                    throw new Error('Failed to get profile: ' + JSON.stringify(error));
+                    throw new Error('Failed to get profile: ' + formatProfileData(error));
                 }
             }
         } catch (error) {
@@ -144,6 +180,9 @@ async function initAuth() {
         logger.debug('Creating auth client');
         const authClient = await AuthClient.create();
         logger.debug('Auth client created');
+        
+        // Setup navigation
+        setupNavigation();
         
         // Check if already authenticated
         if (await authClient.isAuthenticated()) {
