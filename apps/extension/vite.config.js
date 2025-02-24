@@ -56,7 +56,9 @@ const manifest = {
       'pages/*',
       'src/*',
       'icons/*',
-      'ii-content.js'
+      'ii-content.js',
+      'ic-agent.js',
+      'ic-deps.js'
     ],
     matches: ['<all_urls>']
   }]
@@ -109,62 +111,68 @@ export default defineConfig(({ command, mode }) => {
     ],
     define: {
       ...envDefines,
+      'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV),
       global: 'globalThis'
     },
     build: {
       outDir: 'build',
-      emptyOutDir: true,
+      emptyOutDir: false,
+      sourcemap: true,
       rollupOptions: {
         input: {
-          background: resolve(__dirname, 'src/background.js'),
           popup: resolve(__dirname, 'popup.html'),
-          analytics: resolve(__dirname, 'src/pages/analytics-entry.jsx'),
-          settings: resolve(__dirname, 'src/pages/settings-entry.jsx'),
-          profile: resolve(__dirname, 'src/pages/profile-entry.jsx'),
-          referrals: resolve(__dirname, 'src/pages/referrals-entry.jsx'),
+          background: resolve(__dirname, 'src/background.js'),
           content: resolve(__dirname, 'src/content.js'),
           'ii-content': resolve(__dirname, 'src/ii-content.js'),
-          dashboard: resolve(__dirname, 'src/dashboard.js'),
-          'ic-agent': resolve(__dirname, 'src/ic-agent.js')
+          'ic-agent': resolve(__dirname, 'src/ic-agent.js'),
+          dashboard: resolve(__dirname, 'src/dashboard.js')
         },
         output: {
           entryFileNames: (chunkInfo) => {
-            if (chunkInfo.name === 'background' || chunkInfo.name === 'content' || chunkInfo.name === 'ii-content' || chunkInfo.name === 'ic-agent' || chunkInfo.name === 'dashboard') {
-              return '[name].js';
+            if (chunkInfo.name === 'background') {
+              return 'background.js';
             }
-            return 'assets/[name].js';
+            if (chunkInfo.name === 'content') {
+              return 'content.js';
+            }
+            if (chunkInfo.name === 'ii-content') {
+              return 'ii-content.js';
+            }
+            if (chunkInfo.name === 'ic-agent') {
+              return 'ic-agent.js';
+            }
+            if (chunkInfo.name === 'dashboard') {
+              return 'dashboard.js';
+            }
+            return 'assets/[name]-[hash].js';
           },
           chunkFileNames: 'assets/[name]-[hash].js',
           assetFileNames: (assetInfo) => {
-            const info = assetInfo.name.split('.');
-            const extType = info[info.length - 1];
-            if (/\.(jpe?g|png|gif|svg|ico)$/i.test(assetInfo.name)) {
-              return `assets/images/[name][extname]`;
+            if (assetInfo.name === 'style.css') {
+              return 'assets/index.css';
             }
-            if (/\.css$/i.test(assetInfo.name)) {
-              return `assets/[name][extname]`;
+            if (assetInfo.name === 'popup.html') {
+              return 'popup.html';
             }
-            return `assets/[name]-[hash][extname]`;
-          },
-          format: 'es',
-          sourcemap: true
+            return 'assets/[name]-[hash][extname]';
+          }
         }
       },
       target: 'esnext',
-      sourcemap: true,
       commonjsOptions: {
-        transformMixedEsModules: true
+        transformMixedEsModules: true,
       }
     },
     resolve: {
       alias: {
-        '@': resolve(__dirname, 'src'),
-        '@dfinity/agent': resolve(__dirname, 'node_modules/@dfinity/agent'),
-        '@dfinity/candid': resolve(__dirname, 'node_modules/@dfinity/candid'),
-        '@dfinity/principal': resolve(__dirname, 'node_modules/@dfinity/principal'),
-        '@dfinity/auth-client': resolve(__dirname, 'node_modules/@dfinity/auth-client'),
-        '@dfinity/identity': resolve(__dirname, 'node_modules/@dfinity/identity'),
-        '@dfinity/identity-secp256k1': resolve(__dirname, 'node_modules/@dfinity/identity-secp256k1')
+        '@': resolve(__dirname, './src'),
+      }
+    },
+    server: {
+      port: 3000,
+      strictPort: true,
+      hmr: {
+        port: 3000
       }
     }
   };

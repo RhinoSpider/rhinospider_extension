@@ -1,235 +1,174 @@
-// Import dependencies
 import { AuthClient } from '@dfinity/auth-client';
-import { ConsumerService } from './services/consumer';
-
-// Constants
-const II_URL = import.meta.env.VITE_II_URL || 'https://identity.ic0.app';
-const IC_HOST = import.meta.env.VITE_IC_HOST || 'https://icp0.io';
+import { Actor, HttpAgent } from '@dfinity/agent';
+import { idlFactory } from './declarations/consumer/consumer.did.js';
 
 // Logger utility
 const logger = {
     log: (msg) => console.log(`✅ [Dashboard] ${msg}`),
-    error: (msg, error) => console.error(`❌ [Dashboard] ${msg}`, error),
-    debug: (msg, data) => console.debug(`🔍 [Dashboard] ${msg}`, data || ''),
-    success: (msg) => console.log(`✨ [Dashboard] ${msg}`),
-    info: (msg) => console.log(`ℹ️ [Dashboard] ${msg}`)
+    info: (msg) => console.log(`ℹ️ [Dashboard] ${msg}`),
+    debug: (msg, data) => console.log(`🔍 [Dashboard] ${msg}`, data || ''),
+    error: (msg) => console.error(`❌ [Dashboard] ${msg}`)
 };
 
-// Initialize services
-let authClient = null;
-let consumerService = null;
+// Constants
+const II_URL = 'https://identity.ic0.app';
+const IC_HOST = 'https://icp0.io';
+const CANISTER_ID = 'tgyl5-yyaaa-aaaaj-az4wq-cai';
 
-// Initialize auth client
-async function initAuthClient() {
-    if (!authClient) {
-        logger.log('Creating auth client');
-        authClient = await AuthClient.create();
-    }
-    return authClient;
+// UI Elements
+const loginContainer = document.getElementById('login-container');
+const dashboardContainer = document.getElementById('dashboard-container');
+const loginButton = document.getElementById('login-button');
+
+// Services
+let authClient = null;
+let actor = null;
+
+function showLoginView() {
+    if (loginContainer) loginContainer.style.display = 'flex';
+    if (dashboardContainer) dashboardContainer.style.display = 'none';
 }
 
-// Initialize consumer service
-async function initConsumerService() {
+function showDashboardView() {
+    if (loginContainer) loginContainer.style.display = 'none';
+    if (dashboardContainer) dashboardContainer.style.display = 'flex';
+}
+
+function showError(message) {
+    const errorElement = document.getElementById('loginError');
+    if (errorElement) {
+        errorElement.textContent = message;
+        errorElement.style.display = 'block';
+    }
+    logger.error(message);
+}
+
+async function login() {
     try {
-        logger.log('Consumer Service Initialization');
-        
-        // Get identity from auth client
-        const client = await initAuthClient();
-        
-        // Wait for identity to be ready
-        if (!client.isAuthenticated()) {
-            logger.error('Not authenticated');
-            return null;
-        }
-        
-        const identity = client.getIdentity();
-        if (!identity) {
-            logger.error('No identity found');
-            return null;
+        logger.info('Initiating login');
+        logger.debug('Login config:', { II_URL });
+
+        if (!authClient) {
+            authClient = await AuthClient.create();
         }
 
-        // Check if we already have a service
-        if (consumerService) {
-            logger.log('Using existing consumer service');
-            return consumerService;
-        }
-
-        // Create new service
-        logger.log('Creating consumer service with identity');
-        consumerService = new ConsumerService(identity);
-        logger.success('Consumer service initialized');
-        
-        return consumerService;
+        await authClient.login({
+            identityProvider: II_URL,
+            onSuccess: handleAuthComplete,
+            onError: handleAuthError,
+            windowOpenerFeatures: 
+                `left=${window.screen.width / 2 - 525},` +
+                `top=${window.screen.height / 2 - 705},` +
+                `toolbar=0,location=0,menubar=0,width=1050,height=1410`
+        });
     } catch (error) {
-        logger.error('Failed to initialize consumer service:', error);
+        logger.error('Login failed:', error);
+        showError(error.message);
+    }
+}
+
+async function createActor(identity) {
+    try {
+        logger.debug('Creating actor with identity');
+        
+        // Create agent with identity directly from II
+        const agent = new HttpAgent({
+            host: IC_HOST,
+            identity: identity
+        });
+        
+        // Fetch root key for local development
+        if (IC_HOST !== 'https://ic0.app') {
+            await agent.fetchRootKey();
+        }
+        
+        // Create actor
+        const newActor = Actor.createActor(idlFactory, {
+            agent,
+            canisterId: CANISTER_ID
+        });
+        
+        logger.debug('Actor created successfully');
+        return newActor;
+    } catch (error) {
+        logger.error('Failed to create actor:', error);
         throw error;
     }
 }
 
-// Handle login
-async function handleLogin() {
-    try {
-        logger.info('Initiating login');
-        const client = await initAuthClient();
-        
-        logger.debug('Login config:', {
-            II_URL,
-            IC_HOST
-        });
-        
-        await client.login({
-            identityProvider: II_URL,
-            maxTimeToLive: BigInt(7 * 24 * 60 * 60 * 1000 * 1000 * 1000), // 7 days
-            onSuccess: async () => {
-                logger.success('Login successful');
-                await onSuccess();
-            },
-            onError: (error) => {
-                logger.error('Login error:', error);
-                handleAuthError(error);
-            }
-        });
-    } catch (error) {
-        logger.error('Login failed:', error);
-        handleAuthError(error);
-    }
-}
-
-// Handle successful login
-async function onSuccess() {
+async function handleAuthComplete() {
     try {
         logger.log('Auth complete');
+
+        // Get identity from auth client
+        const identity = await authClient.getIdentity();
+        logger.debug('Got identity:', identity);
         
-        // Initialize consumer service
-        await initConsumerService();
+        // Just verify we can get the delegation chain
+        const chain = identity.getDelegation();
+        logger.debug('Got delegation chain:', chain);
         
-        // Show dashboard and initialize data
-        showDashboard();
-        await initializeDashboard();
+        // For now just show the principal
+        const principal = identity.getPrincipal();
+        logger.debug('Got principal:', principal.toString());
+        
+        // Create actor
+        actor = await createActor(identity);
+        
+        // Try a simple call to verify actor works
+        const profile = await actor.getProfile();
+        logger.debug('Got profile:', profile);
+        
+        // Show dashboard view
+        showDashboardView();
+        
+        // Show the principal and profile in the dashboard
+        const profileElement = document.getElementById('userProfile');
+        if (profileElement) {
+            profileElement.textContent = `Principal: ${principal.toString()}\n\nProfile: ${JSON.stringify(profile, null, 2)}`;
+        }
+
     } catch (error) {
-        logger.error('Failed to handle login success:', error);
-        handleAuthError(error);
+        logger.error('Auth completion failed:', error);
+        showError('Failed to complete authentication: ' + error.message);
+        showLoginView();
     }
 }
 
-// Handle auth error
 function handleAuthError(error) {
-    logger.error('Auth error:', error);
-    const errorMsg = error.message || 'Authentication failed';
-    document.getElementById('loginError').textContent = errorMsg;
-    document.getElementById('loginError').style.display = 'block';
+    logger.error('Login failed:', error);
+    showError('Authentication failed: ' + error.message);
+    showLoginView();
 }
 
-// Initialize dashboard
-async function initializeDashboard() {
+async function initialize() {
     try {
-        logger.log('Initializing dashboard');
-        const service = await initConsumerService();
-        
-        if (!service) {
-            throw new Error('Failed to initialize consumer service');
-        }
-        
-        // Get user profile
-        const profile = await service.getProfile();
-        if (profile) {
-            document.getElementById('userProfile').textContent = JSON.stringify(profile, null, 2);
-        }
-        
-        logger.success('Dashboard initialized');
-    } catch (error) {
-        logger.error('Failed to initialize dashboard:', error);
-        handleAuthError(error);
-    }
-}
+        // Create auth client
+        logger.log('Creating auth client');
+        authClient = await AuthClient.create();
+        logger.log('Auth client created');
 
-// Show login page
-function showLogin() {
-    document.getElementById('loginPage').style.display = 'flex';
-    document.getElementById('dashboardContent').style.display = 'none';
-}
-
-// Show dashboard
-function showDashboard() {
-    document.getElementById('loginPage').style.display = 'none';
-    document.getElementById('dashboardContent').style.display = 'flex';
-}
-
-// Initialize UI
-function initializeUI() {
-    // Add login button handler
-    const loginButton = document.getElementById('loginButton');
-    if (loginButton) {
-        loginButton.addEventListener('click', handleLogin);
-    }
-
-    // Add logout button handler
-    const logoutButton = document.getElementById('logoutButton');
-    if (logoutButton) {
-        logoutButton.addEventListener('click', handleLogout);
-    }
-
-    // Add navigation handlers
-    document.querySelectorAll('.nav-item').forEach(item => {
-        item.addEventListener('click', () => {
-            // Remove active class from all items
-            document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
-            
-            // Add active class to clicked item
-            item.classList.add('active');
-            
-            // Hide all sections
-            document.querySelectorAll('.content-section').forEach(section => {
-                section.classList.remove('active');
-                section.style.display = 'none';
-            });
-            
-            // Show selected section
-            const target = item.getAttribute('data-target');
-            const section = document.getElementById(target);
-            if (section) {
-                section.classList.add('active');
-                section.style.display = 'block';
-            }
-        });
-    });
-}
-
-// Check login state on page load
-document.addEventListener('DOMContentLoaded', async () => {
-    try {
-        // Initialize UI first
-        initializeUI();
-
+        // Check if user is already logged in
         logger.log('Checking Login State');
-        const client = await initAuthClient();
-        const isAuth = await client.isAuthenticated();
-        
-        if (isAuth) {
-            // Initialize consumer service
-            await initConsumerService();
-            
-            // Show dashboard and initialize data
-            showDashboard();
-            await initializeDashboard();
+        const isAuthenticated = await authClient.isAuthenticated();
+
+        if (!isAuthenticated) {
+            logger.info('User is not authenticated');
+            showLoginView();
+            // Set up login button handler
+            if (loginButton) {
+                loginButton.onclick = login;
+            }
         } else {
-            showLogin();
+            logger.info('User is authenticated');
+            await handleAuthComplete();
         }
     } catch (error) {
-        logger.error('Failed to check login state:', error);
-        handleAuthError(error);
-    }
-});
-
-// Handle logout
-async function handleLogout() {
-    try {
-        const client = await initAuthClient();
-        await client.logout();
-        consumerService = null;
-        showLogin();
-    } catch (error) {
-        logger.error('Failed to logout:', error);
-        handleAuthError(error);
+        logger.error('Initialization failed:', error);
+        showError('Failed to initialize: ' + error.message);
+        showLoginView();
     }
 }
+
+// Initialize dashboard when page loads
+window.addEventListener('load', initialize);
