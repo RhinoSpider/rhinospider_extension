@@ -129,22 +129,7 @@ export default defineConfig(({ command, mode }) => {
         },
         output: {
           entryFileNames: (chunkInfo) => {
-            if (chunkInfo.name === 'background') {
-              return 'background.js';
-            }
-            if (chunkInfo.name === 'content') {
-              return 'content.js';
-            }
-            if (chunkInfo.name === 'ii-content') {
-              return 'ii-content.js';
-            }
-            if (chunkInfo.name === 'ic-agent') {
-              return 'ic-agent.js';
-            }
-            if (chunkInfo.name === 'dashboard') {
-              return 'dashboard.js';
-            }
-            return 'assets/[name]-[hash].js';
+            return '[name].js';
           },
           chunkFileNames: 'assets/[name]-[hash].js',
           assetFileNames: (assetInfo) => {
@@ -166,6 +151,7 @@ export default defineConfig(({ command, mode }) => {
     resolve: {
       alias: {
         '@': resolve(__dirname, './src'),
+        '@declarations': resolve(__dirname, 'declarations')
       }
     },
     server: {

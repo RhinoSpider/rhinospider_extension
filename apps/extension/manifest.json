@@ -5,8 +5,7 @@
   "description": "RhinoSpider Chrome Extension",
   "permissions": [
     "storage",
-    "activeTab",
-    "scripting"
+    "tabs"
   ],
   "host_permissions": [
     "https://*.ic0.app/*",
@@ -30,13 +29,6 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "content_scripts": [
-    {
-      "matches": ["chrome-extension://*/*"],
-      "js": ["src/content-script/ic-agent.js"],
-      "run_at": "document_start"
-    }
-  ],
   "web_accessible_resources": [
     {
       "resources": [
