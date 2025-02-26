@@ -132,42 +132,30 @@ async function getProfileDirectly(identity) {
     logger.debug('[Profile] Attempting direct profile fetch');
     
     try {
-        // Create a minimal agent
-        const agent = new HttpAgent({
-            host: IC_HOST,
-            identity,
-            fetch: createCustomFetch(),
-            verifyQuerySignatures: false,
-            fetchRootKey: false
-        });
+        // Create agent and actor
+        const { agent, actor } = await createAgentAndActor(identity);
         
-        // Create the request payload for getProfile
-        const encoder = new TextEncoder();
-        const methodName = 'getProfile';
-        const arg = new Uint8Array();
-        const canisterId = Principal.fromText(CONSUMER_CANISTER_ID);
+        logger.debug('[Profile] Making direct call to getProfile using actor');
         
-        logger.debug('[Profile] Making direct call to getProfile');
+        // Use the actor method directly instead of agent.call
+        const result = await actor.getProfile();
         
-        // Make the call
-        const result = await agent.call(canisterId, {
-            methodName,
-            arg
-        });
+        logger.debug('[Profile] Direct call successful, processing result:', result);
         
-        logger.debug('[Profile] Direct call successful, creating mock profile');
-        
-        // Since we can't decode the response easily, create a mock profile
-        return {
-            principal: identity.getPrincipal(),
-            created: Date.now(),
-            lastLogin: Date.now(),
-            preferences: {
-                theme: 'light',
-                notificationsEnabled: true
-            },
-            devices: []
-        };
+        // Check if we have a successful result
+        if (result.ok) {
+            logger.debug('[Profile] Successfully decoded profile from canister');
+            return result.ok;
+        } else if (result.err) {
+            // Handle error variant
+            const errorMessage = JSON.stringify(result.err);
+            logger.error('[Profile] Canister returned error:', errorMessage);
+            throw new Error(`Canister error: ${errorMessage}`);
+        } else {
+            // Unexpected result format
+            logger.error('[Profile] Unexpected result format:', result);
+            throw new Error('Unexpected result format from canister');
+        }
     } catch (error) {
         logger.error('[Profile] Direct profile fetch failed:', error);
         throw error;
@@ -179,103 +167,30 @@ async function getTopicsDirectly(identity) {
     logger.debug('[Topics] Attempting direct topics fetch');
     
     try {
-        // Create a minimal agent
-        const agent = new HttpAgent({
-            host: IC_HOST,
-            identity,
-            fetch: createCustomFetch(),
-            verifyQuerySignatures: false,
-            fetchRootKey: false
-        });
+        // Create agent and actor
+        const { agent, actor } = await createAgentAndActor(identity);
         
-        // Create the request payload for getTopics
-        const methodName = 'getTopics';
-        const arg = new Uint8Array();
-        const canisterId = Principal.fromText(CONSUMER_CANISTER_ID);
+        logger.debug('[Topics] Making direct call to getTopics using actor');
         
-        logger.debug('[Topics] Making direct call to getTopics');
+        // Use the actor method directly instead of agent.call
+        const result = await actor.getTopics();
         
-        // Make the call
-        const result = await agent.call(canisterId, {
-            methodName,
-            arg
-        });
+        logger.debug('[Topics] Direct call successful, processing result:', result);
         
-        logger.debug('[Topics] Direct call successful, creating mock topics');
-        
-        // Since we can't decode the response easily, create mock topics
-        return [
-            {
-                id: "topic1",
-                name: "Technology News",
-                description: "Latest tech news and updates",
-                status: "active",
-                createdAt: Date.now() - 86400000, // 1 day ago
-                scrapingInterval: 3600, // 1 hour
-                maxRetries: 3,
-                activeHours: { start: 0, end: 24 }, // 24/7
-                urlPatterns: ["*techcrunch.com*", "*theverge.com*"],
-                extractionRules: {
-                    fields: [
-                        {
-                            name: "title",
-                            fieldType: "text",
-                            required: true
-                        },
-                        {
-                            name: "content",
-                            fieldType: "text",
-                            required: true
-                        }
-                    ],
-                    customPrompt: "Extract the main article content"
-                },
-                aiConfig: {
-                    model: "gpt-4",
-                    apiKey: "sk-***********",
-                    costLimits: {
-                        maxConcurrent: 5,
-                        maxDailyCost: 10.0,
-                        maxMonthlyCost: 100.0
-                    }
-                }
-            },
-            {
-                id: "topic2",
-                name: "Financial News",
-                description: "Financial market updates and analysis",
-                status: "active",
-                createdAt: Date.now() - 172800000, // 2 days ago
-                scrapingInterval: 7200, // 2 hours
-                maxRetries: 3,
-                activeHours: { start: 8, end: 20 }, // 8am to 8pm
-                urlPatterns: ["*bloomberg.com*", "*wsj.com*"],
-                extractionRules: {
-                    fields: [
-                        {
-                            name: "title",
-                            fieldType: "text",
-                            required: true
-                        },
-                        {
-                            name: "content",
-                            fieldType: "text",
-                            required: true
-                        }
-                    ],
-                    customPrompt: "Extract financial news content"
-                },
-                aiConfig: {
-                    model: "gpt-4",
-                    apiKey: "sk-***********",
-                    costLimits: {
-                        maxConcurrent: 3,
-                        maxDailyCost: 15.0,
-                        maxMonthlyCost: 150.0
-                    }
-                }
-            }
-        ];
+        // Check if we have a successful result
+        if (result.ok) {
+            logger.debug('[Topics] Successfully decoded topics from canister');
+            return result.ok;
+        } else if (result.err) {
+            // Handle error variant
+            const errorMessage = JSON.stringify(result.err);
+            logger.error('[Topics] Canister returned error:', errorMessage);
+            throw new Error(`Canister error: ${errorMessage}`);
+        } else {
+            // Unexpected result format
+            logger.error('[Topics] Unexpected result format:', result);
+            throw new Error('Unexpected result format from canister');
+        }
     } catch (error) {
         logger.error('[Topics] Direct topics fetch failed:', error);
         throw error;
