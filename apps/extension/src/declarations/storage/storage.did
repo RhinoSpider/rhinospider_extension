@@ -1,13 +1,13 @@
-type UserProfile = 
- record {
-   created: int;
-   devices: vec text;
-   lastLogin: int;
-   preferences: record {
-                  notificationsEnabled: bool;
-                  theme: text;
-                };
-   "principal": principal;
+type Storage = 
+ service {
+   addAuthorizedCanister: (principal) -> (Result);
+   getAIConfig: () -> (Result_3) query;
+   getScrapedData: (vec text) -> (Result_2) query;
+   getTopics: () -> (Result_1) query;
+   removeAuthorizedCanister: (principal) -> (Result);
+   submitScrapedData: (ScrapedData) -> (Result);
+   updateAIConfig: (AIConfig) -> (Result);
+   updateTopic: (ScrapingTopic) -> (Result);
  };
 type ScrapingTopic = 
  record {
@@ -45,10 +45,15 @@ type ScrapedData =
    topic: text;
    url: text;
  };
+type Result_3 = 
+ variant {
+   err: Error;
+   ok: AIConfig;
+ };
 type Result_2 = 
  variant {
    err: Error;
-   ok: UserProfile;
+   ok: vec ScrapedData;
  };
 type Result_1 = 
  variant {
@@ -85,10 +90,4 @@ type AIConfig =
    costLimits: CostLimits;
    model: text;
  };
-service : {
-  getProfile: () -> (Result_2);
-  getTopics: () -> (Result_1);
-  registerDevice: (text) -> (Result);
-  submitScrapedData: (ScrapedData) -> (Result);
-  updatePreferences: (bool, text) -> (Result);
-}
+service : () -> Storage

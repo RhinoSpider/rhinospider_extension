@@ -1,6 +1,6 @@
 // Content script to handle page scraping and IC agent
 import { Actor, HttpAgent } from '@dfinity/agent';
-import { idlFactory } from './declarations/consumer/consumer.did.js';
+import { idlFactory } from './declarations/consumer';
 
 // Constants from environment
 const IC_HOST = import.meta.env.VITE_IC_HOST || 'https://icp0.io';

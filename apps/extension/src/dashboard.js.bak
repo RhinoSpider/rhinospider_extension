@@ -1,0 +1,327 @@
+import { Actor, HttpAgent } from '@dfinity/agent';
+import { AuthClient } from '@dfinity/auth-client';
+import { Principal } from '@dfinity/principal';
+import { idlFactory } from './declarations/consumer/consumer.did.js';
+import { IDL } from '@dfinity/candid';
+
+// Constants
+const IC_HOST = process.env.IC_HOST || 'https://icp0.io';
+const CONSUMER_CANISTER_ID = process.env.CONSUMER_CANISTER_ID || 'tgyl5-yyaaa-aaaaj-az4wq-cai';
+const II_URL = process.env.II_URL || 'https://identity.ic0.app';
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 1000;
+
+// Set up logger
+const logger = {
+    debug: (message, ...args) => {
+        console.debug(`[${new Date().toISOString()}] [DEBUG] ${message}`, ...args);
+    },
+    info: (message, ...args) => {
+        console.info(`[${new Date().toISOString()}] [INFO] ${message}`, ...args);
+    },
+    warn: (message, ...args) => {
+        console.warn(`[${new Date().toISOString()}] [WARN] ${message}`, ...args);
+    },
+    error: (message, ...args) => {
+        console.error(`[${new Date().toISOString()}] [ERROR] ${message}`, ...args);
+    }
+};
+
+// Define UserProfile type for decoding
+const UserProfile = IDL.Record({
+  'created': IDL.Int,
+  'principal': IDL.Principal,
+  'preferences': IDL.Record({
+    'theme': IDL.Text,
+    'notificationsEnabled': IDL.Bool,
+  }),
+  'lastLogin': IDL.Int,
+  'devices': IDL.Vec(IDL.Text),
+});
+
+// Define Error type for decoding
+const Error = IDL.Variant({
+  'InvalidInput': IDL.Text,
+  'SystemError': IDL.Text,
+  'NotFound': IDL.Null,
+  'NotAuthorized': IDL.Null,
+  'AlreadyExists': IDL.Null,
+});
+
+// Define Result type for decoding
+const Result = IDL.Variant({ 'ok': UserProfile, 'err': Error });
+
+// Create a custom fetch handler
+const createCustomFetch = () => {
+  return async (url, options = {}) => {
+    // Log request details
+    logger.debug('[Fetch] Request URL:', url);
+    
+    // Ensure proper headers
+    options.headers = options.headers || {};
+    options.headers['Content-Type'] = options.headers['Content-Type'] || 'application/cbor';
+    options.credentials = 'omit';
+    
+    try {
+      // Make the fetch call
+      const response = await fetch(url, options);
+      
+      // Log response details
+      logger.debug('[Fetch] Response status:', response.status);
+      
+      if (!response.ok) {
+        const text = await response.text();
+        logger.error('[Fetch] Response error:', text);
+        return {
+          ok: response.ok,
+          status: response.status,
+          statusText: response.statusText,
+          headers: new Headers(response.headers),
+          arrayBuffer: async () => {
+            throw new Error(`HTTP error: ${response.status} - ${text}`);
+          }
+        };
+      }
+      
+      const buffer = await response.arrayBuffer();
+      
+      // Return a properly formatted response object
+      return {
+        ok: response.ok,
+        status: response.status,
+        statusText: response.statusText,
+        headers: new Headers(response.headers),
+        arrayBuffer: () => Promise.resolve(buffer)
+      };
+    } catch (error) {
+      logger.error('[Fetch] Fetch error:', error);
+      throw error;
+    }
+  };
+};
+
+// Create agent and actor for the given identity
+async function createAgentAndActor(identity) {
+    logger.debug('[Agent] Creating agent for principal:', identity.getPrincipal().toText());
+
+    try {
+        // Create agent with custom fetch handler
+        const agent = new HttpAgent({
+            host: IC_HOST,
+            identity,
+            fetch: createCustomFetch(),
+            verifyQuerySignatures: false,
+            fetchRootKey: false,
+            disableHandshake: true
+        });
+        
+        // Skip root key fetching for mainnet
+        logger.debug('[Agent] Agent created successfully');
+        
+        // Create actor
+        const actor = Actor.createActor(idlFactory, {
+            agent,
+            canisterId: CONSUMER_CANISTER_ID,
+        });
+
+        return { agent, actor };
+    } catch (error) {
+        logger.error('[Agent] Failed to create agent or actor:', error);
+        throw error;
+    }
+}
+
+// Make a direct call to the canister
+async function makeDirectCall(identity, methodName, arg = new Uint8Array()) {
+  try {
+    const { agent } = await createAgentAndActor(identity);
+    
+    logger.debug(`[Call] Making direct call to ${methodName}`);
+    const responseBuffer = await agent.call(
+      Principal.fromText(CONSUMER_CANISTER_ID),
+      methodName,
+      arg
+    );
+    
+    logger.debug('[Call] Response received, size:', responseBuffer.byteLength);
+    return responseBuffer;
+  } catch (error) {
+    logger.error('[Call] Direct call failed:', error);
+    throw error;
+  }
+}
+
+// Get profile from canister
+async function getProfile(identity) {
+    try {
+        // Make direct call to getProfile
+        logger.debug('[Profile] Making direct call to getProfile');
+        const responseBuffer = await makeDirectCall(identity, 'getProfile');
+        
+        // Decode response
+        const result = IDL.decode([Result], responseBuffer)[0];
+        logger.debug('[Profile] Decoded result:', result);
+        
+        if ('ok' in result) {
+            return result.ok;
+        } else {
+            throw new Error(`Profile call returned error: ${JSON.stringify(result.err)}`);
+        }
+    } catch (error) {
+        logger.error('[Profile] Failed to get profile:', error);
+        throw error;
+    }
+}
+
+// Initialize authentication
+async function initAuth() {
+    logger.debug('[Auth] ====== Start Initialization ======');
+    try {
+        // Check if user is already authenticated
+        const authClient = await AuthClient.create();
+        const isAuthenticated = await authClient.isAuthenticated();
+        
+        if (isAuthenticated) {
+            logger.debug('[Auth] User is already authenticated');
+            
+            // Get identity and principal
+            const identity = authClient.getIdentity();
+            const principal = identity.getPrincipal();
+            logger.debug('[Auth] Principal:', principal.toText());
+            
+            // Try to get profile
+            try {
+                const profile = await getProfile(identity);
+                updateUIWithProfile(profile);
+            } catch (error) {
+                logger.error('[Auth] Failed to initialize agent or fetch profile:', error);
+                showError('Failed to initialize agent or fetch profile. Please try again later.');
+            }
+        } else {
+            logger.debug('[Auth] User is not authenticated');
+            showLoginButton();
+        }
+    } catch (error) {
+        logger.error('[Auth] Failed to initialize auth client:', error);
+        showError('Failed to initialize auth client. Please try again later.');
+    }
+    logger.debug('[Auth] ====== End Initialization ======');
+}
+
+// Login with Internet Identity
+async function login() {
+    logger.debug('[Auth] Starting login process');
+    try {
+        const authClient = await AuthClient.create();
+        
+        // Start login flow
+        await new Promise((resolve, reject) => {
+            authClient.login({
+                identityProvider: II_URL,
+                onSuccess: resolve,
+                onError: reject
+            });
+        });
+        
+        logger.debug('[Auth] Login successful');
+        
+        // Get identity and principal
+        const identity = authClient.getIdentity();
+        const principal = identity.getPrincipal();
+        logger.debug('[Auth] Principal:', principal.toText());
+        
+        // Try to get profile
+        try {
+            const profile = await getProfile(identity);
+            updateUIWithProfile(profile);
+        } catch (error) {
+            logger.error('[Auth] Failed to initialize agent or fetch profile:', error);
+            showError('Failed to initialize agent or fetch profile. Please try again later.');
+        }
+    } catch (error) {
+        logger.error('[Auth] Login failed:', error);
+        showError('Login failed. Please try again later.');
+    }
+}
+
+// Logout
+async function logout() {
+    logger.debug('[Auth] Starting logout process');
+    try {
+        const authClient = await AuthClient.create();
+        await authClient.logout();
+        logger.debug('[Auth] Logout successful');
+        showLoginButton();
+    } catch (error) {
+        logger.error('[Auth] Logout failed:', error);
+        showError('Logout failed. Please try again later.');
+    }
+}
+
+// Update UI with profile
+function updateUIWithProfile(profile) {
+    logger.debug('[UI] Updating UI with profile:', profile);
+    
+    // Hide login button
+    document.getElementById('login-container').style.display = 'none';
+    
+    // Show dashboard
+    document.getElementById('dashboard-container').style.display = 'block';
+    
+    // Update profile info
+    document.getElementById('principal-id').textContent = profile.principal.toText();
+    document.getElementById('last-login').textContent = new Date(Number(profile.lastLogin)).toLocaleString();
+    document.getElementById('theme-preference').textContent = profile.preferences.theme;
+    document.getElementById('notifications-preference').textContent = profile.preferences.notificationsEnabled ? 'Enabled' : 'Disabled';
+    
+    // Update devices list
+    const devicesList = document.getElementById('devices-list');
+    devicesList.innerHTML = '';
+    profile.devices.forEach(device => {
+        const li = document.createElement('li');
+        li.textContent = device;
+        devicesList.appendChild(li);
+    });
+}
+
+// Show login button
+function showLoginButton() {
+    // Hide dashboard
+    document.getElementById('dashboard-container').style.display = 'none';
+    
+    // Show login button
+    document.getElementById('login-container').style.display = 'block';
+}
+
+// Show error message
+function showError(message) {
+    const errorElement = document.getElementById('error-message');
+    errorElement.textContent = message;
+    errorElement.style.display = 'block';
+    
+    // Hide after 5 seconds
+    setTimeout(() => {
+        errorElement.style.display = 'none';
+    }, 5000);
+}
+
+// Initialize when DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+    logger.debug('[UI] DOM loaded, initializing auth');
+    
+    // Initialize auth
+    initAuth();
+    
+    // Add event listeners
+    document.getElementById('login-button').addEventListener('click', login);
+    document.getElementById('logout-button').addEventListener('click', logout);
+});
+
+// Export functions for debugging
+window.rhinoSpiderDebug = {
+    createAgentAndActor,
+    makeDirectCall,
+    getProfile,
+    login,
+    logout
+};

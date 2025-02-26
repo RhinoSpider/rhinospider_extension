@@ -69,8 +69,8 @@ type ScrapedData = record {
 };
 
 service : {
-    getTopics: () -> (variant { ok: vec ScrapingTopic; err: Error });
+    getTopics: () -> (variant { ok: vec ScrapingTopic; err: Error }) update;
     getAIConfig: () -> (variant { ok: AIConfig; err: Error });
-    getProfile: () -> (variant { ok: UserProfile; err: Error });
+    getProfile: () -> (variant { ok: UserProfile; err: Error }) update;
     submitScrapedData: (ScrapedData) -> (variant { ok; err: Error });
 }

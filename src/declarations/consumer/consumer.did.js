@@ -1,22 +1,4 @@
 export const idlFactory = ({ IDL }) => {
-  const CostLimits = IDL.Record({
-    'maxConcurrent' : IDL.Nat,
-    'maxDailyCost' : IDL.Float64,
-    'maxMonthlyCost' : IDL.Float64,
-  });
-  const AIConfig = IDL.Record({
-    'model' : IDL.Text,
-    'costLimits' : CostLimits,
-    'apiKey' : IDL.Text,
-  });
-  const Error = IDL.Variant({
-    'InvalidInput' : IDL.Text,
-    'SystemError' : IDL.Text,
-    'NotFound' : IDL.Null,
-    'NotAuthorized' : IDL.Null,
-    'AlreadyExists' : IDL.Null,
-  });
-  const Result_3 = IDL.Variant({ 'ok' : AIConfig, 'err' : Error });
   const UserProfile = IDL.Record({
     'created' : IDL.Int,
     'principal' : IDL.Principal,
@@ -26,6 +8,13 @@ export const idlFactory = ({ IDL }) => {
     }),
     'lastLogin' : IDL.Int,
     'devices' : IDL.Vec(IDL.Text),
+  });
+  const Error = IDL.Variant({
+    'InvalidInput' : IDL.Text,
+    'SystemError' : IDL.Text,
+    'NotFound' : IDL.Null,
+    'NotAuthorized' : IDL.Null,
+    'AlreadyExists' : IDL.Null,
   });
   const Result_2 = IDL.Variant({ 'ok' : UserProfile, 'err' : Error });
   const ScrapingField = IDL.Record({
@@ -37,6 +26,16 @@ export const idlFactory = ({ IDL }) => {
   const ExtractionRules = IDL.Record({
     'fields' : IDL.Vec(ScrapingField),
     'customPrompt' : IDL.Opt(IDL.Text),
+  });
+  const CostLimits = IDL.Record({
+    'maxConcurrent' : IDL.Nat,
+    'maxDailyCost' : IDL.Float64,
+    'maxMonthlyCost' : IDL.Float64,
+  });
+  const AIConfig = IDL.Record({
+    'model' : IDL.Text,
+    'costLimits' : CostLimits,
+    'apiKey' : IDL.Text,
   });
   const ScrapingTopic = IDL.Record({
     'id' : IDL.Text,
@@ -68,7 +67,6 @@ export const idlFactory = ({ IDL }) => {
     'scraping_time' : IDL.Int,
   });
   return IDL.Service({
-    'getAIConfig' : IDL.Func([], [Result_3], []),
     'getProfile' : IDL.Func([], [Result_2], ['query']),
     'getTopics' : IDL.Func([], [Result_1], []),
     'registerDevice' : IDL.Func([IDL.Text], [Result], []),

@@ -113,7 +113,7 @@ service : {
     deleteTopic: (text) -> (Result_1);
     getAIConfig: () -> (Result_2);
     getScrapedData: (vec text) -> (Result_5);
-    getTopics: () -> (Result_4);
+    getTopics: () -> (Result_4) update;
     get_users: () -> (Result_4);
     remove_user: (principal) -> (Result_1);
     setTopicActive: (text, bool) -> (Result_1);

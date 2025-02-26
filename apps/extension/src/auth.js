@@ -48,37 +48,17 @@ export async function storeDelegationChain(chain) {
 
 // Create delegation chain from stored data
 const createDelegationChain = (storedChain) => {
-  try {
-    if (!storedChain || !storedChain.delegations) {
-      throw new Error('Invalid stored chain structure');
-    }
-
-    // Convert public key to Uint8Array
-    const publicKey = new Uint8Array(storedChain.publicKey);
-
-    // Process each delegation with proper CBOR structure
-    const delegations = storedChain.delegations.map((d, i) => {
-      // Convert binary data to Uint8Array first
-      const pubkey = new Uint8Array(d.delegation.pubkey);
-      const signature = new Uint8Array(d.signature);
-
-      // Create proper SignedDelegation structure
-      return {
-        delegation: {
-          pubkey: pubkey, // Keep as Uint8Array
-          expiration: BigInt('0x' + d.delegation.expiration),
-          targets: [] // Empty array instead of null
-        },
-        signature: signature // Keep as Uint8Array
-      };
-    });
-
-    // Create chain with proper types
-    return DelegationChain.fromDelegations(publicKey, delegations);
-  } catch (error) {
-    console.error('Failed to create delegation chain:', error);
-    throw error;
-  }
+  const delegations = storedChain.delegations.map(d => ({
+    delegation: {
+      pubkey: new Uint8Array(d.delegation.pubkey),
+      expiration: BigInt('0x' + d.delegation.expiration), // Critical: convert hex to BigInt
+      targets: d.delegation.targets || []
+    },
+    signature: new Uint8Array(d.signature)
+  }));
+  
+  const publicKey = new Uint8Array(storedChain.publicKey);
+  return DelegationChain.fromDelegations(publicKey, delegations);
 };
 
 // Create identity from delegation chain
@@ -99,173 +79,95 @@ export async function createBackgroundIdentity(storedChain) {
   }
 }
 
-class BackgroundAuthManager {
-  static instance = null;
-  
-  constructor() {
-    this.authClient = null;
-    this.agent = null;
-    this.consumerActor = null;
-    this.isBackground = !globalThis.window;
+// Cached instances
+let authClient = null;
+let actor = null;
+
+// Time before expiry to trigger renewal (1 day in nanoseconds)
+const RENEWAL_THRESHOLD = BigInt(24 * 60 * 60 * 1000 * 1000 * 1000);
+
+export class AuthManager {
+  constructor(isBackground = false) {
+    this.isBackground = isBackground;
   }
 
-  static getInstance() {
-    if (!BackgroundAuthManager.instance) {
-      BackgroundAuthManager.instance = new BackgroundAuthManager();
-    }
-    return BackgroundAuthManager.instance;
-  }
-
-  async initialize() {
-    try {
-      // In background script, try to restore auth state from storage
-      if (this.isBackground) {
-        const stored = await chrome.storage.local.get(['authState', 'identityInfo']);
-        if (stored.authState && stored.identityInfo?.delegationChain) {
-          const authState = JSON.parse(stored.authState);
-          const storedChain = stored.identityInfo.delegationChain;
-          
-          if (authState.isAuthenticated && storedChain) {
-            // Verify delegation chain expiration
-            const now = BigInt(Date.now()) * BigInt(1000_000);
-            const chain = createDelegationChain(storedChain);
-            if (chain.delegations.some(d => d.delegation.expiration < now)) {
-              console.log('Delegation chain expired, clearing auth state');
-              await chrome.storage.local.remove(['authState', 'identityInfo']);
-              return { isAuthenticated: false };
-            }
-
-            // Create base identity with signing capability
-            const identity = await createBackgroundIdentity(storedChain);
-            
-            // Create agent with delegation identity and custom fetch handler
-            this.agent = new HttpAgent({
-              identity,
-              host: IC_HOST,
-              fetch: (...args) => {
-                const [resource, init = {}] = args;
-                // Ensure proper CBOR content type
-                init.headers = {
-                  ...init.headers,
-                  'Content-Type': 'application/cbor'
-                };
-                // Log request for debugging
-                console.log('Making request:', {
-                  resource,
-                  method: init.method,
-                  headers: init.headers
-                });
-                return fetch(resource, init).then(async response => {
-                  // Log response for debugging
-                  console.log('Got response:', {
-                    status: response.status,
-                    headers: Object.fromEntries(response.headers.entries())
-                  });
-                  return response;
-                }).catch(error => {
-                  console.error('Request failed:', error);
-                  throw error;
-                });
-              }
-            });
-
-            // Only fetch root key in development
-            if (import.meta.env.DEV) {
-              await this.agent.fetchRootKey();
-            }
-
-            // Create consumer actor with proper candid interface
-            const { createActor } = await import('../declarations/consumer');
-            this.consumerActor = await createActor(import.meta.env.VITE_CONSUMER_CANISTER_ID, {
-              agent: this.agent
-            });
-            
-            return authState;
-          }
+  async init() {
+    if (!authClient) {
+      console.log('Creating new auth client...');
+      authClient = await AuthClient.create({
+        idleOptions: {
+          disableDefaultIdleCallback: true,
+          disableIdle: true
         }
-      }
+      });
+      console.log('Auth client created');
+    }
+    return authClient;
+  }
 
-      // In popup/content script, create auth client normally
-      if (!this.authClient) {
-        this.authClient = await AuthClient.create({
-          idleOptions: {
-            disableDefaultIdleCallback: true, // Disable default idle behavior
-            disableIdle: true // Completely disable idle timeout
-          }
-        });
-      }
-
-      const isAuthenticated = await this.isAuthenticated();
-
-      if (isAuthenticated) {
-        const identity = this.authClient.getIdentity();
-        const chain = identity.getDelegation();
+  async isAuthenticated() {
+    const client = await this.init();
+    const isAuth = await client.isAuthenticated();
+    
+    if (isAuth) {
+      // Check if identity needs renewal
+      const identity = client.getIdentity();
+      const delegationChain = identity.getDelegation();
+      
+      if (delegationChain) {
+        const timeUntilExpiry = delegationChain.delegations[0].delegation.expiration - BigInt(Date.now()) * BigInt(1000_000);
         
-        // Store delegation chain
-        await storeDelegationChain(chain);
+        if (timeUntilExpiry < RENEWAL_THRESHOLD) {
+          console.log('Identity expiring soon, attempting renewal...');
+          await this.renewIdentity();
+        }
+      }
+    }
+    
+    return isAuth;
+  }
 
-        // Create agent with identity and custom fetch handler
-        this.agent = new HttpAgent({
+  async getIdentity() {
+    const client = await this.init();
+    if (await this.isAuthenticated()) {
+      return client.getIdentity();
+    }
+    return null;
+  }
+
+  async createActor() {
+    try {
+      // Get identity
+      const identity = await this.getIdentity();
+      if (!identity) {
+        console.error('No identity found');
+        throw new Error('No identity found');
+      }
+
+      console.log('Got identity:', identity.getPrincipal().toString());
+
+      // Create new actor if it doesn't exist or if we have a new identity
+      if (!actor || !actor._identity || actor._identity.getPrincipal().toString() !== identity.getPrincipal().toString()) {
+        const agent = new HttpAgent({ 
           identity,
-          host: IC_HOST,
-          fetch: (...args) => {
-            const [resource, init = {}] = args;
-            // Ensure proper CBOR content type
-            init.headers = {
-              ...init.headers,
-              'Content-Type': 'application/cbor'
-            };
-            // Log request for debugging
-            console.log('Making request:', {
-              resource,
-              method: init.method,
-              headers: init.headers
-            });
-            return fetch(resource, init).then(async response => {
-              // Log response for debugging
-              console.log('Got response:', {
-                status: response.status,
-                headers: Object.fromEntries(response.headers.entries())
-              });
-              return response;
-            }).catch(error => {
-              console.error('Request failed:', error);
-              throw error;
-            });
-          }
+          host: IC_HOST
         });
 
-        // Only fetch root key in development
-        if (import.meta.env.DEV) {
-          await this.agent.fetchRootKey();
+        // Initialize agent for non-local environments
+        if (!IC_HOST.includes('localhost')) {
+          await agent.fetchRootKey();
         }
 
-        // Create consumer actor with proper candid interface
         const { createActor } = await import('../declarations/consumer');
-        this.consumerActor = await createActor(import.meta.env.VITE_CONSUMER_CANISTER_ID, {
-          agent: this.agent
+        actor = await createActor(import.meta.env.VITE_CONSUMER_CANISTER_ID, {
+          agent
         });
       }
 
-      return {
-        isAuthenticated,
-        principal: isAuthenticated ? this.authClient.getIdentity().getPrincipal().toText() : null
-      };
+      return actor;
     } catch (error) {
-      console.error('Failed to initialize auth:', error);
-      return { isAuthenticated: false, error: error.message };
-    }
-  }
-
-  async createAgent(identity) {
-    this.agent = new HttpAgent({
-      identity,
-      host: IC_HOST
-    });
-
-    // Only fetch root key in development
-    if (import.meta.env.DEV) {
-      await this.agent.fetchRootKey();
+      console.error('Error getting consumer actor:', error);
+      throw error;
     }
   }
 
@@ -279,15 +181,15 @@ class BackgroundAuthManager {
 
         // Background authentication
         const identity = await createBackgroundIdentity(stored.identityInfo.delegationChain);
-        this.agent = new HttpAgent({ identity, host: IC_HOST });
-        
-        if (import.meta.env.DEV) {
-          await this.agent.fetchRootKey();
-        }
+        const principal = identity.getPrincipal().toText();
+        console.log('Background identity principal:', principal);
+
+        // Create actor with identity
+        actor = await this.createActor();
 
         return {
           isAuthenticated: true,
-          principal: identity.getPrincipal().toText()
+          principal
         };
       } catch (error) {
         console.error('Background auth failed:', error);
@@ -298,107 +200,66 @@ class BackgroundAuthManager {
 
     // Popup authentication
     try {
-      if (!this.authClient) {
-        this.authClient = await AuthClient.create({
-          idleOptions: {
-            disableDefaultIdleCallback: true,
-            disableIdle: true
-          }
-        });
-      }
-
       const isAuthenticated = await this.isAuthenticated();
-
       if (!isAuthenticated) {
         return { isAuthenticated: false };
       }
 
-      const identity = this.authClient.getIdentity();
+      const identity = await this.getIdentity();
       const chain = identity.getDelegation();
       
-      // Store delegation chain
+      // Store delegation chain with proper format
       await storeDelegationChain(chain);
 
-      // Create agent
-      this.agent = new HttpAgent({ identity, host: IC_HOST });
-      
-      if (import.meta.env.DEV) {
-        await this.agent.fetchRootKey();
-      }
-
-      // Create consumer actor
-      const { createActor } = await import('../declarations/consumer');
-      this.consumerActor = await createActor(import.meta.env.VITE_CONSUMER_CANISTER_ID, {
-        agent: this.agent
-      });
+      // Create actor with identity
+      actor = await this.createActor();
 
       return {
         isAuthenticated: true,
         principal: identity.getPrincipal().toText()
       };
     } catch (error) {
-      console.error('Popup auth failed:', error);
-      return { 
-        isAuthenticated: false,
-        error: error.message 
-      };
+      console.error('Failed to initialize auth:', error);
+      return { isAuthenticated: false, error: error.message };
     }
   }
 
-  async handlePopupAuth() {
-    const isAuthenticated = await this.isAuthenticated();
-    
-    if (isAuthenticated) {
-      const identity = this.authClient.getIdentity();
-      const chain = identity.getDelegation();
-      
-      // Store delegation chain
-      await storeDelegationChain(chain);
+  async login() {
+    const client = await this.init();
+    await new Promise((resolve, reject) => {
+      client.login({
+        identityProvider: import.meta.env.VITE_II_URL,
+        onSuccess: async () => {
+          console.log('Login successful');
+          // Verify delegation chain
+          const identity = client.getIdentity();
+          const delegationChain = identity.getDelegation();
+          
+          if (!delegationChain) {
+            console.error('No delegation chain found after login');
+            reject(new Error('Invalid delegation chain'));
+            return;
+          }
 
-      // Create agent
-      this.agent = new HttpAgent({ identity, host: IC_HOST });
-      
-      if (import.meta.env.DEV) {
-        await this.agent.fetchRootKey();
-      }
-
-      // Create consumer actor
-      const { createActor } = await import('../declarations/consumer');
-      this.consumerActor = await createActor(import.meta.env.VITE_CONSUMER_CANISTER_ID, {
-        agent: this.agent
+          // Store delegation chain
+          await storeDelegationChain(delegationChain);
+          resolve();
+        },
+        onError: (error) => {
+          console.error('Login failed:', error);
+          reject(error);
+        }
       });
-    }
-
-    return {
-      isAuthenticated,
-      principal: isAuthenticated ? this.authClient.getIdentity().getPrincipal().toText() : null
-    };
-  }
-
-  async isAuthenticated() {
-    if (this.isBackground) {
-      const stored = await chrome.storage.local.get(['authState']);
-      return stored.authState ? JSON.parse(stored.authState).isAuthenticated : false;
-    }
-    return this.authClient ? this.authClient.isAuthenticated() : false;
-  }
-
-  getAgent() {
-    return this.agent;
-  }
-
-  getConsumerActor() {
-    return this.consumerActor;
+    });
   }
 
   async logout() {
-    if (this.authClient) {
-      await this.authClient.logout();
+    if (!authClient) {
+      console.warn('No auth client to logout from');
+      return;
     }
-    this.agent = null;
-    this.consumerActor = null;
-    await chrome.storage.local.remove(['authState', 'identityInfo']);
+    await authClient.logout();
+    authClient = null;
+    actor = null;
   }
 }
-
-export { BackgroundAuthManager };

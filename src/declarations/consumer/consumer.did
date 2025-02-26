@@ -45,11 +45,6 @@ type ScrapedData =
    topic: text;
    url: text;
  };
-type Result_3 = 
- variant {
-   err: Error;
-   ok: AIConfig;
- };
 type Result_2 = 
  variant {
    err: Error;
@@ -91,7 +86,6 @@ type AIConfig =
    model: text;
  };
 service : {
-  getAIConfig: () -> (Result_3);
   getProfile: () -> (Result_2) query;
   getTopics: () -> (Result_1);
   registerDevice: (text) -> (Result);

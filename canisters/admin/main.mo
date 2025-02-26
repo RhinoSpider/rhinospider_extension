@@ -12,6 +12,7 @@ import Iter "mo:base/Iter";
 import Option "mo:base/Option";
 import Debug "mo:base/Debug";
 import Array "mo:base/Array";
+import Bool "mo:base/Bool";
 
 actor Admin {
     // Types
@@ -121,9 +122,16 @@ actor Admin {
     // Authorization check
     private func _isAuthorized(caller: Principal) : Bool {
         let callerStr = Principal.toText(caller);
+        
+        // Allow consumer canister
+        if (callerStr == CONSUMER_CANISTER_ID) {
+            return true;
+        };
+        
         if (Principal.isAnonymous(caller)) {
             return false; // Never allow anonymous access in production
         };
+        
         switch (users.get(caller)) {
             case (?user) {
                 Debug.print("User found: " # Principal.toText(user.principal));
@@ -140,8 +148,19 @@ actor Admin {
         }
     };
 
+    // Constants
     private let STORAGE_CANISTER_ID: Text = "smxjh-2iaaa-aaaaj-az4rq-cai";
+    private let CONSUMER_CANISTER_ID: Text = "tgyl5-yyaaa-aaaaj-az4wq-cai";
+
+    // Canister references
     private let storage: StorageActor = actor(STORAGE_CANISTER_ID);
+
+    // Authorization checks
+    private func _isConsumerCanister(caller: Principal): Bool {
+        let isConsumer = Principal.toText(caller) == CONSUMER_CANISTER_ID;
+        Debug.print("Admin _isConsumerCanister: Caller: " # Principal.toText(caller) # ", Expected: " # CONSUMER_CANISTER_ID # ", Match: " # Bool.toText(isConsumer));
+        isConsumer
+    };
 
     // User management
     public shared({ caller }) func add_user(p: Principal, role: UserRole) : async Result.Result<(), Text> {
@@ -178,15 +197,41 @@ actor Admin {
         #ok(Buffer.toArray(result))
     };
 
-    public shared({ caller }) func getTopics() : async Result.Result<[ScrapingTopic], Text> {
+    // Topic management for admin portal
+    public query({ caller }) func getTopics() : async Result.Result<[ScrapingTopic], Text> {
         if (not _isAuthorized(caller)) {
             return #err("Unauthorized");
         };
+        
         let result = Buffer.Buffer<ScrapingTopic>(0);
         for ((_, topic) in topics.entries()) {
             result.add(topic);
         };
         #ok(Buffer.toArray(result))
+    };
+
+    // Topic management for consumer canister
+    public shared({ caller }) func getTopics_with_caller(user_principal: Principal) : async Result.Result<[ScrapingTopic], Text> {
+        Debug.print("Admin getTopics_with_caller: Called by " # Principal.toText(caller));
+        Debug.print("Admin getTopics_with_caller: User principal: " # Principal.toText(user_principal));
+        
+        // Only allow consumer canister to call this method
+        if (not _isConsumerCanister(caller)) {
+            Debug.print("Admin getTopics_with_caller: Unauthorized - caller is not consumer canister");
+            return #err("Unauthorized: Only consumer canister can call this method");
+        };
+
+        Debug.print("Admin getTopics_with_caller: Authorization successful");
+        
+        // Return topics since consumer canister is authorized
+        let result = Buffer.Buffer<ScrapingTopic>(0);
+        for ((_, topic) in topics.entries()) {
+            result.add(topic);
+        };
+        
+        let topicsArray = Buffer.toArray(result);
+        Debug.print("Admin getTopics_with_caller: Returning " # Nat.toText(topicsArray.size()) # " topics");
+        #ok(topicsArray)
     };
 
     public shared({ caller }) func getAIConfig() : async Result.Result<AIConfig, Text> {

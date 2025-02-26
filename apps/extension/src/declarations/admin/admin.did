@@ -42,7 +42,9 @@ type ScrapedData =
    client_id: principal;
    content: text;
    id: text;
+   scraping_time: int;
    source: text;
+   status: text;
    timestamp: int;
    topic: text;
    url: text;
@@ -89,17 +91,10 @@ type ExtractionRules =
  };
 type CreateTopicRequest = 
  record {
-   activeHours: record {
-                  end: nat;
-                  start: nat;
-                };
-   aiConfig: AIConfig__1;
    description: text;
    extractionRules: ExtractionRules;
    id: text;
-   maxRetries: nat;
    name: text;
-   scrapingInterval: nat;
    status: text;
    urlPatterns: vec text;
  };
@@ -127,7 +122,8 @@ service : {
   deleteTopic: (text) -> (Result_3);
   getAIConfig: () -> (Result_2);
   getScrapedData: (vec text) -> (Result_6);
-  getTopics: () -> (Result_5);
+  getTopics: () -> (Result_5) query;
+  getTopics_with_caller: (principal) -> (Result_5);
   get_users: () -> (Result_4);
   remove_user: (principal) -> (Result_3);
   setTopicActive: (text, bool) -> (Result_3);

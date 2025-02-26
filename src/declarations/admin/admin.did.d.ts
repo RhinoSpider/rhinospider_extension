@@ -20,13 +20,9 @@ export interface CreateTopicRequest {
   'id' : string,
   'status' : string,
   'name' : string,
-  'scrapingInterval' : bigint,
   'description' : string,
-  'maxRetries' : bigint,
-  'activeHours' : { 'end' : bigint, 'start' : bigint },
   'urlPatterns' : Array<string>,
   'extractionRules' : ExtractionRules,
-  'aiConfig' : AIConfig__1,
 }
 export interface ExtractionRules {
   'fields' : Array<ScrapingField>,
@@ -49,11 +45,13 @@ export type Result_6 = { 'ok' : Array<ScrapedData> } |
 export interface ScrapedData {
   'id' : string,
   'url' : string,
+  'status' : string,
   'topic' : string,
   'content' : string,
   'source' : string,
   'timestamp' : bigint,
   'client_id' : Principal,
+  'scraping_time' : bigint,
 }
 export interface ScrapingField {
   'name' : string,
@@ -92,6 +90,7 @@ export interface _SERVICE {
   'getAIConfig' : ActorMethod<[], Result_2>,
   'getScrapedData' : ActorMethod<[Array<string>], Result_6>,
   'getTopics' : ActorMethod<[], Result_5>,
+  'getTopics_with_caller' : ActorMethod<[Principal], Result_5>,
   'get_users' : ActorMethod<[], Result_4>,
   'remove_user' : ActorMethod<[Principal], Result_3>,
   'setTopicActive' : ActorMethod<[string, boolean], Result_3>,

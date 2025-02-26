@@ -26,17 +26,16 @@ export type Result_1 = { 'ok' : Array<ScrapingTopic> } |
   { 'err' : Error };
 export type Result_2 = { 'ok' : UserProfile } |
   { 'err' : Error };
-export type Result_3 = { 'ok' : AIConfig } |
-  { 'err' : Error };
 export interface ScrapedData {
   'id' : string,
   'url' : string,
   'status' : string,
-  'content' : { 'raw' : string, 'extracted' : Array<[string, string]> },
-  'error' : [] | [string],
+  'topic' : string,
+  'content' : string,
+  'source' : string,
   'timestamp' : bigint,
-  'topicId' : string,
-  'retries' : bigint,
+  'client_id' : Principal,
+  'scraping_time' : bigint,
 }
 export interface ScrapingField {
   'name' : string,
@@ -65,7 +64,6 @@ export interface UserProfile {
   'devices' : Array<string>,
 }
 export interface _SERVICE {
-  'getAIConfig' : ActorMethod<[], Result_3>,
   'getProfile' : ActorMethod<[], Result_2>,
   'getTopics' : ActorMethod<[], Result_1>,
   'registerDevice' : ActorMethod<[string], Result>,

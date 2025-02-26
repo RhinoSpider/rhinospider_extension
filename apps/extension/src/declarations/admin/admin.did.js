@@ -15,27 +15,18 @@ export const idlFactory = ({ IDL }) => {
     'fields' : IDL.Vec(ScrapingField),
     'customPrompt' : IDL.Opt(IDL.Text),
   });
-  const CostLimits = IDL.Record({
-    'maxConcurrent' : IDL.Nat,
-    'maxDailyCost' : IDL.Float64,
-    'maxMonthlyCost' : IDL.Float64,
-  });
-  const AIConfig__1 = IDL.Record({
-    'model' : IDL.Text,
-    'costLimits' : CostLimits,
-    'apiKey' : IDL.Text,
-  });
   const CreateTopicRequest = IDL.Record({
     'id' : IDL.Text,
     'status' : IDL.Text,
     'name' : IDL.Text,
-    'scrapingInterval' : IDL.Nat,
     'description' : IDL.Text,
-    'maxRetries' : IDL.Nat,
-    'activeHours' : IDL.Record({ 'end' : IDL.Nat, 'start' : IDL.Nat }),
     'urlPatterns' : IDL.Vec(IDL.Text),
     'extractionRules' : ExtractionRules,
-    'aiConfig' : AIConfig__1,
+  });
+  const CostLimits = IDL.Record({
+    'maxConcurrent' : IDL.Nat,
+    'maxDailyCost' : IDL.Float64,
+    'maxMonthlyCost' : IDL.Float64,
   });
   const AIConfig = IDL.Record({
     'model' : IDL.Text,
@@ -57,15 +48,22 @@ export const idlFactory = ({ IDL }) => {
     'lastScraped' : IDL.Int,
   });
   const Result = IDL.Variant({ 'ok' : ScrapingTopic, 'err' : IDL.Text });
+  const AIConfig__1 = IDL.Record({
+    'model' : IDL.Text,
+    'costLimits' : CostLimits,
+    'apiKey' : IDL.Text,
+  });
   const Result_2 = IDL.Variant({ 'ok' : AIConfig__1, 'err' : IDL.Text });
   const ScrapedData = IDL.Record({
     'id' : IDL.Text,
     'url' : IDL.Text,
+    'status' : IDL.Text,
     'topic' : IDL.Text,
     'content' : IDL.Text,
     'source' : IDL.Text,
     'timestamp' : IDL.Int,
     'client_id' : IDL.Principal,
+    'scraping_time' : IDL.Int,
   });
   const Result_6 = IDL.Variant({
     'ok' : IDL.Vec(ScrapedData),
@@ -90,7 +88,8 @@ export const idlFactory = ({ IDL }) => {
     'deleteTopic' : IDL.Func([IDL.Text], [Result_3], []),
     'getAIConfig' : IDL.Func([], [Result_2], []),
     'getScrapedData' : IDL.Func([IDL.Vec(IDL.Text)], [Result_6], []),
-    'getTopics' : IDL.Func([], [Result_5], []),
+    'getTopics' : IDL.Func([], [Result_5], ['query']),
+    'getTopics_with_caller' : IDL.Func([IDL.Principal], [Result_5], []),
     'get_users' : IDL.Func([], [Result_4], []),
     'remove_user' : IDL.Func([IDL.Principal], [Result_3], []),
     'setTopicActive' : IDL.Func([IDL.Text, IDL.Bool], [Result_3], []),
