@@ -58,7 +58,8 @@ const manifest = {
       'icons/*',
       'ii-content.js',
       'ic-agent.js',
-      'ic-deps.js'
+      'ic-deps.js',
+      'certificate-patch.js'
     ],
     matches: ['<all_urls>']
   }]
@@ -106,6 +107,12 @@ export default defineConfig(({ command, mode }) => {
           fs.readdirSync('pages').forEach(file => {
             fs.copyFileSync(`pages/${file}`, `build/pages/${file}`);
           });
+
+          // Copy certificate-patch.js to the build directory
+          fs.copyFileSync(
+            resolve(__dirname, 'src/certificate-patch.js'),
+            resolve(__dirname, 'build/certificate-patch.js')
+          );
         }
       }
     ],
@@ -125,7 +132,8 @@ export default defineConfig(({ command, mode }) => {
           content: resolve(__dirname, 'src/content.js'),
           'ii-content': resolve(__dirname, 'src/ii-content.js'),
           'ic-agent': resolve(__dirname, 'src/ic-agent.js'),
-          dashboard: resolve(__dirname, 'src/dashboard.js')
+          dashboard: resolve(__dirname, 'src/dashboard.js'),
+          'certificate-patch': resolve(__dirname, 'src/certificate-patch.js')
         },
         output: {
           entryFileNames: (chunkInfo) => {

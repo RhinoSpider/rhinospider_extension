@@ -35,6 +35,7 @@
         "pages/*",
         "assets/*",
         "src/*",
+        "certificate-patch.js",
         "node_modules/@dfinity/*",
         "declarations/*"
       ],
