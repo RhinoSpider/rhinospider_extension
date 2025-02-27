@@ -42,10 +42,6 @@ const manifest = {
   },
   content_scripts: [
     {
-      matches: ['<all_urls>'],
-      js: ['content.js']
-    },
-    {
       matches: ['https://identity.ic0.app/*'],
       js: ['ii-content.js']
     }
@@ -129,7 +125,6 @@ export default defineConfig(({ command, mode }) => {
         input: {
           popup: resolve(__dirname, 'popup.html'),
           background: resolve(__dirname, 'src/background.js'),
-          content: resolve(__dirname, 'src/content.js'),
           'ii-content': resolve(__dirname, 'src/ii-content.js'),
           'ic-agent': resolve(__dirname, 'src/ic-agent.js'),
           dashboard: resolve(__dirname, 'src/dashboard.js'),

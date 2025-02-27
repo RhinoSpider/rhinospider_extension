@@ -60,18 +60,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 sendResponse({ success: true });
             });
             return true;
-
-        case 'INIT_IC_AGENT':
-            // Forward to content script
-            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-                if (tabs.length > 0) {
-                    chrome.tabs.sendMessage(tabs[0].id, {
-                        type: 'INIT_IC_AGENT',
-                        identity: message.identity
-                    });
-                }
-            });
-            break;
     }
 });
 
