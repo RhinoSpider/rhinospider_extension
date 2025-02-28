@@ -184,7 +184,8 @@ const Popup = () => {
       // Send to background script using Chrome messaging
       await chrome.runtime.sendMessage({
         type: 'LOGIN_COMPLETE',
-        delegationChain
+        delegationChain,
+        principalId: identity.getPrincipal().toText()
       });
 
       // Store auth state and notify background
@@ -195,6 +196,12 @@ const Popup = () => {
         ...delegationChain,
         principal  // Add principal as string
       };
+
+      // Store delegation chain in Chrome's local storage for background script
+      await chrome.storage.local.set({
+        delegationChain: delegationChainWithPrincipal,
+        principalId: principal
+      });
 
       // Store auth state
       await chrome.storage.local.set({
@@ -354,8 +361,31 @@ const Popup = () => {
     }
   };
 
-  const togglePlugin = () => {
-    setIsPluginActive(!isPluginActive);
+  const togglePlugin = async () => {
+    try {
+      // Toggle the plugin state
+      const newState = !isPluginActive;
+      setIsPluginActive(newState);
+      
+      // Send message to background script to update scraping state
+      const response = await chrome.runtime.sendMessage({ 
+        type: newState ? 'START_SCRAPING' : 'STOP_SCRAPING' 
+      });
+      
+      console.log('Background script response:', response);
+      
+      // Also update the storage state
+      await chrome.storage.local.set({ isActive: newState });
+      
+      // If we want to trigger an immediate scrape when activated
+      if (newState) {
+        chrome.runtime.sendMessage({ type: 'PERFORM_SCRAPE' });
+      }
+    } catch (error) {
+      console.error('Error toggling plugin state:', error);
+      // Revert UI state if there was an error
+      setIsPluginActive(!newState);
+    }
   };
 
   // Default avatar

@@ -1,0 +1,67 @@
+/* Dashboard styles */
+
+/* Notification styles */
+.notification {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  padding: 10px 15px;
+  border-radius: 4px;
+  color: white;
+  font-weight: bold;
+  z-index: 1000;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  transition: opacity 0.5s ease-in-out;
+}
+
+.notification.info {
+  background-color: #2196F3;
+}
+
+.notification.success {
+  background-color: #4CAF50;
+}
+
+.notification.error {
+  background-color: #F44336;
+}
+
+.notification.warning {
+  background-color: #FF9800;
+}
+
+.notification.fade-out {
+  opacity: 0;
+}
+
+/* Test scrape button */
+.test-scrape-button {
+  background-color: #9C27B0;
+  color: white;
+  margin-left: 10px;
+}
+
+.test-scrape-button:hover {
+  background-color: #7B1FA2;
+}
+
+.test-scrape-button:disabled {
+  background-color: #D1C4E9;
+  cursor: not-allowed;
+}
+
+/* Dashboard actions container */
+.dashboard-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 20px;
+}
+
+.dashboard-button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: background-color 0.3s;
+}

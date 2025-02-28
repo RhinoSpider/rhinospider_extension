@@ -34,36 +34,62 @@ class ProxyClient {
 
   /**
    * Make a request to the proxy server
-   * @param {string} endpoint - The endpoint to call
+   * @param {string} endpoint - The endpoint to request
    * @param {Object} data - The data to send
    * @returns {Promise<Object>} - The response from the proxy server
    */
-  async request(endpoint, data = {}) {
+  async request(endpoint, data) {
+    console.log(`[ProxyClient] Making request to ${endpoint}`, {
+      proxyUrl: this.proxyUrl,
+      dataKeys: Object.keys(data || {})
+    });
+    
     try {
-      console.log('[ProxyClient] Making request to', endpoint, 'with data:', data);
+      const fullUrl = `${this.proxyUrl}${endpoint}`;
+      console.log(`[ProxyClient] Full URL: ${fullUrl}`);
       
-      const response = await fetch(`${this.proxyUrl}${endpoint}`, {
+      const response = await fetch(fullUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiPassword}`
+          'Authorization': this.apiPassword ? `Bearer ${this.apiPassword}` : undefined
         },
-        body: JSON.stringify(data),
+        body: JSON.stringify(data || {}),
       });
-
+      
+      console.log(`[ProxyClient] Response status:`, response.status);
+      
       if (!response.ok) {
-        let errorData;
+        console.error(`[ProxyClient] Error response: ${response.status} ${response.statusText}`);
+        
         try {
-          errorData = await response.json();
-        } catch (e) {
-          errorData = { error: `HTTP error ${response.status}` };
+          const errorText = await response.text();
+          console.error(`[ProxyClient] Error details:`, errorText);
+          throw new Error(`HTTP error ${response.status}: ${errorText}`);
+        } catch (textError) {
+          throw new Error(`HTTP error ${response.status}`);
         }
-        throw new Error(errorData.error || `HTTP error ${response.status}`);
       }
-
-      return await response.json();
+      
+      try {
+        const responseData = await response.json();
+        console.log(`[ProxyClient] Response data:`, responseData);
+        return responseData;
+      } catch (jsonError) {
+        console.error(`[ProxyClient] Error parsing JSON:`, jsonError);
+        
+        // Try to get text response
+        try {
+          const textResponse = await response.text();
+          console.log(`[ProxyClient] Text response:`, textResponse);
+          return { ok: textResponse };
+        } catch (textError) {
+          console.error(`[ProxyClient] Error getting text response:`, textError);
+          throw new Error('Failed to parse response');
+        }
+      }
     } catch (error) {
-      console.log('[ProxyClient] Error in request to', endpoint + ':', error);
+      console.error(`[ProxyClient] Request error:`, error);
       throw error;
     }
   }
@@ -76,18 +102,91 @@ class ProxyClient {
   async getUserProfile(principalId) {
     console.log('[ProxyClient] Getting user profile with principalId:', principalId ? principalId : 'Not present');
     
-    return this.request('/api/profile', { principalId });
+    try {
+      const response = await this.request('/api/profile', { principalId });
+      
+      // Fix for null principal ID in response
+      if (response && response.ok && response.ok.principal === null && principalId) {
+        console.log('[ProxyClient] Fixing null principal ID in response with:', principalId);
+        response.ok.principal = principalId;
+      }
+      
+      return response;
+    } catch (error) {
+      console.error('[ProxyClient] Error getting user profile:', error);
+      throw error;
+    }
   }
 
   /**
-   * Get the topics
-   * @param {string} principalId - The user's principal ID
-   * @returns {Promise<Array>} - The topics
+   * Get topics from the proxy server
+   * @param {string} principalId - The principal ID to get topics for
+   * @returns {Promise<Array>} - The topics from the proxy server
    */
   async getTopics(principalId) {
-    console.log('[ProxyClient] Getting topics with principalId:', principalId ? principalId : 'Not present');
+    console.log('[ProxyClient] Getting topics with principalId:', principalId);
+    console.log('[ProxyClient] Fetching topics from server');
     
-    return this.request('/api/topics', { principalId });
+    try {
+      // Make the API call to get topics
+      const result = await this.request('/api/topics', { principalId });
+      
+      // Log the raw response for debugging
+      console.log('[ProxyClient] Raw topics result:', JSON.stringify(result));
+      
+      // Check if we have topics in the result.ok format
+      if (result && result.ok && Array.isArray(result.ok)) {
+        console.log('[ProxyClient] Got topics in result.ok format:', result.ok.length);
+        
+        // Log each topic for debugging
+        result.ok.forEach((topic, index) => {
+          console.log(`[ProxyClient] Topic ${index + 1}:`, {
+            id: topic.id,
+            name: topic.name,
+            status: topic.status,
+            urlPatternsCount: topic.urlPatterns ? topic.urlPatterns.length : 0,
+            // Log full details for the first topic to avoid excessive logs
+            ...(index === 0 ? {
+              urlPatterns: topic.urlPatterns,
+              extractionRules: topic.extractionRules,
+              aiConfig: topic.aiConfig
+            } : {})
+          });
+        });
+        
+        return result.ok;
+      } 
+      // Check if we have topics as a direct array
+      else if (result && Array.isArray(result)) {
+        console.log('[ProxyClient] Got topics as direct array:', result.length);
+        
+        // Log each topic for debugging
+        result.forEach((topic, index) => {
+          console.log(`[ProxyClient] Topic ${index + 1}:`, {
+            id: topic.id,
+            name: topic.name,
+            status: topic.status,
+            urlPatternsCount: topic.urlPatterns ? topic.urlPatterns.length : 0,
+            // Log full details for the first topic to avoid excessive logs
+            ...(index === 0 ? {
+              urlPatterns: topic.urlPatterns,
+              extractionRules: topic.extractionRules,
+              aiConfig: topic.aiConfig
+            } : {})
+          });
+        });
+        
+        return result;
+      } 
+      // No valid topics found
+      else {
+        console.error('[ProxyClient] No valid topics found in response:', result);
+        return [];
+      }
+    } catch (error) {
+      console.error('[ProxyClient] Error getting topics:', error);
+      return [];
+    }
   }
 
   /**
@@ -101,13 +200,57 @@ class ProxyClient {
   }
 
   /**
-   * Submit scraped data
+   * Submit scraped data to the proxy server
    * @param {Object} data - The scraped data to submit
-   * @param {string} identity - The user's identity in PEM format
-   * @returns {Promise<Object>} - The result of the submission
+   * @returns {Promise<Object>} - The response from the proxy server
    */
-  async submitScrapedData(data, identity) {
-    return this.request('/api/submit-data', { ...data, identity });
+  async submitScrapedData(data) {
+    console.log('[ProxyClient] Submitting scraped data:', data);
+    
+    // Ensure principalId is included
+    if (!data.principalId) {
+      // Try to get it from storage
+      try {
+        const result = await new Promise(resolve => {
+          chrome.storage.local.get(['principalId'], resolve);
+        });
+        
+        if (result.principalId) {
+          data.principalId = result.principalId;
+        } else {
+          console.log('[ProxyClient] No principal ID found for submission');
+        }
+      } catch (error) {
+        console.log('[ProxyClient] Error getting principal ID from storage:', error);
+      }
+    }
+    
+    // Try each endpoint in sequence
+    const endpoints = [
+      '/api/submit',
+      '/api/submit-data',
+      '/api/scrape-submit',
+      '/api/submit-scraped-content',
+      '/api/content'
+    ];
+    
+    let lastError = null;
+    
+    for (const endpoint of endpoints) {
+      try {
+        console.log(`[ProxyClient] Trying ${endpoint} endpoint`);
+        const result = await this.request(endpoint, data);
+        console.log(`[ProxyClient] ${endpoint} result:`, result);
+        return result;
+      } catch (error) {
+        console.log(`[ProxyClient] Error with ${endpoint} endpoint:`, error);
+        lastError = error;
+      }
+    }
+    
+    // If we get here, all endpoints failed
+    console.log('[ProxyClient] All submission endpoints failed');
+    throw new Error(`All submission endpoints failed. Last error: ${lastError?.message || 'Unknown error'}`);
   }
 
   /**
@@ -123,6 +266,25 @@ class ProxyClient {
       theme,
       identity
     });
+  }
+
+  /**
+   * Fetch content from a URL through the proxy server to avoid CORS issues
+   * @param {string} url - The URL to fetch content from
+   * @param {string} principalId - The principal ID for authentication
+   * @returns {Promise<Object>} - The content from the URL
+   */
+  async fetchContent(url, principalId) {
+    console.log('[ProxyClient] Fetching content from URL via proxy:', url);
+    
+    try {
+      const result = await this.request('/api/fetch-content', { url, principalId });
+      console.log('[ProxyClient] Fetch content result:', result);
+      return result;
+    } catch (error) {
+      console.error('[ProxyClient] Error fetching content via proxy:', error);
+      throw error;
+    }
   }
 
   /**
@@ -155,3 +317,6 @@ class ProxyClient {
 // Export a singleton instance
 const proxyClient = new ProxyClient();
 export default proxyClient;
+
+// Also export the class for direct instantiation
+export { ProxyClient };

@@ -485,14 +485,94 @@ app.post('/api/submit', authenticateApiKey, async (req, res) => {
   }
 });
 
-// Start the server
-app.listen(PORT, () => {
-  console.log(`IC Proxy server running on port ${PORT}`);
-});
-
 // Helper function to create identity from principal
 const createIdentityFromPrincipal = (principalId) => {
   const principal = Principal.fromText(principalId);
   const identity = Ed25519KeyIdentity.generate();
   return identity;
 };
+
+// Fetch content endpoint - helps avoid CORS issues for the extension
+app.post('/api/fetch-content', authenticateApiKey, async (req, res) => {
+  try {
+    const { url, principalId } = req.body;
+    
+    if (!url) {
+      return res.status(400).json({ error: 'URL is required' });
+    }
+    
+    console.log(`[/api/fetch-content] Fetching content from URL: ${url}`);
+    
+    try {
+      // Fetch the content from the URL
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0'
+        }
+      });
+      
+      if (response.ok) {
+        const content = await response.text();
+        console.log(`[/api/fetch-content] Successfully fetched content (${content.length} bytes)`);
+        return res.json({ ok: { content } });
+      } else {
+        console.error(`[/api/fetch-content] Failed to fetch content: ${response.status} ${response.statusText}`);
+        return res.status(response.status).json({
+          error: `Failed to fetch content: ${response.status} ${response.statusText}`
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching content:', error);
+      return res.status(500).json({
+        error: 'Failed to fetch content',
+        details: error.message
+      });
+    }
+  } catch (error) {
+    console.error('Unexpected error in /api/fetch-content:', error);
+    return res.status(500).json({
+      error: 'Internal server error',
+      details: error.message
+    });
+  }
+});
+
+// Additional submission endpoints to handle different paths the extension might use
+// /api/submit-data endpoint - alias for /api/submit
+app.post('/api/submit-data', authenticateApiKey, async (req, res) => {
+  console.log('[/api/submit-data] Received request, forwarding to /api/submit');
+  // Forward to the main submit endpoint
+  req.url = '/api/submit';
+  app._router.handle(req, res);
+});
+
+// /api/scrape-submit endpoint - alias for /api/submit
+app.post('/api/scrape-submit', authenticateApiKey, async (req, res) => {
+  console.log('[/api/scrape-submit] Received request, forwarding to /api/submit');
+  // Forward to the main submit endpoint
+  req.url = '/api/submit';
+  app._router.handle(req, res);
+});
+
+// /api/submit-scraped-content endpoint - alias for /api/submit
+app.post('/api/submit-scraped-content', authenticateApiKey, async (req, res) => {
+  console.log('[/api/submit-scraped-content] Received request, forwarding to /api/submit');
+  // Forward to the main submit endpoint
+  req.url = '/api/submit';
+  app._router.handle(req, res);
+});
+
+// /api/content endpoint - alias for /api/submit
+app.post('/api/content', authenticateApiKey, async (req, res) => {
+  console.log('[/api/content] Received request, forwarding to /api/submit');
+  // Forward to the main submit endpoint
+  req.url = '/api/submit';
+  app._router.handle(req, res);
+});
+
+// Start the server
+app.listen(PORT, () => {
+  console.log(`IC Proxy server running on port ${PORT}`);
+});

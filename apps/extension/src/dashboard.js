@@ -825,6 +825,17 @@ async function initAuth() {
             const identity = globalAuthClient.getIdentity();
             logger.debug('[Auth] Got identity:', identity.getPrincipal().toString());
             
+            // Store the principal ID in local storage
+            const principalIdString = identity.getPrincipal().toString();
+            logger.debug('[Auth] Storing principal ID in local storage:', principalIdString);
+            
+            try {
+                await chrome.storage.local.set({ principalId: principalIdString });
+                logger.debug('[Auth] Principal ID stored successfully');
+            } catch (error) {
+                logger.error('[Auth] Error storing principal ID:', error);
+            }
+            
             // Try to get the profile using the hybrid client
             logger.debug('[Auth] Fetching profile using hybrid client');
             try {
@@ -865,6 +876,14 @@ async function initAuth() {
     logger.debug('[Auth] ====== End Initialization ======');
 }
 
+// Initialize authentication
+function initializeAuth() {
+    logger.debug('[Auth] Initializing authentication');
+    
+    // Check if we're already authenticated
+    checkAuthAndToggleState();
+}
+
 // Login with Internet Identity
 async function login() {
     logger.debug('[Auth] Starting login process');
@@ -886,6 +905,17 @@ async function login() {
                 const identity = globalAuthClient.getIdentity();
                 logger.debug('[Auth] Got identity:', identity.getPrincipal().toString());
                 
+                // Store the principal ID in local storage
+                const principalIdString = identity.getPrincipal().toString();
+                logger.debug('[Auth] Storing principal ID in local storage:', principalIdString);
+                
+                try {
+                    await chrome.storage.local.set({ principalId: principalIdString });
+                    logger.debug('[Auth] Principal ID stored successfully');
+                } catch (error) {
+                    logger.error('[Auth] Error storing principal ID:', error);
+                }
+                
                 // Update UI for authenticated state
                 updateUIForAuthenticated();
                 
@@ -897,6 +927,23 @@ async function login() {
                     
                     // Update UI with profile
                     updateProfileUI(profile);
+                    
+                    // Check toggle state and notify background script if toggle is on
+                    chrome.storage.local.get(['enabled'], (result) => {
+                        const isEnabled = result.enabled !== false;
+                        logger.debug('[Auth] Toggle state after login:', isEnabled);
+                        
+                        if (isEnabled) {
+                            logger.debug('[Auth] Toggle is on, notifying background script to start scraping');
+                            
+                            // Send message to background script
+                            chrome.runtime.sendMessage({
+                                type: 'START_SCRAPING'
+                            }, (response) => {
+                                logger.debug('[Auth] Received response from background script:', response);
+                            });
+                        }
+                    });
                     
                     // Try to get topics
                     logger.debug('[Auth] Fetching topics');
@@ -948,7 +995,7 @@ async function logout() {
 // Update UI with profile
 function updateUIWithProfile(profileResult) {
     const profileSection = document.getElementById('profile-section');
-    if (!profileSection) return;
+    const userProfileElement = document.getElementById('userProfile');
     
     // Handle different response formats
     let profile;
@@ -960,27 +1007,69 @@ function updateUIWithProfile(profileResult) {
         profile = profileResult;
     }
     
-    if (profile) {
-        // Create profile HTML
-        let profileHTML = `
-            <h2>Your Profile</h2>
-            <div class="profile-info">
-                <p><strong>Principal:</strong> ${profile.principal ? profile.principal.toString() : 'Unknown'}</p>
-                <p><strong>Created:</strong> ${profile.created ? new Date(Number(profile.created) / 1000000).toLocaleString() : 'Unknown'}</p>
-                <p><strong>Preferences:</strong> ${profile.preferences ? JSON.stringify(profile.preferences) : 'None'}</p>
-            </div>
-        `;
-        
-        // Update profile section
-        profileSection.innerHTML = profileHTML;
+    // Check if the principal ID is null in the profile
+    if (!profile.principal) {
+        logger.debug('[Profile] Principal ID is null in profile, using stored principal ID');
+        // Get the principal ID from storage and update the profile
+        chrome.storage.local.get(['principalId'], function(result) {
+            if (result.principalId) {
+                logger.debug('[Profile] Using stored principal ID:', result.principalId);
+                profile.principal = result.principalId;
+            } else {
+                logger.debug('[Profile] No stored principal ID found');
+            }
+            
+            // Continue with profile update
+            updateProfileDisplay(profile);
+        });
     } else {
-        // Show error
-        profileSection.innerHTML = `
-            <h2>Your Profile</h2>
-            <div class="profile-info">
-                <p>Could not load profile information.</p>
-            </div>
-        `;
+        // Principal ID is present in the profile, continue with update
+        updateProfileDisplay(profile);
+    }
+}
+
+function updateProfileDisplay(profile) {
+    // Format the profile data for display
+    const formattedProfile = {
+        principal: profile.principal || 'Not available',
+        created: new Date(Number(profile.created)).toLocaleString(),
+        lastLogin: new Date(Number(profile.lastLogin)).toLocaleString(),
+        preferences: profile.preferences || {},
+        devices: profile.devices || []
+    };
+    
+    // Store the principal ID in storage if it's available
+    if (profile.principal && profile.principal !== 'Not available') {
+        logger.debug('[Profile] Storing principal ID in storage:', profile.principal);
+        
+        // Ensure the principal ID is a string
+        const principalIdValue = typeof profile.principal === 'object' && profile.principal.__principal__ 
+            ? profile.principal.__principal__ 
+            : String(profile.principal);
+        
+        chrome.storage.local.set({ principalId: principalIdValue }, () => {
+            logger.debug('[Profile] Principal ID stored in storage');
+            
+            // Notify background script that we have a principal ID
+            chrome.runtime.sendMessage({
+                type: 'LOGIN_COMPLETE',
+                principalId: principalIdValue
+            }, (response) => {
+                logger.debug('[Profile] Received response from background script after storing principal ID:', response);
+            });
+        });
+    }
+    
+    // Update the UI
+    const userProfileElement = document.getElementById('userProfile');
+    if (userProfileElement) {
+        userProfileElement.textContent = JSON.stringify(formattedProfile, null, 2);
+    }
+    
+    // Show profile section
+    const profileSectionElement = document.getElementById('profile-section');
+    if (profileSectionElement) {
+        profileSectionElement.style.display = 'block';
     }
 }
 
@@ -1171,23 +1260,78 @@ function updateUIForAuthenticated() {
             logoutButton.style.display = 'block';
         }
         
-        // Show authenticated content
-        const authenticatedContent = document.getElementById('authenticated-content');
-        if (authenticatedContent) {
-            authenticatedContent.style.display = 'block';
-        }
+        // Get principal ID and notify background script
+        chrome.storage.local.get(['principalId', 'enabled'], (result) => {
+            const isEnabled = result.enabled !== false;
+            logger.debug('[Auth] Toggle state in updateUIForAuthenticated:', isEnabled);
+            
+            if (result.principalId) {
+                logger.debug('[Auth] User is authenticated with principal ID:', result.principalId);
+                
+                // First send LOGIN_COMPLETE message to ensure background script knows we're authenticated
+                chrome.runtime.sendMessage({
+                    type: 'LOGIN_COMPLETE',
+                    principalId: result.principalId
+                }, (response) => {
+                    logger.debug('[Auth] Received LOGIN_COMPLETE response from background script:', response);
+                    
+                    // Then if toggle is on, send START_SCRAPING message
+                    if (isEnabled) {
+                        logger.debug('[Auth] Toggle is on, notifying background script to start scraping');
+                        
+                        // Send message to background script
+                        chrome.runtime.sendMessage({
+                            type: 'START_SCRAPING'
+                        }, (response) => {
+                            logger.debug('[Auth] Received START_SCRAPING response from background script:', response);
+                        });
+                    }
+                });
+            } else {
+                logger.debug('[Auth] No principal ID found in storage, cannot notify background script');
+                
+                // Try to get principal ID from the profile if available
+                const userProfileElement = document.getElementById('userProfile');
+                if (userProfileElement && userProfileElement.textContent) {
+                    try {
+                        const profileData = JSON.parse(userProfileElement.textContent);
+                        if (profileData && profileData.principal) {
+                            logger.debug('[Auth] Found principal ID in profile:', profileData.principal);
+                            
+                            // Store principal ID in storage
+                            chrome.storage.local.set({ principalId: JSON.stringify(profileData.principal) }, () => {
+                                logger.debug('[Auth] Stored principal ID in storage');
+                                
+                                // Send LOGIN_COMPLETE message
+                                chrome.runtime.sendMessage({
+                                    type: 'LOGIN_COMPLETE',
+                                    principalId: JSON.stringify(profileData.principal)
+                                }, (response) => {
+                                    logger.debug('[Auth] Received LOGIN_COMPLETE response from background script:', response);
+                                    
+                                    // Then if toggle is on, send START_SCRAPING message
+                                    if (isEnabled) {
+                                        logger.debug('[Auth] Toggle is on, notifying background script to start scraping');
+                                        
+                                        // Send message to background script
+                                        chrome.runtime.sendMessage({
+                                            type: 'START_SCRAPING'
+                                        }, (response) => {
+                                            logger.debug('[Auth] Received START_SCRAPING response from background script:', response);
+                                        });
+                                    }
+                                });
+                            });
+                        }
+                    } catch (error) {
+                        logger.error('[Auth] Error parsing profile data:', error);
+                    }
+                }
+            }
+        });
         
-        // Hide unauthenticated content
-        const unauthenticatedContent = document.getElementById('unauthenticated-content');
-        if (unauthenticatedContent) {
-            unauthenticatedContent.style.display = 'none';
-        }
-        
-        // Hide error message
-        const errorMessage = document.getElementById('error-message');
-        if (errorMessage) {
-            errorMessage.style.display = 'none';
-        }
+        // Update authenticated state in UI
+        updateUIForAuthenticatedState(true);
     } catch (error) {
         logger.error('[UI] Error updating UI for authenticated state:', error);
     }
@@ -1380,6 +1524,324 @@ async function loadCertificatePatch() {
   });
 }
 
+// Check authentication and toggle state, then notify background script
+async function checkAuthAndToggleState() {
+    logger.debug('[Auth] Checking auth and toggle state');
+    
+    try {
+        // Get principal ID and toggle state from storage
+        const { principalId, extensionEnabled } = await new Promise(resolve => {
+            chrome.storage.local.get(['principalId', 'extensionEnabled'], result => resolve(result));
+        });
+        
+        // If authenticated and toggle is on, notify background script
+        if (principalId && extensionEnabled !== false) {
+            logger.debug('[Auth] User is authenticated and toggle is on, notifying background script');
+            
+            // Send message to background script
+            chrome.runtime.sendMessage({
+                type: 'LOGIN_COMPLETE',
+                principalId: principalId
+            }, (response) => {
+                logger.debug('[Auth] Received response from background script:', response);
+                
+                // Also send START_SCRAPING message to ensure scraping starts
+                chrome.runtime.sendMessage({
+                    type: 'START_SCRAPING'
+                }, (startResponse) => {
+                    logger.debug('[Auth] Received start scraping response:', startResponse);
+                    
+                    if (startResponse && startResponse.success) {
+                        showNotification('Scraping started successfully', 'success');
+                    } else if (startResponse && startResponse.error) {
+                        showNotification(`Error starting scraping: ${startResponse.error}`, 'error');
+                    }
+                });
+            });
+        } else if (!principalId) {
+            logger.debug('[Auth] User is not authenticated, waiting for login');
+        } else {
+            logger.debug('[Auth] Extension is disabled, not starting scraping');
+        }
+    } catch (error) {
+        logger.error('[Auth] Error checking auth and toggle state:', error);
+    }
+}
+
+// Add a test scrape button
+function addTestScrapeButton() {
+    const container = document.querySelector('.dashboard-actions');
+    if (!container) return;
+    
+    // Create the button
+    const testScrapeButton = document.createElement('button');
+    testScrapeButton.className = 'dashboard-button test-scrape-button';
+    testScrapeButton.innerHTML = 'Test Scrape';
+    testScrapeButton.title = 'Force a scrape operation for testing';
+    
+    // Add event listener
+    testScrapeButton.addEventListener('click', async () => {
+        logger.log('Test scrape button clicked');
+        
+        // Disable the button during the operation
+        testScrapeButton.disabled = true;
+        testScrapeButton.innerHTML = 'Scraping...';
+        
+        try {
+            // Send message to background script
+            const result = await chrome.runtime.sendMessage({ type: 'FORCE_SCRAPE' });
+            logger.log('Force scrape result:', result);
+            
+            // Show a notification
+            if (result && result.success) {
+                showNotification('Test scrape completed successfully', 'success');
+            } else {
+                showNotification(`Test scrape failed: ${result.error || 'Unknown error'}`, 'error');
+            }
+        } catch (error) {
+            logger.error('Error during test scrape:', error);
+            showNotification(`Error: ${error.message}`, 'error');
+        } finally {
+            // Re-enable the button
+            testScrapeButton.disabled = false;
+            testScrapeButton.innerHTML = 'Test Scrape';
+        }
+    });
+    
+    // Add the button to the container
+    container.appendChild(testScrapeButton);
+}
+
+// Show a notification
+function showNotification(message, type = 'info') {
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.textContent = message;
+    
+    // Add to the DOM
+    document.body.appendChild(notification);
+    
+    // Remove after 5 seconds
+    setTimeout(() => {
+        notification.classList.add('fade-out');
+        setTimeout(() => {
+            notification.remove();
+        }, 500);
+    }, 5000);
+}
+
+// Add event listeners for dashboard controls
+function addEventListeners() {
+    logger.debug('[UI] Adding event listeners');
+    
+    // Login button
+    const loginButton = document.getElementById('login-button');
+    if (loginButton) {
+        loginButton.addEventListener('click', login);
+        logger.debug('[UI] Added login button event listener');
+    }
+    
+    // Logout button
+    const logoutButton = document.getElementById('logout-button');
+    if (logoutButton) {
+        logoutButton.addEventListener('click', logout);
+        logger.debug('[UI] Added logout button event listener');
+    }
+    
+    // Extension status toggle
+    const extensionStatusToggle = document.getElementById('extensionStatus');
+    if (extensionStatusToggle) {
+        // Get initial state from storage
+        chrome.storage.local.get(['isScrapingActive'], (result) => {
+            extensionStatusToggle.checked = result.isScrapingActive === true;
+        });
+        
+        // Add event listener for toggle change
+        extensionStatusToggle.addEventListener('change', () => {
+            const isEnabled = extensionStatusToggle.checked;
+            logger.debug('[UI] Extension status toggled to:', isEnabled);
+            
+            // Save to storage
+            chrome.storage.local.set({ extensionEnabled: isEnabled }, () => {
+                logger.debug('[UI] Saved extension status to storage:', isEnabled);
+                
+                // Send message to background script
+                if (isEnabled) {
+                    chrome.runtime.sendMessage({
+                        type: 'START_SCRAPING'
+                    }, (response) => {
+                        logger.debug('[UI] Received start scraping response:', response);
+                        
+                        if (response && response.success) {
+                            showNotification('Scraping started successfully', 'success');
+                        } else if (response && response.error) {
+                            showNotification(`Error starting scraping: ${response.error}`, 'error');
+                            // Reset toggle if error
+                            extensionStatusToggle.checked = false;
+                        }
+                    });
+                } else {
+                    chrome.runtime.sendMessage({
+                        type: 'STOP_SCRAPING'
+                    }, (response) => {
+                        logger.debug('[UI] Received stop scraping response:', response);
+                        
+                        if (response && response.success) {
+                            showNotification('Scraping stopped successfully', 'success');
+                        } else if (response && response.error) {
+                            showNotification(`Error stopping scraping: ${response.error}`, 'error');
+                            // Reset toggle if error
+                            extensionStatusToggle.checked = true;
+                        }
+                    });
+                }
+            });
+        });
+        
+        logger.debug('[UI] Added extension status toggle event listener');
+    }
+    
+    // Settings extension status toggle
+    const settingsExtensionStatusToggle = document.getElementById('settingsExtensionStatus');
+    if (settingsExtensionStatusToggle) {
+        // Get initial state from storage
+        chrome.storage.local.get(['isScrapingActive'], (result) => {
+            settingsExtensionStatusToggle.checked = result.isScrapingActive === true;
+        });
+        
+        // Add event listener for toggle change
+        settingsExtensionStatusToggle.addEventListener('change', () => {
+            const isEnabled = settingsExtensionStatusToggle.checked;
+            logger.debug('[UI] Settings extension status toggled to:', isEnabled);
+            
+            // Update main toggle
+            if (extensionStatusToggle) {
+                extensionStatusToggle.checked = isEnabled;
+            }
+            
+            // Save to storage
+            chrome.storage.local.set({ extensionEnabled: isEnabled }, () => {
+                logger.debug('[UI] Saved extension status to storage:', isEnabled);
+                
+                // Send message to background script
+                if (isEnabled) {
+                    chrome.runtime.sendMessage({
+                        type: 'START_SCRAPING'
+                    }, (response) => {
+                        logger.debug('[UI] Received start scraping response:', response);
+                        
+                        if (response && response.success) {
+                            showNotification('Scraping started successfully', 'success');
+                        } else if (response && response.error) {
+                            showNotification(`Error starting scraping: ${response.error}`, 'error');
+                            // Reset toggle if error
+                            settingsExtensionStatusToggle.checked = false;
+                        }
+                    });
+                } else {
+                    chrome.runtime.sendMessage({
+                        type: 'STOP_SCRAPING'
+                    }, (response) => {
+                        logger.debug('[UI] Received stop scraping response:', response);
+                        
+                        if (response && response.success) {
+                            showNotification('Scraping stopped successfully', 'success');
+                        } else if (response && response.error) {
+                            showNotification(`Error stopping scraping: ${response.error}`, 'error');
+                            // Reset toggle if error
+                            settingsExtensionStatusToggle.checked = true;
+                        }
+                    });
+                }
+            });
+        });
+        
+        logger.debug('[UI] Added settings extension status toggle event listener');
+    }
+    
+    // Refresh topics button
+    const refreshTopicsButton = document.getElementById('refresh-topics-btn');
+    if (refreshTopicsButton) {
+        refreshTopicsButton.addEventListener('click', async () => {
+            const statusEl = document.getElementById('refresh-topics-status');
+            
+            try {
+                logger.debug('Refresh topics button clicked');
+                
+                // Update UI
+                refreshTopicsButton.disabled = true;
+                statusEl.textContent = 'Refreshing...';
+                statusEl.style.color = '#FFD700'; // Yellow
+                
+                // Send message to background script
+                const result = await chrome.runtime.sendMessage({ action: 'FORCE_REFRESH_TOPICS' });
+                
+                logger.debug('Refresh topics result:', result);
+                
+                if (result.success) {
+                    statusEl.textContent = `Success! Found ${result.topicsCount} topics`;
+                    statusEl.style.color = '#4CAF50'; // Green
+                    
+                    // Show notification
+                    showNotification({
+                        type: 'success',
+                        message: `Successfully refreshed topics. Found ${result.topicsCount} topics.`
+                    });
+                } else {
+                    statusEl.textContent = 'Failed';
+                    statusEl.style.color = '#F44336'; // Red
+                    
+                    // Show notification
+                    showNotification({
+                        type: 'error',
+                        message: `Failed to refresh topics: ${result.error || 'Unknown error'}`
+                    });
+                }
+            } catch (error) {
+                logger.error('Error refreshing topics:', error);
+                
+                statusEl.textContent = 'Error';
+                statusEl.style.color = '#F44336'; // Red
+                
+                // Show notification
+                showNotification({
+                    type: 'error',
+                    message: `Error refreshing topics: ${error.message}`
+                });
+            } finally {
+                // Re-enable button after a delay
+                setTimeout(() => {
+                    refreshTopicsButton.disabled = false;
+                }, 2000);
+            }
+        });
+        logger.debug('[UI] Added refresh topics button event listener');
+    }
+}
+
+// Initialize the dashboard UI
+function initializeDashboard() {
+    logger.debug('[UI] DOM loaded, initializing');
+    
+    // Log environment variables
+    logger.debug('[ENV] IC_HOST:', IC_HOST);
+    logger.debug('[ENV] CONSUMER_CANISTER_ID:', CONSUMER_CANISTER_ID);
+    logger.debug('[ENV] II_URL:', II_URL);
+    
+    // Load certificate patch script
+    logger.debug('[Patch] Loading certificate patch script');
+    loadCertificatePatch();
+    
+    // Initialize authentication
+    initializeAuth();
+    
+    // Add event listeners
+    addEventListeners();
+    
+    // Add test scrape button
+    addTestScrapeButton();
+}
+
 // Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', async () => {
     logger.debug('[UI] DOM loaded, initializing');
@@ -1399,6 +1861,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Initialize authentication after patch is loaded
         logger.debug('[Auth] ====== Start Initialization ======');
         await initAuth();
+        
+        // Check authentication and toggle state
+        await checkAuthAndToggleState();
     } catch (error) {
         logger.error('[Init] Error during initialization:', error);
         
@@ -1407,18 +1872,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         await initAuth();
     }
     
-    // Add event listeners
-    const loginButton = document.getElementById('login-button');
-    if (loginButton) {
-        loginButton.addEventListener('click', login);
-        logger.debug('[UI] Added login button event listener');
-    }
-    
-    const logoutButton = document.getElementById('logout-button');
-    if (logoutButton) {
-        logoutButton.addEventListener('click', logout);
-        logger.debug('[UI] Added logout button event listener');
-    }
+    // Initialize the dashboard
+    initializeDashboard();
 });
 
 // Export functions for debugging
