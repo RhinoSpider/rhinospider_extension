@@ -10,6 +10,9 @@ const logger = {
     },
     error: (msg, error) => {
         console.error(` [Background] ${msg}`, error);
+    },
+    warn: (msg, data) => {
+        console.warn(` [Background] ${msg}`, data || '');
     }
 };
 
@@ -28,293 +31,244 @@ let isAuthenticated = false;
 
 // Initialize extension state on startup
 async function initializeExtension() {
-    logger.log('Initializing extension');
-    
     try {
-        // Check if we're authenticated
-        const cachedData = await chrome.storage.local.get(['principalId']);
-        if (!cachedData.principalId) {
-            logger.log('User is not authenticated, skipping initialization');
+        logger.log('Initializing extension');
+        
+        // Get authentication state
+        const { principalId, enabled } = await chrome.storage.local.get(['principalId', 'enabled']);
+        
+        // Set authentication state
+        isAuthenticated = !!principalId;
+        logger.log(`Authentication state: ${isAuthenticated ? 'Authenticated' : 'Not authenticated'}`);
+        
+        // Set up action listeners
+        setupActionListeners();
+        
+        // Initialize topics and config only if authenticated
+        if (isAuthenticated) {
+            logger.log('User is authenticated, initializing topics and config');
+            await initializeTopicsAndConfig();
+            
+            // Check if extension is enabled
+            if (enabled !== false) {
+                logger.log('Extension is enabled, checking topics before starting scraping');
+                
+                // Check if topics are loaded
+                if (topics && topics.length > 0) {
+                    logger.log('Topics are loaded, starting scraping');
+                    await startScraping();
+                } else {
+                    logger.log('Topics are not loaded, waiting for topics before starting scraping');
+                    // We'll start scraping when topics are loaded
+                }
+            } else {
+                logger.log('Extension is disabled, not starting scraping');
+            }
+        } else {
+            logger.log('User is not authenticated, waiting for login before initializing topics and scraping');
+            // We'll initialize topics and start scraping when the LOGIN_COMPLETE message is received
+        }
+        
+        return { success: true };
+    } catch (error) {
+        logger.error('Error initializing extension:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Set up action listeners
+function setupActionListeners() {
+    // Set up browser action click listener
+    if (chrome.action) {
+        chrome.action.onClicked.addListener(handleBrowserActionClick);
+    } else if (chrome.browserAction) {
+        chrome.browserAction.onClicked.addListener(handleBrowserActionClick);
+    }
+    
+    // Set up tab update listener
+    chrome.tabs.onUpdated.addListener(handleTabUpdated);
+}
+
+// Initialize basic functionality that doesn't depend on authentication
+function initializeBasicFunctionality() {
+    // Set up message listeners
+    chrome.runtime.onMessage.addListener(handleMessages);
+    
+    // Set up alarm listener
+    if (typeof chrome.alarms !== 'undefined') {
+        chrome.alarms.onAlarm.addListener(handleAlarm);
+    }
+}
+
+// Initialize scraping-related functionality
+async function initializeScrapingFunctionality() {
+    try {
+        logger.log('Initializing scraping functionality');
+        
+        // Check authentication
+        const { principalId, enabled } = await chrome.storage.local.get(['principalId', 'enabled']);
+        if (!principalId) {
+            logger.log('Cannot initialize scraping: User is not authenticated');
             return { success: false, error: 'Not authenticated' };
         }
         
-        // Initialize topics and AI configuration first
-        logger.log('Initializing topics and AI configuration');
-        const topicsResult = await initializeTopicsAndConfig();
-        
-        if (!topicsResult.success) {
-            logger.error('Failed to initialize topics and AI configuration');
-            return topicsResult;
+        // Check if extension is enabled
+        if (enabled === false) {
+            logger.log('Extension is disabled, not initializing scraping');
+            return { success: false, error: 'Extension disabled' };
         }
         
-        // Check if topics were loaded successfully
-        if (topics.length === 0) {
-            logger.error('No topics available after initialization');
-            return { success: false, error: 'No topics available' };
-        }
-        
-        logger.log(`Successfully loaded ${topics.length} topics`);
-        
-        // Check if scraping was previously active
-        const scrapingState = await chrome.storage.local.get(['isScrapingActive']);
-        if (scrapingState.isScrapingActive) {
-            logger.log('Scraping was previously active, restarting');
-            await startScraping();
-        }
-        
-        // Set up alarm listener
-        if (typeof chrome.alarms !== 'undefined') {
+        // Check if topics are loaded
+        if (!topics || topics.length === 0) {
+            logger.log('No topics loaded, attempting to load topics');
+            
             try {
-                chrome.alarms.onAlarm.addListener(async (alarm) => {
-                    if (alarm.name === 'scrapeAlarm') {
-                        logger.log('Scrape alarm triggered');
-                        await performScrape();
-                    }
-                });
-                logger.log('Alarm listener set up successfully');
-            } catch (alarmError) {
-                logger.error('Error setting up alarm listener:', alarmError);
-                // We'll rely on the fallback timer mechanism
+                // Load topics
+                await getTopics();
+                
+                // Check if topics were loaded successfully
+                if (!topics || topics.length === 0) {
+                    logger.log('Failed to load topics, cannot initialize scraping');
+                    return { success: false, error: 'Failed to load topics' };
+                }
+            } catch (error) {
+                logger.error('Error loading topics:', error);
+                return { success: false, error: 'Error loading topics' };
             }
-        } else {
-            logger.log('Alarms API not available, will use fallback timer');
         }
         
-        logger.log('Extension initialization complete');
-        return { success: true };
+        // Start scraping
+        logger.log('Topics are loaded, starting scraping');
+        const result = await startScraping();
+        
+        return result;
     } catch (error) {
-        logger.error(`Error initializing extension: ${error.message}`);
+        logger.error('Error initializing scraping functionality:', error);
         return { success: false, error: error.message };
     }
 }
 
 // Initialize topics and configuration
 async function initializeTopicsAndConfig() {
-    logger.log('Initializing topics and configuration');
-    
     try {
-        // Check if user is authenticated
-        const authData = await chrome.storage.local.get(['principalId']);
-        if (!authData.principalId) {
-            logger.log('User not authenticated yet - waiting for login before fetching topics');
-            return [];
+        logger.log('Initializing topics and configuration');
+        
+        // Check authentication
+        const { principalId } = await chrome.storage.local.get(['principalId']);
+        if (!principalId) {
+            logger.log('Cannot initialize topics: User is not authenticated');
+            return { success: false, error: 'Not authenticated' };
         }
         
-        // Check if we have cached topics
-        const cachedData = await chrome.storage.local.get(['topics', 'lastTopicsUpdate']);
-        const now = Date.now();
+        // Load topics
+        logger.log('Loading topics');
+        await getTopics();
         
-        // Use cached topics if they exist and are less than 1 hour old
-        if (cachedData.topics && 
-            cachedData.topics.length > 0 && 
-            cachedData.lastTopicsUpdate && 
-            (now - cachedData.lastTopicsUpdate < 60 * 60 * 1000)) {
-            
-            logger.log('Using cached topics:', cachedData.topics.length);
-            topics = cachedData.topics;
-            
-            // Log the topics for debugging - now with FULL details
-            topics.forEach((topic, index) => {
-                logger.log(`Topic ${index + 1}:`, {
-                    id: topic.id,
-                    name: topic.name,
-                    status: topic.status,
-                    urlPatterns: topic.urlPatterns,
-                    extractionRules: topic.extractionRules,
-                    aiConfig: topic.aiConfig,
-                    scrapingInterval: topic.scrapingInterval,
-                    description: topic.description
-                });
-            });
-            
-            return topics;
+        // Check if topics were loaded successfully
+        if (!topics || topics.length === 0) {
+            logger.log('Failed to load topics during initialization');
+            return { success: false, error: 'Failed to load topics' };
         }
         
-        // Otherwise, fetch topics from the server
-        logger.log('Fetching topics from server');
-        const fetchedTopics = await getTopics();
-        
-        if (fetchedTopics && fetchedTopics.length > 0) {
-            logger.log('Successfully fetched topics:', fetchedTopics.length);
-            topics = fetchedTopics;
-            
-            // Cache the topics
-            await chrome.storage.local.set({ 
-                topics: fetchedTopics,
-                lastTopicsUpdate: now
-            });
-            
-            // Log the topics for debugging - now with FULL details
-            topics.forEach((topic, index) => {
-                logger.log(`Topic ${index + 1}:`, {
-                    id: topic.id,
-                    name: topic.name,
-                    status: topic.status,
-                    urlPatterns: topic.urlPatterns,
-                    extractionRules: topic.extractionRules,
-                    aiConfig: topic.aiConfig,
-                    scrapingInterval: topic.scrapingInterval,
-                    description: topic.description
-                });
-            });
-            
-            return topics;
-        } else {
-            logger.error('No topics fetched from server');
-            
-            // If we have cached topics, use them as a fallback
-            if (cachedData.topics && cachedData.topics.length > 0) {
-                logger.log('Using cached topics as fallback:', cachedData.topics.length);
-                topics = cachedData.topics;
-                return topics;
-            }
-            
-            // Otherwise, return empty array
-            logger.log('No cached topics available, returning empty array');
-            topics = [];
-            return topics;
-        }
+        logger.log(`Successfully loaded ${topics.length} topics during initialization`);
+        return { success: true, topicsCount: topics.length };
     } catch (error) {
-        logger.error('Error initializing topics:', error);
-        
-        // Try to use cached topics as fallback
-        try {
-            const cachedData = await chrome.storage.local.get(['topics']);
-            if (cachedData.topics && cachedData.topics.length > 0) {
-                logger.log('Using cached topics after error:', cachedData.topics.length);
-                topics = cachedData.topics;
-                return topics;
-            }
-        } catch (storageError) {
-            logger.error('Error accessing storage:', storageError);
-        }
-        
-        // If all else fails, return empty array
-        logger.log('No topics available after error, returning empty array');
-        topics = [];
-        return topics;
+        logger.error('Error initializing topics and configuration:', error);
+        return { success: false, error: error.message };
     }
 }
 
-// Get topics from the server
+// Get topics from the API
 async function getTopics() {
-    logger.log('Getting topics from server');
-    
     try {
-        // Get the delegation chain and principal ID from storage
-        const cachedData = await chrome.storage.local.get(['delegationChain', 'principalId']);
+        logger.log('Getting topics from API');
         
-        if (!cachedData.principalId) {
-            logger.log('No principal ID found in storage - user needs to authenticate first');
+        // Check authentication
+        const { principalId } = await chrome.storage.local.get(['principalId']);
+        if (!principalId) {
+            logger.log('Cannot get topics: User is not authenticated');
             return [];
         }
         
-        logger.log('Using principal ID for topics request:', cachedData.principalId);
+        // Get API URL from storage
+        const { apiUrl } = await chrome.storage.local.get(['apiUrl']);
         
-        // Ensure the principal ID is a string
-        let principalIdValue;
-        
-        if (typeof cachedData.principalId === 'object') {
-            if (cachedData.principalId.__principal__) {
-                principalIdValue = cachedData.principalId.__principal__;
-            } else {
-                // Try to convert the object to a string in a safe way
-                try {
-                    principalIdValue = String(cachedData.principalId);
-                } catch (e) {
-                    principalIdValue = JSON.stringify(cachedData.principalId);
-                }
-            }
-        } else {
-            principalIdValue = String(cachedData.principalId);
-        }
-        
-        logger.log('Using principal ID value for topics request:', principalIdValue);
-        
-        // Use the proxy client to get topics
-        const proxyClientInstance = new ProxyClient();
-        
-        try {
-            // Fetch topics from proxy
-            logger.log('Fetching topics from proxy server...');
-            const result = await proxyClientInstance.getTopics(principalIdValue);
-            logger.log('Received topics response:', result);
+        // If API URL is set, use it to fetch topics
+        if (apiUrl) {
+            // Construct topics URL
+            const topicsUrl = `${apiUrl}/topics`;
+            logger.log(`Fetching topics from ${topicsUrl}`);
             
-            // Check if we got a valid response with topics
-            if (result && result.ok && Array.isArray(result.ok)) {
-                logger.log('Successfully fetched topics via proxy (result.ok):', result.ok.length);
+            // Fetch topics from API
+            const response = await fetch(topicsUrl, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${principalId}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            // Check response
+            if (!response.ok) {
+                throw new Error(`Failed to fetch topics: ${response.status} ${response.statusText}`);
+            }
+            
+            // Parse response
+            const data = await response.json();
+            
+            // Check if topics array exists
+            if (!data || !Array.isArray(data.topics)) {
+                logger.log('No topics found in API response');
+                topics = [];
+                return [];
+            }
+            
+            // Store topics in memory and storage
+            topics = data.topics;
+            await chrome.storage.local.set({ topics: data.topics });
+            
+            logger.log(`Successfully loaded ${topics.length} topics`);
+            return topics;
+        } 
+        // If API URL is not set, try using the proxy client
+        else {
+            logger.log('API URL not set, trying to fetch topics via proxy client');
+            
+            try {
+                // Use the proxy client to fetch topics
+                const topicsResult = await proxyClient.getTopics(principalId);
                 
-                // Log each topic for debugging
-                result.ok.forEach((topic, index) => {
-                    logger.log(`Topic ${index + 1}:`, {
-                        id: topic.id,
-                        name: topic.name,
-                        status: topic.status,
-                        urlPatternsCount: topic.urlPatterns ? topic.urlPatterns.length : 0
-                    });
-                });
-                
-                return result.ok;
-            } else if (result && Array.isArray(result)) {
-                logger.log('Successfully fetched topics via proxy (array):', result.length);
-                
-                // Log each topic for debugging
-                result.forEach((topic, index) => {
-                    logger.log(`Topic ${index + 1}:`, {
-                        id: topic.id,
-                        name: topic.name,
-                        status: topic.status,
-                        urlPatternsCount: topic.urlPatterns ? topic.urlPatterns.length : 0
-                    });
-                });
-                
-                return result;
-            } else {
-                logger.error('Error fetching topics via proxy:', result);
-                
-                // Use cached topics if available
-                if (cachedData.topics) {
-                    logger.log('Using cached topics as fallback');
-                    return cachedData.topics;
+                // Check if we got a valid result
+                if (topicsResult && Array.isArray(topicsResult)) {
+                    // Store topics in memory and storage
+                    topics = topicsResult;
+                    await chrome.storage.local.set({ topics: topicsResult });
+                    
+                    logger.log(`Successfully loaded ${topics.length} topics via proxy client`);
+                    return topics;
+                } else if (topicsResult && topicsResult.ok && Array.isArray(topicsResult.ok)) {
+                    // Handle result.ok format
+                    topics = topicsResult.ok;
+                    await chrome.storage.local.set({ topics: topicsResult.ok });
+                    
+                    logger.log(`Successfully loaded ${topics.length} topics via proxy client (ok format)`);
+                    return topics;
                 } else {
-                    logger.log('No cached topics available, skipping topic initialization');
+                    logger.log('No valid topics found in proxy client response');
                     return [];
                 }
-            }
-        } catch (error) {
-            logger.error('Error fetching topics:', error);
-            
-            // Use cached topics if available
-            if (cachedData.topics) {
-                logger.log('Using cached topics as fallback after error');
-                return cachedData.topics;
-            } else {
-                logger.log('No cached topics available, skipping topic initialization');
+            } catch (proxyError) {
+                logger.error('Error getting topics via proxy client:', proxyError);
                 return [];
             }
         }
-        
     } catch (error) {
-        logger.error('Error in getTopics:', error);
-        
-        // Try to use cached topics as fallback
-        try {
-            const cachedData = await chrome.storage.local.get(['topics']);
-            if (cachedData.topics) {
-                logger.log('Using cached topics after error');
-                return cachedData.topics;
-            } else {
-                logger.log('No cached topics available after error, skipping topic initialization');
-                return [];
-            }
-        } catch (storageError) {
-            logger.error('Error accessing storage:', storageError);
-            return [];
-        }
+        logger.error('Error getting topics:', error);
+        return [];
     }
 }
 
-// Handle dashboard tab management
+// Open or focus dashboard
 async function openOrFocusDashboard() {
     try {
         logger.log('Opening or focusing dashboard');
@@ -407,102 +361,20 @@ function selectTopicAndUrl() {
 
 // Perform a scrape operation
 async function performScrape() {
-    logger.log('Starting scrape operation');
-    
     try {
-        // Check if we're authenticated
-        const cachedData = await chrome.storage.local.get(['principalId']);
-        if (!cachedData.principalId) {
-            logger.error('Cannot scrape: User is not authenticated');
-            return { success: false, error: 'Not authenticated' };
+        if (!topics || topics.length === 0) {
+            logger.log('Cannot perform scrape: No topics loaded');
+            return;
         }
         
-        // Initialize topics if needed
-        if (topics.length === 0) {
-            logger.log('No topics available, initializing before scrape');
-            await initializeTopicsAndConfig();
-        }
+        logger.log('Performing scrape operation');
         
-        // If still no topics, return error
-        if (topics.length === 0) {
-            logger.error('No topics available after initialization');
-            return { success: false, error: 'No topics available' };
-        }
+        // We're not going to scan tabs anymore
+        // Instead, we'll just log that scraping is ready
+        logger.log('Scraping system initialized and ready for test URLs');
         
-        // Select a topic and URL
-        const { topic, url, pattern } = await selectTopicAndUrl();
-        
-        if (!topic || !url) {
-            logger.error('Failed to select topic or URL for scraping');
-            return { success: false, error: 'No valid topic or URL' };
-        }
-        
-        logger.log(`Selected topic: ${topic.name} (${topic.id})`);
-        logger.log(`Selected URL: ${url}`);
-        
-        // Generate a valid URL from the pattern
-        const validUrl = generateUrlFromPattern(url);
-        logger.log(`Generated valid URL: ${validUrl}`);
-        
-        // Fetch content from the URL
-        logger.log(`Fetching content from ${validUrl}`);
-        
-        let content = '';
-        
-        try {
-            // Use the proxy server to fetch content instead of direct fetching
-            // This avoids CORS issues by having the server make the request
-            logger.log('Using proxy server to fetch content and avoid CORS issues');
-            
-            // Initialize proxy client
-            const proxyClient = new ProxyClient();
-            
-            // Request content through the proxy using the fetchContent method
-            const fetchResult = await proxyClient.fetchContent(validUrl, cachedData.principalId);
-            
-            if (fetchResult && fetchResult.ok && fetchResult.ok.content) {
-                content = fetchResult.ok.content;
-                logger.log(`Successfully fetched content via proxy (${content.length} bytes)`);
-            } else if (fetchResult && fetchResult.content) {
-                content = fetchResult.content;
-                logger.log(`Successfully fetched content via proxy (${content.length} bytes)`);
-            } else {
-                logger.error('Failed to fetch content via proxy: No content in response');
-                logger.log('Response:', fetchResult);
-                throw new Error('No content in proxy response');
-            }
-        } catch (error) {
-            logger.error(`Error fetching content via proxy: ${error.message}`);
-            logger.log('Unable to fetch content, will submit empty content notification');
-        }
-        
-        // Submit the scraped data
-        if (content && content.length > 0) {
-            logger.log(`Submitting scraped content (${content.length} bytes) for URL: ${validUrl}`);
-            
-            try {
-                const result = await submitScrapedData(validUrl, content, topic.id, 'completed');
-                logger.log('Successfully submitted scraped data:', result);
-                return { success: true, result };
-            } catch (submitError) {
-                logger.error(`Error submitting scraped data: ${submitError.message}`);
-                return { success: false, error: `Submission error: ${submitError.message}` };
-            }
-        } else {
-            logger.log('No content fetched, submitting empty content notification');
-            
-            try {
-                const result = await submitScrapedData(validUrl, '', topic.id, 'empty');
-                logger.log('Successfully submitted empty content notification:', result);
-                return { success: true, result, empty: true };
-            } catch (emptySubmitError) {
-                logger.error(`Error submitting empty content notification: ${emptySubmitError.message}`);
-                return { success: false, error: `Empty submission error: ${emptySubmitError.message}` };
-            }
-        }
     } catch (error) {
-        logger.error(`Error during scrape operation: ${error.message}`);
-        return { success: false, error: error.message };
+        logger.error('Error during scrape operation:', error);
     }
 }
 
@@ -530,9 +402,9 @@ async function submitScrapedData(url, content, topicId, status = 'completed') {
                 principalIdValue = principalId.__principal__;
             } else {
                 try {
-                    principalIdValue = JSON.stringify(principalId);
-                } catch (e) {
                     principalIdValue = String(principalId);
+                } catch (e) {
+                    principalIdValue = JSON.stringify(principalId);
                 }
             }
         } else {
@@ -609,67 +481,53 @@ async function forceScrape() {
 
 // Start the scraping process
 async function startScraping() {
-    logger.log('Starting scraping process');
-    
     try {
-        // Check if we're authenticated
-        const cachedData = await chrome.storage.local.get(['principalId']);
-        if (!cachedData.principalId) {
+        logger.log('Starting scraping process');
+        
+        // Check authentication
+        const { principalId, enabled } = await chrome.storage.local.get(['principalId', 'enabled']);
+        if (!principalId) {
             logger.log('Cannot start scraping: User is not authenticated');
             return { success: false, error: 'Not authenticated' };
         }
         
-        // Check if scraping is already active
-        if (isScrapingActive) {
-            logger.log('Scraping is already active, not starting again');
-            return { success: true, message: 'Scraping already active' };
+        // Check if extension is enabled
+        if (enabled === false) {
+            logger.log('Cannot start scraping: Extension is disabled');
+            return { success: false, error: 'Extension disabled' };
         }
         
-        // Set scraping as active
+        // Check if topics are loaded
+        if (!topics || topics.length === 0) {
+            logger.log('Cannot start scraping: No topics loaded');
+            return { success: false, error: 'No topics loaded' };
+        }
+        
+        // Set scraping state to active
         isScrapingActive = true;
         
-        // Store scraping state
-        chrome.storage.local.set({ isScrapingActive: true });
-        
-        // Update badge
-        chrome.action.setBadgeText({ text: 'ON' });
-        chrome.action.setBadgeBackgroundColor({ color: '#4CAF50' });
-        
-        // Perform initial scrape
-        logger.log('Performing initial scrape');
-        await performScrape();
-        
-        // Set up periodic scraping with alarms if available
-        if (typeof chrome.alarms !== 'undefined') {
-            try {
-                // Clear any existing alarm
-                await chrome.alarms.clear('scrapeAlarm');
-                
-                // Create a new alarm
-                await chrome.alarms.create('scrapeAlarm', {
-                    periodInMinutes: SCRAPE_INTERVAL_MINUTES
-                });
-                
-                logger.log(`Scheduled periodic scraping every ${SCRAPE_INTERVAL_MINUTES} minutes`);
-            } catch (alarmError) {
-                logger.error('Error setting up alarms:', alarmError);
-                // Set up fallback using setTimeout
-                setupFallbackTimer();
-            }
+        // Create alarm for periodic scraping
+        if (chrome.alarms) {
+            // Clear any existing alarms
+            await chrome.alarms.clear('scrapeAlarm');
+            
+            // Create new alarm
+            await chrome.alarms.create('scrapeAlarm', {
+                periodInMinutes: 5 // Scrape every 5 minutes
+            });
+            
+            logger.log('Scrape alarm created, will scrape every 5 minutes');
         } else {
-            logger.log('Alarms API not available, using fallback timer');
-            // Set up fallback using setTimeout
-            setupFallbackTimer();
+            logger.warn('Alarms API not available, periodic scraping disabled');
         }
         
-        logger.log('Scraping process started successfully');
+        // Perform initial scrape
+        await performScrape();
+        
+        logger.log('Scraping started successfully');
         return { success: true };
     } catch (error) {
-        logger.error(`Error starting scraping: ${error.message}`);
-        isScrapingActive = false;
-        chrome.storage.local.set({ isScrapingActive: false });
-        chrome.action.setBadgeText({ text: 'ERR' });
-        chrome.action.setBadgeBackgroundColor({ color: '#F44336' });
+        logger.error('Error starting scraping:', error);
         return { success: false, error: error.message };
     }
 }
@@ -754,7 +612,7 @@ async function forceRefreshTopics() {
             topics = freshTopics;
             
             // Cache the new topics
-            await chrome.storage.local.set({ 
+            await chrome.storage.local.set({
                 topics: freshTopics,
                 lastTopicsUpdate: Date.now()
             });
@@ -794,16 +652,40 @@ async function forceRefreshTopics() {
     }
 }
 
-// Set up alarm listener if the API is available
-if (chrome.alarms) {
-    chrome.alarms.onAlarm.addListener((alarm) => {
-        if (alarm.name === 'scrapeAlarm') {
-            logger.log('Scrape alarm triggered');
-            if (isScrapingActive) {
-                performScrape();
-            }
+// Handle alarm events
+async function handleAlarm(alarm) {
+    if (alarm.name === 'scrapeAlarm') {
+        // Check authentication before scraping
+        const { principalId } = await chrome.storage.local.get(['principalId']);
+        if (!principalId) {
+            logger.log('Scrape alarm triggered but user is not authenticated, skipping');
+            return;
         }
-    });
+        
+        logger.log('Scrape alarm triggered');
+        await performScrape();
+    }
+}
+
+// Handle browser action click
+function handleBrowserActionClick() {
+    logger.log('Browser action clicked');
+    openOrFocusDashboard();
+}
+
+// Handle tab updates
+function handleTabUpdated(tabId, changeInfo, tab) {
+    // Only process if the URL has changed and we're authenticated
+    if (changeInfo.url && isAuthenticated) {
+        // Check if the URL matches any of our topic patterns
+        processUrlChange(tab.url, tabId);
+    }
+}
+
+// Handle extension installation or update
+function handleInstalled(details) {
+    logger.log(`Extension installed/updated: ${details.reason}`);
+    initializeOnInstall(details);
 }
 
 // Listen for messages
@@ -852,18 +734,61 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             return true;
             
         case 'START_SCRAPING':
-            logger.log('Received start scraping request');
+            logger.log('Received START_SCRAPING message');
             
-            startScraping()
-                .then(result => {
-                    logger.log('Start scraping result:', result);
-                    sendResponse(result);
-                })
-                .catch(error => {
-                    logger.error('Error starting scraping:', error);
-                    sendResponse({ success: false, error: error.message });
-                });
-            break;
+            // Check if user is authenticated
+            chrome.storage.local.get(['principalId']).then(result => {
+                const principalId = result.principalId;
+                
+                if (!principalId) {
+                    logger.log('Cannot start scraping: User is not authenticated');
+                    sendResponse({ success: false, error: 'User is not authenticated' });
+                    return;
+                }
+                
+                // Check if topics are loaded, if not, load them
+                if (!topics || topics.length === 0) {
+                    logger.log('Topics not loaded, loading them before starting scraping');
+                    
+                    // Load topics
+                    getTopics().then(loadedTopics => {
+                        if (loadedTopics && loadedTopics.length > 0) {
+                            logger.log(`Topics loaded successfully (${loadedTopics.length} topics), starting scraping`);
+                            
+                            // Start scraping
+                            startScraping().then(() => {
+                                logger.log('Scraping started successfully');
+                                sendResponse({ success: true });
+                            }).catch(error => {
+                                logger.error('Error starting scraping:', error);
+                                sendResponse({ success: false, error: error.message });
+                            });
+                        } else {
+                            logger.log('Failed to load topics, cannot start scraping');
+                            sendResponse({ success: false, error: 'Failed to load topics' });
+                        }
+                    }).catch(error => {
+                        logger.error('Error loading topics:', error);
+                        sendResponse({ success: false, error: error.message });
+                    });
+                } else {
+                    logger.log(`Topics already loaded (${topics.length} topics), starting scraping`);
+                    
+                    // Start scraping
+                    startScraping().then(() => {
+                        logger.log('Scraping started successfully');
+                        sendResponse({ success: true });
+                    }).catch(error => {
+                        logger.error('Error starting scraping:', error);
+                        sendResponse({ success: false, error: error.message });
+                    });
+                }
+            }).catch(error => {
+                logger.error('Error checking authentication:', error);
+                sendResponse({ success: false, error: error.message });
+            });
+            
+            return true; // Keep the message channel open for async response
             
         case 'STOP_SCRAPING':
             logger.log('Received stop scraping request');
@@ -885,47 +810,51 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             return true;
             
         case 'LOGIN_COMPLETE':
-            logger.log('Login complete, updating auth state');
+            logger.log('Received LOGIN_COMPLETE message');
+            
             if (message.principalId) {
-                let principalIdValue;
+                logger.log(`User authenticated with principalId: ${message.principalId}`);
                 
-                if (typeof message.principalId === 'object') {
-                    if (message.principalId.__principal__) {
-                        principalIdValue = message.principalId.__principal__;
-                    } else {
-                        // Try to convert the object to a string in a safe way
-                        try {
-                            principalIdValue = String(message.principalId);
-                        } catch (e) {
-                            principalIdValue = JSON.stringify(message.principalId);
-                        }
-                    }
-                } else {
-                    principalIdValue = String(message.principalId);
-                }
-                
-                logger.log('Storing principal ID:', principalIdValue);
-                chrome.storage.local.set({ principalId: principalIdValue });
+                // Set authentication state
                 isAuthenticated = true;
                 
-                // Initialize topics after login
-                logger.log('Initializing topics after login');
-                initializeTopicsAndConfig().then(() => {
-                    // Start scraping if extension is enabled
-                    chrome.storage.local.get(['enabled'], function(data) {
-                        if (data.enabled !== false) {
-                            logger.log('Extension is enabled, starting scraping');
-                            startScraping();
-                        } else {
-                            logger.log('Extension is disabled, not starting scraping');
-                        }
-                    });
+                // Get extension enabled state
+                chrome.storage.local.get(['enabled']).then(result => {
+                    // Check if extension is enabled
+                    if (result.enabled !== false) {
+                        logger.log('Extension is enabled, loading topics');
+                        
+                        // Load topics
+                        getTopics().then(loadedTopics => {
+                            // Check if topics were loaded successfully
+                            if (loadedTopics && loadedTopics.length > 0) {
+                                logger.log(`Topics loaded successfully (${loadedTopics.length} topics), starting scraping`);
+                                
+                                // Start scraping
+                                startScraping().then(result => {
+                                    logger.log('Scraping started after login:', result);
+                                }).catch(error => {
+                                    logger.error('Error starting scraping after login:', error);
+                                });
+                            } else {
+                                logger.log('Failed to load topics, cannot start scraping');
+                            }
+                        }).catch(error => {
+                            logger.error('Error loading topics after login:', error);
+                        });
+                    } else {
+                        logger.log('Extension is disabled, not starting scraping');
+                    }
+                }).catch(error => {
+                    logger.error('Error getting extension state:', error);
                 });
             } else {
-                logger.log('No principal ID provided in LOGIN_COMPLETE message');
+                logger.warn('LOGIN_COMPLETE message received but no principalId provided');
             }
+            
+            // Send response back to dashboard
             sendResponse({ success: true });
-            break;
+            return true; // Keep the message channel open for async response
             
         case 'UPDATE_TOPICS':
             // Update topics from message
@@ -987,44 +916,69 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             
             return true; // Keep the message channel open for async response
             
+        case 'TEST_SCRAPE_URL':
+            logger.log('Received test scrape URL request for:', message.url);
+            
+            // Check if user is authenticated
+            chrome.storage.local.get(['principalId']).then(result => {
+                const principalId = result.principalId;
+                
+                if (!principalId) {
+                    logger.log('Cannot test scrape: User is not authenticated');
+                    sendResponse({ success: false, error: 'User is not authenticated' });
+                    return;
+                }
+                
+                // Check if topics are loaded
+                if (!topics || topics.length === 0) {
+                    logger.log('Topics not loaded, loading them before test scrape');
+                    
+                    // Load topics
+                    getTopics().then(loadedTopics => {
+                        if (loadedTopics && loadedTopics.length > 0) {
+                            logger.log(`Topics loaded successfully (${loadedTopics.length} topics), performing test scrape`);
+                            
+                            // Perform test scrape with the specified URL
+                            testScrapeUrl(message.url).then(result => {
+                                logger.log('Test scrape completed:', result);
+                                sendResponse({ success: true, data: result });
+                            }).catch(error => {
+                                logger.error('Error during test scrape:', error);
+                                sendResponse({ success: false, error: error.message });
+                            });
+                        } else {
+                            logger.log('Failed to load topics, cannot perform test scrape');
+                            sendResponse({ success: false, error: 'Failed to load topics' });
+                        }
+                    }).catch(error => {
+                        logger.error('Error loading topics:', error);
+                        sendResponse({ success: false, error: error.message });
+                    });
+                } else {
+                    logger.log(`Topics already loaded (${topics.length} topics), performing test scrape`);
+                    
+                    // Perform test scrape with the specified URL
+                    testScrapeUrl(message.url).then(result => {
+                        logger.log('Test scrape completed:', result);
+                        sendResponse({ success: true, data: result });
+                    }).catch(error => {
+                        logger.error('Error during test scrape:', error);
+                        sendResponse({ success: false, error: error.message });
+                    });
+                }
+            }).catch(error => {
+                logger.error('Error checking authentication:', error);
+                sendResponse({ success: false, error: error.message });
+            });
+            
+            return true; // Keep the message channel open for async response
+            
         default:
             sendResponse({ error: 'Unknown message type' });
     }
     
     // Return true to indicate we'll respond asynchronously
     return true;
-});
-
-// Handle extension install/update
-chrome.runtime.onInstalled.addListener((details) => {
-    logger.log('Extension installed/updated:', details.reason);
-    
-    // Check if user is authenticated
-    chrome.storage.local.get(['principalId', 'delegationChain', 'enabled'], (result) => {
-        // Set authentication state
-        isAuthenticated = !!result.principalId;
-        
-        // Initialize topics and config
-        initializeTopicsAndConfig().then(() => {
-            // Set initial state if not already set
-            if (result.enabled === undefined) {
-                chrome.storage.local.set({
-                    enabled: true
-                });
-            }
-            
-            // Only start scraping if we have authentication and scraping is enabled
-            if (result.principalId && result.enabled !== false) {
-                logger.log('User is authenticated and scraping is enabled, starting scraping');
-                startScraping();
-            } else if (!result.principalId) {
-                logger.log('User is not authenticated, waiting for login before scraping');
-                // We'll start scraping when the LOGIN_COMPLETE message is received
-            } else {
-                logger.log('User is authenticated but scraping is disabled');
-            }
-        });
-    });
 });
 
 // Get mock topics for testing
@@ -1049,11 +1003,12 @@ function getMockTopics() {
             status: 'active',
             name: 'Mock Topic 2',
             description: 'This is another mock topic for testing',
-            urlPatterns: ['https://example.org/*', 'https://test.org/*'],
+            urlPatterns: ['https://test.org/*'],
             extractionRules: {
                 fields: [
                     { name: 'Title', required: true, fieldType: 'text' },
-                    { name: 'Content', required: true, fieldType: 'text' }
+                    { name: 'Description', required: true, fieldType: 'text' },
+                    { name: 'Author', required: false, fieldType: 'text' }
                 ]
             }
         }
@@ -1161,43 +1116,343 @@ function debugLog(message, data) {
 // Expose debug functions to the global scope (service worker context)
 // Note: Don't use window object in service workers
 const rhinoSpiderDebug = {
-    performScrape: async () => {
-        logger.log('Manual scrape triggered from console');
-        return await performScrape();
-    },
     getTopics: async () => {
-        logger.log('Manual get topics triggered from console');
-        return await getTopics();
+        const loadedTopics = await getTopics();
+        logger.log('Topics loaded via debug function:', loadedTopics);
+        return loadedTopics;
     },
-    refreshTopics: async () => {
-        logger.log('Manual refresh topics triggered from console');
-        topics = [];
-        return await initializeTopicsAndConfig();
+    startScraping: async () => {
+        const result = await startScraping();
+        logger.log('Scraping started via debug function:', result);
+        return result;
     },
-    logTopics: () => {
-        logger.log('Current topics:', topics);
-        return topics;
+    stopScraping: async () => {
+        const result = await stopScraping();
+        logger.log('Scraping stopped via debug function:', result);
+        return result;
     },
-    getLogs: () => {
-        return new Promise((resolve) => {
-            chrome.storage.local.get(['debugLogs'], (result) => {
-                resolve(result.debugLogs || []);
-            });
-        });
+    forceScrape: async () => {
+        const result = await forceScrape();
+        logger.log('Force scrape executed via debug function:', result);
+        return result;
     },
-    clearLogs: () => {
-        return new Promise((resolve) => {
-            chrome.storage.local.remove(['debugLogs'], () => {
-                resolve({ success: true, message: 'Debug logs cleared' });
-            });
-        });
+    forceRefreshTopics: async () => {
+        const result = await forceRefreshTopics();
+        logger.log('Force refresh topics executed via debug function:', result);
+        return result;
+    },
+    testScrapeUrl: async (url) => {
+        if (!url) {
+            logger.error('URL is required for test scraping');
+            return { success: false, error: 'URL is required' };
+        }
+        
+        const result = await testScrapeUrl(url);
+        logger.log('Test scrape executed via debug function:', result);
+        return result;
+    },
+    getExtractedData: async () => {
+        const result = await chrome.storage.local.get(['extractedData']);
+        const extractedData = result.extractedData || [];
+        logger.log(`Retrieved ${extractedData.length} extracted data items`);
+        return extractedData;
+    },
+    clearExtractedData: async () => {
+        await chrome.storage.local.set({ extractedData: [] });
+        logger.log('Cleared all extracted data');
+        return { success: true };
     }
 };
 
-// Make debug functions available via chrome.runtime.getBackgroundPage()
-self.rhinoSpiderDebug = rhinoSpiderDebug;
+// Expose debug functions to the console
+globalThis.rhinoSpiderDebug = rhinoSpiderDebug;
 
 logger.log('Debug functions exposed to console as rhinoSpiderDebug');
 
-// Call initialization on startup
+// Set up event listeners
+if (chrome.alarms) {
+    chrome.alarms.onAlarm.addListener(handleAlarm);
+}
+
+if (chrome.action) {
+    chrome.action.onClicked.addListener(handleBrowserActionClick);
+} else if (chrome.browserAction) {
+    chrome.browserAction.onClicked.addListener(handleBrowserActionClick);
+}
+
+chrome.tabs.onUpdated.addListener(handleTabUpdated);
+chrome.runtime.onInstalled.addListener(handleInstalled);
+
+// Handle extension install/update
+async function initializeOnInstall(details) {
+    logger.log('Extension installed/updated:', details.reason);
+    
+    // Check if user is authenticated
+    const result = await chrome.storage.local.get(['principalId', 'delegationChain', 'enabled', 'topics']);
+    
+    // Set authentication state
+    isAuthenticated = !!result.principalId;
+    
+    // Initialize topics and config
+    try {
+        await initializeExtension();
+        
+        // Set initial state if not already set
+        if (result.enabled === undefined) {
+            await chrome.storage.local.set({
+                enabled: true
+            });
+        }
+        
+        // Check if we have topics loaded
+        const hasTopics = result.topics && Array.isArray(result.topics) && result.topics.length > 0;
+        
+        // Only start scraping if we have authentication, topics are loaded, and scraping is enabled
+        if (result.principalId && result.enabled !== false && hasTopics) {
+            logger.log('User is authenticated, topics are loaded, and scraping is enabled, starting scraping');
+            await startScraping();
+        } else if (!result.principalId) {
+            logger.log('User is not authenticated, waiting for login before scraping');
+            // We'll start scraping when the LOGIN_COMPLETE message is received
+        } else if (!hasTopics) {
+            logger.log('User is authenticated but topics are not loaded, waiting for topics before scraping');
+            // We'll start scraping when topics are loaded
+        } else {
+            logger.log('User is authenticated but scraping is disabled');
+        }
+    } catch (error) {
+        logger.error('Error initializing extension during install/update:', error);
+    }
+}
+
+// Initialize the extension on startup
+// Removed duplicate listener since we already added it above
 initializeExtension();
+
+// Process URL change for scraping - only used for testing with specific URLs
+async function processUrlChange(url, tabId = null) {
+    try {
+        if (!url) {
+            logger.log('No URL provided to process');
+            return;
+        }
+        
+        logger.log(`Processing URL: ${url}`);
+        
+        // Find matching topics for this URL
+        const matchingTopics = findMatchingTopicsForUrl(url);
+        
+        if (!matchingTopics || matchingTopics.length === 0) {
+            logger.log('No matching topics found for URL:', url);
+            return;
+        }
+        
+        logger.log(`Found ${matchingTopics.length} matching topics for URL:`, url);
+        
+        // For simplicity, just use the first matching topic
+        const topic = matchingTopics[0];
+        logger.log('Using topic for scraping:', topic.name);
+        
+        // For testing purposes only - fetch content directly
+        // This is only used when explicitly called with a test URL
+        if (!tabId) {
+            const content = await fetchPageContent(url);
+            if (content) {
+                logger.log(`Fetched content directly (${content.length} bytes)`);
+                await submitScrapedData(url, content, topic.id);
+            } else {
+                logger.log('Failed to fetch content directly');
+            }
+            return;
+        }
+        
+        // This part is only reached if a tabId is provided (which we're not doing in our implementation)
+        // It's kept for compatibility but won't be used
+        try {
+            // Request the content script to get the page content
+            const response = await chrome.tabs.sendMessage(tabId, { 
+                action: 'getPageContent' 
+            });
+            
+            if (response && response.content) {
+                logger.log(`Received page content (${response.content.length} bytes)`);
+                
+                // Submit the data
+                await submitScrapedData(url, response.content, topic.id);
+            } else {
+                logger.log('No content received from tab');
+            }
+        } catch (error) {
+            logger.log('Error getting page content, tab may not have content script:', error.message);
+            // This is expected for tabs without our content script, so we don't need to log as error
+        }
+    } catch (error) {
+        logger.error('Error processing URL change:', error);
+    }
+}
+
+// Find topics that match a given URL
+function findMatchingTopicsForUrl(url) {
+    if (!topics || topics.length === 0) {
+        logger.log('No topics available to match URL');
+        return [];
+    }
+    
+    logger.log(`Finding matching topics for URL: ${url}`);
+    
+    // Convert URL to lowercase for case-insensitive matching
+    const lowerUrl = url.toLowerCase();
+    
+    // Find topics with matching URL patterns
+    const matchingTopics = topics.filter(topic => {
+        // Skip inactive topics
+        if (topic.status !== 'active') {
+            return false;
+        }
+        
+        // Check if any URL pattern matches
+        if (!topic.urlPatterns || topic.urlPatterns.length === 0) {
+            return false;
+        }
+        
+        return topic.urlPatterns.some(pattern => {
+            // Convert glob pattern to regex
+            const regexPattern = pattern
+                .replace(/\./g, '\\.')
+                .replace(/\*/g, '.*');
+            
+            const regex = new RegExp(`^${regexPattern}$`, 'i');
+            return regex.test(lowerUrl);
+        });
+    });
+    
+    logger.log(`Found ${matchingTopics.length} matching topics for URL: ${url}`);
+    return matchingTopics;
+}
+
+// Test scraping with a specific URL
+async function testScrapeUrl(url) {
+    try {
+        logger.log(`Testing scrape for URL: ${url}`);
+        
+        // Find matching topics for this URL
+        const matchingTopics = findMatchingTopicsForUrl(url);
+        
+        if (!matchingTopics || matchingTopics.length === 0) {
+            logger.log('No matching topics found for URL:', url);
+            return { 
+                success: false, 
+                error: 'No matching topics found for this URL',
+                url: url
+            };
+        }
+        
+        logger.log(`Found ${matchingTopics.length} matching topics for URL:`, url);
+        
+        // For simplicity, just use the first matching topic
+        const topic = matchingTopics[0];
+        logger.log('Using topic for scraping:', topic.name);
+        
+        // Get the page content
+        const pageContent = await fetchPageContent(url);
+        
+        if (!pageContent) {
+            return { 
+                success: false, 
+                error: 'Failed to fetch page content',
+                url: url
+            };
+        }
+        
+        // Process the content based on the topic's extraction rules
+        const extractedData = {
+            url: url,
+            topicId: topic.id,
+            topicName: topic.name,
+            timestamp: new Date().toISOString(),
+            fields: {}
+        };
+        
+        // For now, just extract basic info without AI processing
+        // In a real implementation, this would use AI to extract data based on extraction rules
+        if (topic.extractionRules && topic.extractionRules.fields) {
+            for (const field of topic.extractionRules.fields) {
+                // Simple extraction based on field name (just for testing)
+                if (field.name === 'Title') {
+                    const titleMatch = pageContent.match(/<title>(.*?)<\/title>/i);
+                    extractedData.fields.Title = titleMatch ? titleMatch[1] : 'Unknown Title';
+                } else if (field.name === 'Content' || field.name === 'Description') {
+                    const metaDesc = pageContent.match(/<meta name="description" content="(.*?)"/i);
+                    extractedData.fields[field.name] = metaDesc ? metaDesc[1] : 'No description found';
+                } else if (field.name === 'Author') {
+                    const authorMatch = pageContent.match(/author">(.*?)</i);
+                    extractedData.fields.Author = authorMatch ? authorMatch[1] : 'Unknown Author';
+                } else {
+                    extractedData.fields[field.name] = `Placeholder for ${field.name}`;
+                }
+            }
+        }
+        
+        // Save the extracted data
+        await saveExtractedData(extractedData);
+        
+        return {
+            success: true,
+            url: url,
+            topicName: topic.name,
+            extractedData: extractedData
+        };
+    } catch (error) {
+        logger.error('Error in test scrape:', error);
+        return { 
+            success: false, 
+            error: error.message,
+            url: url
+        };
+    }
+}
+
+// Fetch page content for testing
+async function fetchPageContent(url) {
+    try {
+        logger.log(`Fetching content for URL: ${url}`);
+        
+        // Use fetch API to get the page content
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+            throw new Error(`Failed to fetch page: ${response.status} ${response.statusText}`);
+        }
+        
+        const content = await response.text();
+        logger.log(`Successfully fetched content (${content.length} bytes)`);
+        
+        return content;
+    } catch (error) {
+        logger.error('Error fetching page content:', error);
+        return null;
+    }
+}
+
+// Save extracted data
+async function saveExtractedData(data) {
+    try {
+        logger.log('Saving extracted data');
+        
+        // Get existing data from storage
+        const result = await chrome.storage.local.get(['extractedData']);
+        const extractedData = result.extractedData || [];
+        
+        // Add new data
+        extractedData.push(data);
+        
+        // Save back to storage
+        await chrome.storage.local.set({ extractedData });
+        
+        logger.log(`Saved extracted data, total items: ${extractedData.length}`);
+        return true;
+    } catch (error) {
+        logger.error('Error saving extracted data:', error);
+        return false;
+    }
+}

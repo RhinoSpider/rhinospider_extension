@@ -938,7 +938,8 @@ async function login() {
                             
                             // Send message to background script
                             chrome.runtime.sendMessage({
-                                type: 'START_SCRAPING'
+                                type: 'LOGIN_COMPLETE',
+                                principalId: principalIdString
                             }, (response) => {
                                 logger.debug('[Auth] Received response from background script:', response);
                             });
@@ -1268,24 +1269,12 @@ function updateUIForAuthenticated() {
             if (result.principalId) {
                 logger.debug('[Auth] User is authenticated with principal ID:', result.principalId);
                 
-                // First send LOGIN_COMPLETE message to ensure background script knows we're authenticated
+                // Send LOGIN_COMPLETE message to ensure background script knows we're authenticated
                 chrome.runtime.sendMessage({
                     type: 'LOGIN_COMPLETE',
                     principalId: result.principalId
                 }, (response) => {
                     logger.debug('[Auth] Received LOGIN_COMPLETE response from background script:', response);
-                    
-                    // Then if toggle is on, send START_SCRAPING message
-                    if (isEnabled) {
-                        logger.debug('[Auth] Toggle is on, notifying background script to start scraping');
-                        
-                        // Send message to background script
-                        chrome.runtime.sendMessage({
-                            type: 'START_SCRAPING'
-                        }, (response) => {
-                            logger.debug('[Auth] Received START_SCRAPING response from background script:', response);
-                        });
-                    }
                 });
             } else {
                 logger.debug('[Auth] No principal ID found in storage, cannot notify background script');
@@ -1308,18 +1297,6 @@ function updateUIForAuthenticated() {
                                     principalId: JSON.stringify(profileData.principal)
                                 }, (response) => {
                                     logger.debug('[Auth] Received LOGIN_COMPLETE response from background script:', response);
-                                    
-                                    // Then if toggle is on, send START_SCRAPING message
-                                    if (isEnabled) {
-                                        logger.debug('[Auth] Toggle is on, notifying background script to start scraping');
-                                        
-                                        // Send message to background script
-                                        chrome.runtime.sendMessage({
-                                            type: 'START_SCRAPING'
-                                        }, (response) => {
-                                            logger.debug('[Auth] Received START_SCRAPING response from background script:', response);
-                                        });
-                                    }
                                 });
                             });
                         }
@@ -1535,33 +1512,23 @@ async function checkAuthAndToggleState() {
         });
         
         // If authenticated and toggle is on, notify background script
-        if (principalId && extensionEnabled !== false) {
-            logger.debug('[Auth] User is authenticated and toggle is on, notifying background script');
+        if (principalId) {
+            logger.debug('[Auth] User is authenticated, notifying background script');
             
-            // Send message to background script
+            // Send message to background script - only LOGIN_COMPLETE
+            // The background script will handle starting scraping after topics are loaded
             chrome.runtime.sendMessage({
                 type: 'LOGIN_COMPLETE',
                 principalId: principalId
             }, (response) => {
                 logger.debug('[Auth] Received response from background script:', response);
                 
-                // Also send START_SCRAPING message to ensure scraping starts
-                chrome.runtime.sendMessage({
-                    type: 'START_SCRAPING'
-                }, (startResponse) => {
-                    logger.debug('[Auth] Received start scraping response:', startResponse);
-                    
-                    if (startResponse && startResponse.success) {
-                        showNotification('Scraping started successfully', 'success');
-                    } else if (startResponse && startResponse.error) {
-                        showNotification(`Error starting scraping: ${startResponse.error}`, 'error');
-                    }
-                });
+                if (response && response.success) {
+                    logger.debug('[Auth] Login complete, background script will start scraping when topics are loaded');
+                }
             });
-        } else if (!principalId) {
-            logger.debug('[Auth] User is not authenticated, waiting for login');
         } else {
-            logger.debug('[Auth] Extension is disabled, not starting scraping');
+            logger.debug('[Auth] User is not authenticated, waiting for login');
         }
     } catch (error) {
         logger.error('[Auth] Error checking auth and toggle state:', error);
@@ -1668,31 +1635,15 @@ function addEventListeners() {
                 // Send message to background script
                 if (isEnabled) {
                     chrome.runtime.sendMessage({
-                        type: 'START_SCRAPING'
+                        type: 'LOGIN_COMPLETE'
                     }, (response) => {
-                        logger.debug('[UI] Received start scraping response:', response);
-                        
-                        if (response && response.success) {
-                            showNotification('Scraping started successfully', 'success');
-                        } else if (response && response.error) {
-                            showNotification(`Error starting scraping: ${response.error}`, 'error');
-                            // Reset toggle if error
-                            extensionStatusToggle.checked = false;
-                        }
+                        logger.debug('[UI] Received response from background script:', response);
                     });
                 } else {
                     chrome.runtime.sendMessage({
                         type: 'STOP_SCRAPING'
                     }, (response) => {
-                        logger.debug('[UI] Received stop scraping response:', response);
-                        
-                        if (response && response.success) {
-                            showNotification('Scraping stopped successfully', 'success');
-                        } else if (response && response.error) {
-                            showNotification(`Error stopping scraping: ${response.error}`, 'error');
-                            // Reset toggle if error
-                            extensionStatusToggle.checked = true;
-                        }
+                        logger.debug('[UI] Received response from background script:', response);
                     });
                 }
             });
@@ -1726,96 +1677,21 @@ function addEventListeners() {
                 // Send message to background script
                 if (isEnabled) {
                     chrome.runtime.sendMessage({
-                        type: 'START_SCRAPING'
+                        type: 'LOGIN_COMPLETE'
                     }, (response) => {
-                        logger.debug('[UI] Received start scraping response:', response);
-                        
-                        if (response && response.success) {
-                            showNotification('Scraping started successfully', 'success');
-                        } else if (response && response.error) {
-                            showNotification(`Error starting scraping: ${response.error}`, 'error');
-                            // Reset toggle if error
-                            settingsExtensionStatusToggle.checked = false;
-                        }
+                        logger.debug('[UI] Received response from background script:', response);
                     });
                 } else {
                     chrome.runtime.sendMessage({
                         type: 'STOP_SCRAPING'
                     }, (response) => {
-                        logger.debug('[UI] Received stop scraping response:', response);
-                        
-                        if (response && response.success) {
-                            showNotification('Scraping stopped successfully', 'success');
-                        } else if (response && response.error) {
-                            showNotification(`Error stopping scraping: ${response.error}`, 'error');
-                            // Reset toggle if error
-                            settingsExtensionStatusToggle.checked = true;
-                        }
+                        logger.debug('[UI] Received response from background script:', response);
                     });
                 }
             });
         });
         
         logger.debug('[UI] Added settings extension status toggle event listener');
-    }
-    
-    // Refresh topics button
-    const refreshTopicsButton = document.getElementById('refresh-topics-btn');
-    if (refreshTopicsButton) {
-        refreshTopicsButton.addEventListener('click', async () => {
-            const statusEl = document.getElementById('refresh-topics-status');
-            
-            try {
-                logger.debug('Refresh topics button clicked');
-                
-                // Update UI
-                refreshTopicsButton.disabled = true;
-                statusEl.textContent = 'Refreshing...';
-                statusEl.style.color = '#FFD700'; // Yellow
-                
-                // Send message to background script
-                const result = await chrome.runtime.sendMessage({ action: 'FORCE_REFRESH_TOPICS' });
-                
-                logger.debug('Refresh topics result:', result);
-                
-                if (result.success) {
-                    statusEl.textContent = `Success! Found ${result.topicsCount} topics`;
-                    statusEl.style.color = '#4CAF50'; // Green
-                    
-                    // Show notification
-                    showNotification({
-                        type: 'success',
-                        message: `Successfully refreshed topics. Found ${result.topicsCount} topics.`
-                    });
-                } else {
-                    statusEl.textContent = 'Failed';
-                    statusEl.style.color = '#F44336'; // Red
-                    
-                    // Show notification
-                    showNotification({
-                        type: 'error',
-                        message: `Failed to refresh topics: ${result.error || 'Unknown error'}`
-                    });
-                }
-            } catch (error) {
-                logger.error('Error refreshing topics:', error);
-                
-                statusEl.textContent = 'Error';
-                statusEl.style.color = '#F44336'; // Red
-                
-                // Show notification
-                showNotification({
-                    type: 'error',
-                    message: `Error refreshing topics: ${error.message}`
-                });
-            } finally {
-                // Re-enable button after a delay
-                setTimeout(() => {
-                    refreshTopicsButton.disabled = false;
-                }, 2000);
-            }
-        });
-        logger.debug('[UI] Added refresh topics button event listener');
     }
 }
 

@@ -269,25 +269,6 @@ class ProxyClient {
   }
 
   /**
-   * Fetch content from a URL through the proxy server to avoid CORS issues
-   * @param {string} url - The URL to fetch content from
-   * @param {string} principalId - The principal ID for authentication
-   * @returns {Promise<Object>} - The content from the URL
-   */
-  async fetchContent(url, principalId) {
-    console.log('[ProxyClient] Fetching content from URL via proxy:', url);
-    
-    try {
-      const result = await this.request('/api/fetch-content', { url, principalId });
-      console.log('[ProxyClient] Fetch content result:', result);
-      return result;
-    } catch (error) {
-      console.error('[ProxyClient] Error fetching content via proxy:', error);
-      throw error;
-    }
-  }
-
-  /**
    * Check if the proxy server is available
    * @returns {Promise<boolean>} - True if the proxy server is available, false otherwise
    */
