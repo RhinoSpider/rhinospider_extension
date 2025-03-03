@@ -116,7 +116,17 @@ export const ScrapingConfig: React.FC = () => {
               aiPrompt: field.aiPrompt ? [field.aiPrompt] : []
             })),
             customPrompt: topic.extractionRules.customPrompt ? [topic.extractionRules.customPrompt] : []
-          }]
+          }],
+          articleUrlPatterns: topic.articleUrlPatterns ? [topic.articleUrlPatterns] : [],
+          siteTypeClassification: topic.siteTypeClassification ? [topic.siteTypeClassification] : [],
+          contentIdentifiers: topic.contentIdentifiers ? [{
+            selectors: topic.contentIdentifiers.selectors,
+            keywords: topic.contentIdentifiers.keywords
+          }] : [],
+          paginationPatterns: topic.paginationPatterns ? [topic.paginationPatterns] : [],
+          sampleArticleUrls: topic.sampleArticleUrls ? [topic.sampleArticleUrls] : [],
+          urlGenerationStrategy: topic.urlGenerationStrategy ? [topic.urlGenerationStrategy] : [],
+          excludePatterns: topic.excludePatterns ? [topic.excludePatterns] : []
         });
         if ('err' in result) {
           throw new Error(result.err);
@@ -153,7 +163,17 @@ export const ScrapingConfig: React.FC = () => {
             start: 0,
             end: 24
           },
-          maxRetries: 3
+          maxRetries: 3,
+          articleUrlPatterns: topic.articleUrlPatterns || [''],
+          siteTypeClassification: topic.siteTypeClassification || 'blog',
+          contentIdentifiers: topic.contentIdentifiers || {
+            selectors: [''],
+            keywords: ['']
+          },
+          paginationPatterns: topic.paginationPatterns || [''],
+          sampleArticleUrls: topic.sampleArticleUrls || [''],
+          urlGenerationStrategy: topic.urlGenerationStrategy || 'pattern_based',
+          excludePatterns: topic.excludePatterns || ['']
         });
         if ('err' in result) {
           throw new Error(result.err);

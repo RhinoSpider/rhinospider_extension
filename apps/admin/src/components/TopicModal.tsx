@@ -53,7 +53,18 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
       start: 0,
       end: 24
     },
-    maxRetries: 3
+    maxRetries: 3,
+    // New fields for URL generation
+    articleUrlPatterns: topic?.articleUrlPatterns || [''],
+    siteTypeClassification: topic?.siteTypeClassification || 'blog',
+    contentIdentifiers: topic?.contentIdentifiers || {
+      selectors: [''],
+      keywords: ['']
+    },
+    paginationPatterns: topic?.paginationPatterns || [''],
+    sampleArticleUrls: topic?.sampleArticleUrls || [''],
+    urlGenerationStrategy: topic?.urlGenerationStrategy || 'pattern_based',
+    excludePatterns: topic?.excludePatterns || ['']
   });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -77,7 +88,14 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
         aiConfig: topic.aiConfig,
         scrapingInterval: topic.scrapingInterval,
         activeHours: topic.activeHours,
-        maxRetries: topic.maxRetries
+        maxRetries: topic.maxRetries,
+        articleUrlPatterns: topic.articleUrlPatterns,
+        siteTypeClassification: topic.siteTypeClassification,
+        contentIdentifiers: topic.contentIdentifiers,
+        paginationPatterns: topic.paginationPatterns,
+        sampleArticleUrls: topic.sampleArticleUrls,
+        urlGenerationStrategy: topic.urlGenerationStrategy,
+        excludePatterns: topic.excludePatterns
       });
     } else {
       setFormData({
@@ -109,7 +127,17 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
           start: 0,
           end: 24
         },
-        maxRetries: 3
+        maxRetries: 3,
+        articleUrlPatterns: [''],
+        siteTypeClassification: 'blog',
+        contentIdentifiers: {
+          selectors: [''],
+          keywords: ['']
+        },
+        paginationPatterns: [''],
+        sampleArticleUrls: [''],
+        urlGenerationStrategy: 'pattern_based',
+        excludePatterns: ['']
       });
     }
     setError(null);
@@ -213,7 +241,18 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
           customPrompt: typeof customPrompt === 'string' && customPrompt.trim()
             ? customPrompt.trim()
             : undefined
-        }
+        },
+        aiConfig: formData.aiConfig,
+        scrapingInterval: formData.scrapingInterval,
+        activeHours: formData.activeHours,
+        maxRetries: formData.maxRetries,
+        articleUrlPatterns: formData.articleUrlPatterns,
+        siteTypeClassification: formData.siteTypeClassification,
+        contentIdentifiers: formData.contentIdentifiers,
+        paginationPatterns: formData.paginationPatterns,
+        sampleArticleUrls: formData.sampleArticleUrls,
+        urlGenerationStrategy: formData.urlGenerationStrategy,
+        excludePatterns: formData.excludePatterns
       };
 
       await onSave?.(newTopic);
@@ -448,6 +487,362 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
                 className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white text-sm"
                 placeholder="Custom prompt for AI extraction"
               />
+            </div>
+
+            {/* URL Generation Section */}
+            <div className="mt-6 pt-6 border-t border-[#2C2B33]">
+              <h3 className="text-md font-medium mb-4">URL Generation Settings</h3>
+              
+              {/* Site Type Classification */}
+              <div className="mb-4">
+                <label className="block text-xs text-gray-400 mb-1">Site Type</label>
+                <select
+                  value={formData.siteTypeClassification}
+                  onChange={(e) => setFormData({ ...formData, siteTypeClassification: e.target.value })}
+                  className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
+                >
+                  <option value="blog">Blog</option>
+                  <option value="news">News</option>
+                  <option value="ecommerce">E-commerce</option>
+                  <option value="forum">Forum</option>
+                  <option value="documentation">Documentation</option>
+                  <option value="product">Product</option>
+                </select>
+              </div>
+
+              {/* URL Generation Strategy */}
+              <div className="mb-4">
+                <label className="block text-xs text-gray-400 mb-1">URL Generation Strategy</label>
+                <select
+                  value={formData.urlGenerationStrategy}
+                  onChange={(e) => setFormData({ ...formData, urlGenerationStrategy: e.target.value })}
+                  className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
+                >
+                  <option value="pattern_based">Pattern Based</option>
+                  <option value="sitemap">Sitemap</option>
+                  <option value="homepage_links">Homepage Links</option>
+                  <option value="rss_feed">RSS Feed</option>
+                </select>
+              </div>
+
+              {/* Article URL Patterns */}
+              <div className="mb-4">
+                <div className="flex justify-between items-center mb-2">
+                  <label className="block text-xs text-gray-400">Article URL Patterns</label>
+                  <button
+                    onClick={() => {
+                      setFormData({
+                        ...formData,
+                        articleUrlPatterns: [...formData.articleUrlPatterns!, '']
+                      });
+                    }}
+                    className="text-[#B692F6] hover:text-white transition-colors text-xs"
+                  >
+                    Add Pattern
+                  </button>
+                </div>
+                {formData.articleUrlPatterns?.map((pattern, index) => (
+                  <div key={index} className="flex items-center gap-2 mb-2">
+                    <input
+                      type="text"
+                      value={pattern}
+                      onChange={(e) => {
+                        const newPatterns = [...formData.articleUrlPatterns!];
+                        newPatterns[index] = e.target.value;
+                        setFormData({
+                          ...formData,
+                          articleUrlPatterns: newPatterns
+                        });
+                      }}
+                      className="flex-1 bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
+                      placeholder="e.g., /posts/*, /article/*, /blog/*"
+                    />
+                    {formData.articleUrlPatterns!.length > 1 && (
+                      <button
+                        onClick={() => {
+                          const newPatterns = formData.articleUrlPatterns!.filter((_, i) => i !== index);
+                          setFormData({
+                            ...formData,
+                            articleUrlPatterns: newPatterns
+                          });
+                        }}
+                        className="text-red-400 hover:text-red-300 transition-colors"
+                      >
+                        <XMarkIcon className="h-5 w-5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Content Identifiers */}
+              <div className="mb-4">
+                <label className="block text-xs text-gray-400 mb-2">Content Identifiers</label>
+                
+                {/* Selectors */}
+                <div className="mb-2">
+                  <label className="block text-xs text-gray-400 mb-1">CSS Selectors</label>
+                  <div className="flex flex-wrap gap-2">
+                    {formData.contentIdentifiers?.selectors.map((selector, index) => (
+                      <div key={index} className="flex items-center gap-1 bg-[#2C2B33] rounded-lg px-2 py-1">
+                        <input
+                          type="text"
+                          value={selector}
+                          onChange={(e) => {
+                            const newSelectors = [...formData.contentIdentifiers!.selectors];
+                            newSelectors[index] = e.target.value;
+                            setFormData({
+                              ...formData,
+                              contentIdentifiers: {
+                                ...formData.contentIdentifiers!,
+                                selectors: newSelectors
+                              }
+                            });
+                          }}
+                          className="bg-transparent border-none text-white text-sm w-24 focus:outline-none"
+                          placeholder="e.g., article"
+                        />
+                        <button
+                          onClick={() => {
+                            const newSelectors = formData.contentIdentifiers!.selectors.filter((_, i) => i !== index);
+                            setFormData({
+                              ...formData,
+                              contentIdentifiers: {
+                                ...formData.contentIdentifiers!,
+                                selectors: newSelectors
+                              }
+                            });
+                          }}
+                          className="text-red-400 hover:text-red-300 transition-colors"
+                        >
+                          <XMarkIcon className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      onClick={() => {
+                        setFormData({
+                          ...formData,
+                          contentIdentifiers: {
+                            ...formData.contentIdentifiers!,
+                            selectors: [...formData.contentIdentifiers!.selectors, '']
+                          }
+                        });
+                      }}
+                      className="text-[#B692F6] hover:text-white transition-colors text-xs"
+                    >
+                      + Add
+                    </button>
+                  </div>
+                </div>
+                
+                {/* Keywords */}
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Keywords</label>
+                  <div className="flex flex-wrap gap-2">
+                    {formData.contentIdentifiers?.keywords.map((keyword, index) => (
+                      <div key={index} className="flex items-center gap-1 bg-[#2C2B33] rounded-lg px-2 py-1">
+                        <input
+                          type="text"
+                          value={keyword}
+                          onChange={(e) => {
+                            const newKeywords = [...formData.contentIdentifiers!.keywords];
+                            newKeywords[index] = e.target.value;
+                            setFormData({
+                              ...formData,
+                              contentIdentifiers: {
+                                ...formData.contentIdentifiers!,
+                                keywords: newKeywords
+                              }
+                            });
+                          }}
+                          className="bg-transparent border-none text-white text-sm w-24 focus:outline-none"
+                          placeholder="e.g., article"
+                        />
+                        <button
+                          onClick={() => {
+                            const newKeywords = formData.contentIdentifiers!.keywords.filter((_, i) => i !== index);
+                            setFormData({
+                              ...formData,
+                              contentIdentifiers: {
+                                ...formData.contentIdentifiers!,
+                                keywords: newKeywords
+                              }
+                            });
+                          }}
+                          className="text-red-400 hover:text-red-300 transition-colors"
+                        >
+                          <XMarkIcon className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      onClick={() => {
+                        setFormData({
+                          ...formData,
+                          contentIdentifiers: {
+                            ...formData.contentIdentifiers!,
+                            keywords: [...formData.contentIdentifiers!.keywords, '']
+                          }
+                        });
+                      }}
+                      className="text-[#B692F6] hover:text-white transition-colors text-xs"
+                    >
+                      + Add
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Pagination Patterns */}
+              <div className="mb-4">
+                <div className="flex justify-between items-center mb-2">
+                  <label className="block text-xs text-gray-400">Pagination Patterns</label>
+                  <button
+                    onClick={() => {
+                      setFormData({
+                        ...formData,
+                        paginationPatterns: [...formData.paginationPatterns!, '']
+                      });
+                    }}
+                    className="text-[#B692F6] hover:text-white transition-colors text-xs"
+                  >
+                    Add Pattern
+                  </button>
+                </div>
+                {formData.paginationPatterns?.map((pattern, index) => (
+                  <div key={index} className="flex items-center gap-2 mb-2">
+                    <input
+                      type="text"
+                      value={pattern}
+                      onChange={(e) => {
+                        const newPatterns = [...formData.paginationPatterns!];
+                        newPatterns[index] = e.target.value;
+                        setFormData({
+                          ...formData,
+                          paginationPatterns: newPatterns
+                        });
+                      }}
+                      className="flex-1 bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
+                      placeholder="e.g., /page/{num}, ?page={num}"
+                    />
+                    {formData.paginationPatterns!.length > 1 && (
+                      <button
+                        onClick={() => {
+                          const newPatterns = formData.paginationPatterns!.filter((_, i) => i !== index);
+                          setFormData({
+                            ...formData,
+                            paginationPatterns: newPatterns
+                          });
+                        }}
+                        className="text-red-400 hover:text-red-300 transition-colors"
+                      >
+                        <XMarkIcon className="h-5 w-5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Sample Article URLs */}
+              <div className="mb-4">
+                <div className="flex justify-between items-center mb-2">
+                  <label className="block text-xs text-gray-400">Sample Article URLs</label>
+                  <button
+                    onClick={() => {
+                      setFormData({
+                        ...formData,
+                        sampleArticleUrls: [...formData.sampleArticleUrls!, '']
+                      });
+                    }}
+                    className="text-[#B692F6] hover:text-white transition-colors text-xs"
+                  >
+                    Add URL
+                  </button>
+                </div>
+                {formData.sampleArticleUrls?.map((url, index) => (
+                  <div key={index} className="flex items-center gap-2 mb-2">
+                    <input
+                      type="text"
+                      value={url}
+                      onChange={(e) => {
+                        const newUrls = [...formData.sampleArticleUrls!];
+                        newUrls[index] = e.target.value;
+                        setFormData({
+                          ...formData,
+                          sampleArticleUrls: newUrls
+                        });
+                      }}
+                      className="flex-1 bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
+                      placeholder="e.g., https://example.com/posts/sample-1"
+                    />
+                    {formData.sampleArticleUrls!.length > 1 && (
+                      <button
+                        onClick={() => {
+                          const newUrls = formData.sampleArticleUrls!.filter((_, i) => i !== index);
+                          setFormData({
+                            ...formData,
+                            sampleArticleUrls: newUrls
+                          });
+                        }}
+                        className="text-red-400 hover:text-red-300 transition-colors"
+                      >
+                        <XMarkIcon className="h-5 w-5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Exclude Patterns */}
+              <div className="mb-4">
+                <div className="flex justify-between items-center mb-2">
+                  <label className="block text-xs text-gray-400">Exclude Patterns</label>
+                  <button
+                    onClick={() => {
+                      setFormData({
+                        ...formData,
+                        excludePatterns: [...formData.excludePatterns!, '']
+                      });
+                    }}
+                    className="text-[#B692F6] hover:text-white transition-colors text-xs"
+                  >
+                    Add Pattern
+                  </button>
+                </div>
+                {formData.excludePatterns?.map((pattern, index) => (
+                  <div key={index} className="flex items-center gap-2 mb-2">
+                    <input
+                      type="text"
+                      value={pattern}
+                      onChange={(e) => {
+                        const newPatterns = [...formData.excludePatterns!];
+                        newPatterns[index] = e.target.value;
+                        setFormData({
+                          ...formData,
+                          excludePatterns: newPatterns
+                        });
+                      }}
+                      className="flex-1 bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
+                      placeholder="e.g., /tag/*, /category/*"
+                    />
+                    {formData.excludePatterns!.length > 1 && (
+                      <button
+                        onClick={() => {
+                          const newPatterns = formData.excludePatterns!.filter((_, i) => i !== index);
+                          setFormData({
+                            ...formData,
+                            excludePatterns: newPatterns
+                          });
+                        }}
+                        className="text-red-400 hover:text-red-300 transition-colors"
+                      >
+                        <XMarkIcon className="h-5 w-5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* Error Message */}

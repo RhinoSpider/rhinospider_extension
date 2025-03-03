@@ -28,7 +28,8 @@ export const getAdminActor = async () => {
         host: import.meta.env.VITE_IC_HOST || 'https://icp0.io'
       });
 
-      const canisterId = import.meta.env.VITE_ADMIN_CANISTER_ID;
+      // Hardcoded canister ID for local testing
+      const canisterId = import.meta.env.VITE_ADMIN_CANISTER_ID || 'bkyz2-fmaaa-aaaaa-qaaaq-cai';
       if (!canisterId) {
         throw new Error('Admin canister ID not found in environment variables');
       }
@@ -101,16 +102,22 @@ export async function updateTopic(id: string, topic: Partial<ScrapingTopic>): Pr
           aiPrompt: typeof aiPrompt === 'string' ? [aiPrompt] : []
         };
       }),
-      // Handle customPrompt - ensure it's not an array
-      customPrompt: Array.isArray(topic.extractionRules.customPrompt)
-        ? [topic.extractionRules.customPrompt[0]]
-        : topic.extractionRules.customPrompt
-        ? [topic.extractionRules.customPrompt]
+      customPrompt: typeof topic.extractionRules.customPrompt === 'string' 
+        ? [topic.extractionRules.customPrompt] 
         : []
-    }] : []
+    }] : [],
+    articleUrlPatterns: topic.articleUrlPatterns ? [topic.articleUrlPatterns] : [],
+    siteTypeClassification: topic.siteTypeClassification ? [topic.siteTypeClassification] : [],
+    contentIdentifiers: topic.contentIdentifiers ? [{
+      selectors: topic.contentIdentifiers.selectors,
+      keywords: topic.contentIdentifiers.keywords
+    }] : [],
+    paginationPatterns: topic.paginationPatterns ? [topic.paginationPatterns] : [],
+    sampleArticleUrls: topic.sampleArticleUrls ? [topic.sampleArticleUrls] : [],
+    urlGenerationStrategy: topic.urlGenerationStrategy ? [topic.urlGenerationStrategy] : [],
+    excludePatterns: topic.excludePatterns ? [topic.excludePatterns] : []
   };
-  
-  // Log the final request for debugging
+
   console.log('Update request:', JSON.stringify(updateRequest, null, 2));
   
   const result = await adminActor.updateTopic(id, updateRequest);

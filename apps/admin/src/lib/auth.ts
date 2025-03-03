@@ -49,18 +49,22 @@ export const renewIdentity = async (): Promise<void> => {
   if (!await client.isAuthenticated()) {
     throw new Error('Cannot renew identity - not authenticated');
   }
-
+  
   try {
+    // Get current identity
+    const identity = client.getIdentity();
+    const delegationChain = identity.getDelegation();
+    
+    if (!delegationChain) {
+      throw new Error('No delegation chain found');
+    }
+    
+    // Attempt to renew the delegation
     await client.login({
-      identityProvider: import.meta.env.VITE_II_URL || 'https://identity.ic0.app',
+      identityProvider: import.meta.env.VITE_II_URL || 'http://127.0.0.1:8000/?canisterId=br5f7-7uaaa-aaaaa-qaaca-cai',
       maxTimeToLive: DEFAULT_SESSION_DURATION,
-      onSuccess: () => {
-        console.log('Identity renewed successfully');
-      },
-      onError: (error) => {
-        console.error('Identity renewal failed:', error);
-        throw error;
-      }
+      onSuccess: () => console.log('Identity renewed successfully'),
+      onError: (error) => { throw error; }
     });
   } catch (error) {
     console.error('Failed to renew identity:', error);
@@ -70,7 +74,7 @@ export const renewIdentity = async (): Promise<void> => {
 
 export const login = async (): Promise<void> => {
   const client = await initAuthClient();
-  const identityProviderUrl = import.meta.env.VITE_II_URL || 'https://identity.ic0.app';
+  const identityProviderUrl = import.meta.env.VITE_II_URL || 'http://127.0.0.1:8000/?canisterId=br5f7-7uaaa-aaaaa-qaaca-cai';
 
   await new Promise<void>((resolve, reject) => {
     client.login({
@@ -101,20 +105,25 @@ export const login = async (): Promise<void> => {
 };
 
 export const logout = async (): Promise<void> => {
-  if (!authClient) {
-    console.warn('No auth client to logout from');
-    return;
+  try {
+    const client = await initAuthClient();
+    await client.logout();
+    console.log('Logged out successfully');
+    
+    // Force a page reload to ensure all state is updated
+    window.location.reload();
+  } catch (error) {
+    console.error('Logout failed:', error);
+    throw error;
   }
-  await authClient.logout();
-  authClient = null;
-  // Force a page reload to clear state
-  window.location.reload();
 };
 
 export const getIdentity = async (): Promise<Identity | null> => {
-  const client = await initAuthClient();
-  if (await isAuthenticated()) {
+  try {
+    const client = await initAuthClient();
     return client.getIdentity();
+  } catch (error) {
+    console.error('Failed to get identity:', error);
+    return null;
   }
-  return null;
 };

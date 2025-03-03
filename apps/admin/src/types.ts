@@ -28,6 +28,11 @@ export interface AIConfig {
   maxTokens: number;
 }
 
+export interface ContentIdentifiers {
+  selectors: string[];
+  keywords: string[];
+}
+
 export interface ScrapingTopic {
   id: string;
   name: string;
@@ -42,6 +47,13 @@ export interface ScrapingTopic {
     end: number;
   };
   maxRetries: number;
+  articleUrlPatterns?: string[];
+  siteTypeClassification?: string;
+  contentIdentifiers?: ContentIdentifiers;
+  paginationPatterns?: string[];
+  sampleArticleUrls?: string[];
+  urlGenerationStrategy?: string;
+  excludePatterns?: string[];
 }
 
 export type UserRole = 'Admin' | 'User' | 'None';
@@ -75,6 +87,13 @@ export interface CreateTopicRequest {
   urlPatterns: string[];
   status: string;
   extractionRules: ExtractionRules;
+  articleUrlPatterns?: string[];
+  siteTypeClassification?: string;
+  contentIdentifiers?: ContentIdentifiers;
+  paginationPatterns?: string[];
+  sampleArticleUrls?: string[];
+  urlGenerationStrategy?: string;
+  excludePatterns?: string[];
 }
 
 export interface UpdateTopicRequest {
@@ -84,4 +103,11 @@ export interface UpdateTopicRequest {
   status?: string[];
   extractionRules?: ExtractionRules[];
   aiConfig?: AIConfig;
+  articleUrlPatterns?: string[][];
+  siteTypeClassification?: string[];
+  contentIdentifiers?: ContentIdentifiers[];
+  paginationPatterns?: string[][];
+  sampleArticleUrls?: string[][];
+  urlGenerationStrategy?: string[];
+  excludePatterns?: string[][];
 }
