@@ -55,8 +55,8 @@ async function initializeExtension() {
                 
                 // Check if topics are loaded
                 if (topics && topics.length > 0) {
-                    logger.log('Topics are loaded, starting scraping');
-                    await startScraping();
+                    logger.log('Topics are loaded, automatic scraping disabled');
+                    // Removed automatic scraping on initialization
                 } else {
                     logger.log('Topics are not loaded, waiting for topics before starting scraping');
                     // We'll start scraping when topics are loaded
@@ -828,14 +828,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         getTopics().then(loadedTopics => {
                             // Check if topics were loaded successfully
                             if (loadedTopics && loadedTopics.length > 0) {
-                                logger.log(`Topics loaded successfully (${loadedTopics.length} topics), starting scraping`);
-                                
-                                // Start scraping
-                                startScraping().then(result => {
-                                    logger.log('Scraping started after login:', result);
-                                }).catch(error => {
-                                    logger.error('Error starting scraping after login:', error);
-                                });
+                                logger.log(`Topics loaded successfully (${loadedTopics.length} topics)`);
+                                logger.log('Automatic scraping on login has been disabled');
                             } else {
                                 logger.log('Failed to load topics, cannot start scraping');
                             }
@@ -1189,8 +1183,8 @@ async function initializeOnInstall(details) {
         
         // Only start scraping if we have authentication, topics are loaded, and scraping is enabled
         if (result.principalId && result.enabled !== false && hasTopics) {
-            logger.log('User is authenticated, topics are loaded, and scraping is enabled, starting scraping');
-            await startScraping();
+            logger.log('User is authenticated, topics are loaded, and scraping is enabled - automatic scraping disabled');
+            // Removed automatic scraping on install
         } else if (!result.principalId) {
             logger.log('User is not authenticated, waiting for login before scraping');
             // We'll start scraping when the LOGIN_COMPLETE message is received
