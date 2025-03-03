@@ -882,21 +882,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             });
             return true;
             
-        case 'FORCE_SCRAPE':
-            logger.log('Received force scrape request');
-            
-            performScrape()
-                .then(result => {
-                    logger.log('Force scrape result:', result);
-                    sendResponse(result || { success: true });
-                })
-                .catch(error => {
-                    logger.error('Error in force scrape:', error);
-                    sendResponse({ success: false, error: error.message });
-                });
-            
-            return true; // Keep the message channel open for async response
-            
         case 'FORCE_REFRESH_TOPICS':
             logger.log('Received force refresh topics request');
             
@@ -1129,11 +1114,6 @@ const rhinoSpiderDebug = {
     stopScraping: async () => {
         const result = await stopScraping();
         logger.log('Scraping stopped via debug function:', result);
-        return result;
-    },
-    forceScrape: async () => {
-        const result = await forceScrape();
-        logger.log('Force scrape executed via debug function:', result);
         return result;
     },
     forceRefreshTopics: async () => {

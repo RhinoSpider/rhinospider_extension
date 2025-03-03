@@ -1535,68 +1535,6 @@ async function checkAuthAndToggleState() {
     }
 }
 
-// Add a test scrape button
-function addTestScrapeButton() {
-    const container = document.querySelector('.dashboard-actions');
-    if (!container) return;
-    
-    // Create the button
-    const testScrapeButton = document.createElement('button');
-    testScrapeButton.className = 'dashboard-button test-scrape-button';
-    testScrapeButton.innerHTML = 'Test Scrape';
-    testScrapeButton.title = 'Force a scrape operation for testing';
-    
-    // Add event listener
-    testScrapeButton.addEventListener('click', async () => {
-        logger.log('Test scrape button clicked');
-        
-        // Disable the button during the operation
-        testScrapeButton.disabled = true;
-        testScrapeButton.innerHTML = 'Scraping...';
-        
-        try {
-            // Send message to background script
-            const result = await chrome.runtime.sendMessage({ type: 'FORCE_SCRAPE' });
-            logger.log('Force scrape result:', result);
-            
-            // Show a notification
-            if (result && result.success) {
-                showNotification('Test scrape completed successfully', 'success');
-            } else {
-                showNotification(`Test scrape failed: ${result.error || 'Unknown error'}`, 'error');
-            }
-        } catch (error) {
-            logger.error('Error during test scrape:', error);
-            showNotification(`Error: ${error.message}`, 'error');
-        } finally {
-            // Re-enable the button
-            testScrapeButton.disabled = false;
-            testScrapeButton.innerHTML = 'Test Scrape';
-        }
-    });
-    
-    // Add the button to the container
-    container.appendChild(testScrapeButton);
-}
-
-// Show a notification
-function showNotification(message, type = 'info') {
-    const notification = document.createElement('div');
-    notification.className = `notification ${type}`;
-    notification.textContent = message;
-    
-    // Add to the DOM
-    document.body.appendChild(notification);
-    
-    // Remove after 5 seconds
-    setTimeout(() => {
-        notification.classList.add('fade-out');
-        setTimeout(() => {
-            notification.remove();
-        }, 500);
-    }, 5000);
-}
-
 // Add event listeners for dashboard controls
 function addEventListeners() {
     logger.debug('[UI] Adding event listeners');
@@ -1713,9 +1651,6 @@ function initializeDashboard() {
     
     // Add event listeners
     addEventListeners();
-    
-    // Add test scrape button
-    addTestScrapeButton();
 }
 
 // Initialize when DOM is loaded
