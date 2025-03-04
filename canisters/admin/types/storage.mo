@@ -43,6 +43,7 @@ module {
         maxRetries: Nat;       // Max retries per URL
         createdAt: Int;
         siteTypeClassification: Text;  // Added site type classification field
+        urlGenerationStrategy: Text;   // Added URL generation strategy field
     };
 
     public type CreateTopicRequest = {
@@ -60,6 +61,7 @@ module {
         };
         maxRetries: Nat;
         siteTypeClassification: Text;
+        urlGenerationStrategy: Text;
     };
 
     public type ScrapedData = {

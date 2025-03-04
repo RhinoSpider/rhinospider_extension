@@ -90,7 +90,8 @@ export async function createTopic(topic: CreateTopicRequest): Promise<ScrapingTo
   // Ensure siteTypeClassification is set
   const createRequest = {
     ...topic,
-    siteTypeClassification: topic.siteTypeClassification || 'blog'
+    siteTypeClassification: topic.siteTypeClassification || 'blog',
+    urlGenerationStrategy: topic.urlGenerationStrategy || 'pattern_based'
   };
   
   console.log('Create request:', JSON.stringify(createRequest, replaceBigInt));
@@ -138,7 +139,9 @@ export async function updateTopic(id: string, topic: Partial<ScrapingTopic>): Pr
       customPrompt: topic.extractionRules.customPrompt ? [topic.extractionRules.customPrompt] : []
     }] : [],
     // Ensure siteTypeClassification is always provided with a default value if missing
-    siteTypeClassification: [topic.siteTypeClassification || 'blog']
+    siteTypeClassification: [topic.siteTypeClassification || 'blog'],
+    // Add urlGenerationStrategy with the same pattern as siteTypeClassification
+    urlGenerationStrategy: [topic.urlGenerationStrategy || 'pattern_based']
   };
 
   console.log('Update request:', JSON.stringify(updateRequest, replaceBigInt));

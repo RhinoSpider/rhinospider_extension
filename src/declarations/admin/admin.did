@@ -29,6 +29,7 @@ type ScrapingTopic =
    scrapingInterval: nat;
    siteTypeClassification: text;
    status: text;
+   urlGenerationStrategy: text;
    urlPatterns: vec text;
  };
 type ScrapingField = 
@@ -98,6 +99,7 @@ type CreateTopicRequest =
    name: text;
    siteTypeClassification: text;
    status: text;
+   urlGenerationStrategy: text;
    urlPatterns: vec text;
  };
 type CostLimits = 
@@ -147,6 +149,7 @@ service : {
      name: opt text;
      siteTypeClassification: opt text;
      status: opt text;
+     urlGenerationStrategy: opt text;
      urlPatterns: opt vec text;
    }) -> (Result);
 }

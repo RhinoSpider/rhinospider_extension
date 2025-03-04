@@ -67,7 +67,7 @@ export const idlFactory = ({ IDL }) => {
     'scraping_time' : IDL.Int,
   });
   return IDL.Service({
-    'getProfile' : IDL.Func([], [Result_2], ['query']),
+    'getProfile' : IDL.Func([], [Result_2], []),
     'getTopics' : IDL.Func([], [Result_1], []),
     'registerDevice' : IDL.Func([IDL.Text], [Result], []),
     'submitScrapedData' : IDL.Func([ScrapedData], [Result], []),

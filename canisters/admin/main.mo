@@ -92,6 +92,7 @@ actor Admin {
                     maxRetries = topic.maxRetries;
                     createdAt = topic.createdAt;
                     siteTypeClassification = "blog"; // Default value for migration
+                    urlGenerationStrategy = "pattern_based"; // Default value for migration
                 })
             }
         );
@@ -100,7 +101,32 @@ actor Admin {
     system func postupgrade() {
         users := HashMap.fromIter<Principal, User>(stableUsers.vals(), 1, Principal.equal, Principal.hash);
         admins := HashMap.fromIter<Principal, Bool>(stableAdmins.vals(), 1, Principal.equal, Principal.hash);
-        topics := HashMap.fromIter<Text, ScrapingTopic>(stableTopics.vals(), 1, Text.equal, Text.hash);
+        
+        // Migrate topics to include the new urlGenerationStrategy field
+        // This is a temporary solution for the current upgrade
+        // In future upgrades, we should use a more robust migration strategy
+        topics := HashMap.HashMap<Text, ScrapingTopic>(1, Text.equal, Text.hash);
+        for ((id, oldTopic) in stableTopics.vals()) {
+            // Create a new topic with the urlGenerationStrategy field
+            let newTopic : ScrapingTopic = {
+                id = oldTopic.id;
+                name = oldTopic.name;
+                description = oldTopic.description;
+                urlPatterns = oldTopic.urlPatterns;
+                aiConfig = oldTopic.aiConfig;
+                status = oldTopic.status;
+                extractionRules = oldTopic.extractionRules;
+                scrapingInterval = oldTopic.scrapingInterval;
+                lastScraped = oldTopic.lastScraped;
+                activeHours = oldTopic.activeHours;
+                maxRetries = oldTopic.maxRetries;
+                createdAt = oldTopic.createdAt;
+                siteTypeClassification = oldTopic.siteTypeClassification;
+                urlGenerationStrategy = "pattern_based"; // Default value for migration
+            };
+            topics.put(id, newTopic);
+        };
+        
         _aiConfig := stableAIConfig;
         
         // Always initialize admin
@@ -261,6 +287,7 @@ actor Admin {
         status: Text;
         extractionRules: StorageTypes.ExtractionRules;
         siteTypeClassification: Text;
+        urlGenerationStrategy: Text;
     };
 
     public shared({ caller }) func createTopic(request: CreateTopicRequest) : async Result.Result<ScrapingTopic, Text> {
@@ -293,6 +320,7 @@ actor Admin {
             maxRetries = 3;
             createdAt = Time.now();
             siteTypeClassification = request.siteTypeClassification;
+            urlGenerationStrategy = request.urlGenerationStrategy;
         };
 
         topics.put(topic.id, topic);
@@ -306,6 +334,7 @@ actor Admin {
         status: ?Text; 
         extractionRules: ?StorageTypes.ExtractionRules;
         siteTypeClassification: ?Text;
+        urlGenerationStrategy: ?Text;
     }) : async Result.Result<ScrapingTopic, Text> {
         if (not _isAuthorized(caller)) {
             return #err("Unauthorized");
@@ -322,6 +351,7 @@ actor Admin {
                     status = Option.get(request.status, topic.status);
                     extractionRules = Option.get(request.extractionRules, topic.extractionRules);
                     siteTypeClassification = Option.get(request.siteTypeClassification, topic.siteTypeClassification);
+                    urlGenerationStrategy = Option.get(request.urlGenerationStrategy, topic.urlGenerationStrategy);
                 };
                 topics.put(id, updatedTopic);
                 #ok(updatedTopic)

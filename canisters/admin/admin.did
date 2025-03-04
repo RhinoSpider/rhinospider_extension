@@ -41,6 +41,7 @@ type ScrapingTopic = record {
     maxRetries: nat;
     createdAt: int;
     siteTypeClassification: text;
+    urlGenerationStrategy: text;
 };
 
 type ScrapedData = record {
@@ -67,6 +68,7 @@ type CreateTopicRequest = record {
     activeHours: ActiveHours;
     maxRetries: nat;
     siteTypeClassification: text;
+    urlGenerationStrategy: text;
 };
 
 type Result = variant {
@@ -128,5 +130,6 @@ service : {
         status: opt text; 
         extractionRules: opt ExtractionRules;
         siteTypeClassification: opt text;
+        urlGenerationStrategy: opt text;
     }) -> (Result_3);
 };

@@ -120,7 +120,8 @@ export const ScrapingConfig: React.FC = () => {
             })),
             customPrompt: topic.extractionRules.customPrompt ? [topic.extractionRules.customPrompt] : []
           }],
-          siteTypeClassification: [topic.siteTypeClassification || 'blog']
+          siteTypeClassification: [topic.siteTypeClassification || 'blog'],
+          urlGenerationStrategy: [topic.urlGenerationStrategy || 'pattern_based']
         };
         
         console.log('Update request:', JSON.stringify(updateRequest, null, 2));
@@ -171,7 +172,8 @@ export const ScrapingConfig: React.FC = () => {
             end: 24
           },
           maxRetries: 3,
-          siteTypeClassification: topic.siteTypeClassification || 'blog'
+          siteTypeClassification: topic.siteTypeClassification || 'blog',
+          urlGenerationStrategy: topic.urlGenerationStrategy || 'pattern_based'
         };
         
         console.log('Create request:', JSON.stringify(createRequest, null, 2));

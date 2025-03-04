@@ -86,7 +86,7 @@ type AIConfig =
    model: text;
  };
 service : {
-  getProfile: () -> (Result_2) query;
+  getProfile: () -> (Result_2);
   getTopics: () -> (Result_1);
   registerDevice: (text) -> (Result);
   submitScrapedData: (ScrapedData) -> (Result);
