@@ -28,8 +28,8 @@ export const getAdminActor = async () => {
         host: import.meta.env.VITE_IC_HOST || 'https://icp0.io'
       });
 
-      // Hardcoded canister ID for local testing
-      const canisterId = import.meta.env.VITE_ADMIN_CANISTER_ID || 'bkyz2-fmaaa-aaaaa-qaaaq-cai';
+      // Use production canister ID as fallback
+      const canisterId = import.meta.env.VITE_ADMIN_CANISTER_ID || '444wf-gyaaa-aaaaj-az5sq-cai';
       if (!canisterId) {
         throw new Error('Admin canister ID not found in environment variables');
       }
@@ -106,16 +106,40 @@ export async function updateTopic(id: string, topic: Partial<ScrapingTopic>): Pr
         ? [topic.extractionRules.customPrompt] 
         : []
     }] : [],
-    articleUrlPatterns: topic.articleUrlPatterns ? [topic.articleUrlPatterns] : [],
+    // Handle single-optional arrays (like urlPatterns: ?[Text])
+    articleUrlPatterns: topic.articleUrlPatterns ? [[...topic.articleUrlPatterns]] : [],
+    // Handle single-optional text (like siteTypeClassification: ?Text)
     siteTypeClassification: topic.siteTypeClassification ? [topic.siteTypeClassification] : [],
+    // Handle optional records with nested optional arrays
     contentIdentifiers: topic.contentIdentifiers ? [{
-      selectors: topic.contentIdentifiers.selectors,
-      keywords: topic.contentIdentifiers.keywords
+      // For nested optional arrays, we need proper wrapping
+      selectors: topic.contentIdentifiers.selectors?.length > 0 ? [topic.contentIdentifiers.selectors] : [],
+      keywords: topic.contentIdentifiers.keywords?.length > 0 ? [topic.contentIdentifiers.keywords] : []
     }] : [],
-    paginationPatterns: topic.paginationPatterns ? [topic.paginationPatterns] : [],
-    sampleArticleUrls: topic.sampleArticleUrls ? [topic.sampleArticleUrls] : [],
+    // Handle single-optional arrays
+    paginationPatterns: topic.paginationPatterns ? [[...topic.paginationPatterns]] : [],
+    sampleArticleUrls: topic.sampleArticleUrls ? [[...topic.sampleArticleUrls]] : [],
+    // Handle single-optional text
     urlGenerationStrategy: topic.urlGenerationStrategy ? [topic.urlGenerationStrategy] : [],
-    excludePatterns: topic.excludePatterns ? [topic.excludePatterns] : []
+    excludePatterns: topic.excludePatterns ? [[...topic.excludePatterns]] : [],
+    // Handle aiConfig if present
+    aiConfig: topic.aiConfig ? [{
+      apiKey: topic.aiConfig.apiKey,
+      model: topic.aiConfig.model,
+      costLimits: {
+        maxDailyCost: topic.aiConfig.costLimits.maxDailyCost,
+        maxMonthlyCost: topic.aiConfig.costLimits.maxMonthlyCost,
+        maxConcurrent: topic.aiConfig.costLimits.maxConcurrent
+      }
+    }] : [],
+    // Handle activeHours if present
+    activeHours: topic.activeHours ? [{
+      start: topic.activeHours.start,
+      end: topic.activeHours.end
+    }] : [],
+    // Handle numeric fields
+    scrapingInterval: topic.scrapingInterval ? [topic.scrapingInterval] : [],
+    maxRetries: topic.maxRetries ? [topic.maxRetries] : []
   };
 
   console.log('Update request:', JSON.stringify(updateRequest, null, 2));

@@ -74,7 +74,7 @@ export const renewIdentity = async (): Promise<void> => {
 
 export const login = async (): Promise<void> => {
   const client = await initAuthClient();
-  const identityProviderUrl = import.meta.env.VITE_II_URL || 'http://127.0.0.1:8000/?canisterId=br5f7-7uaaa-aaaaa-qaaca-cai';
+  const identityProviderUrl = import.meta.env.VITE_II_URL || 'https://identity.ic0.app';
 
   await new Promise<void>((resolve, reject) => {
     client.login({
