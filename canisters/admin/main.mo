@@ -91,6 +91,7 @@ actor Admin {
                     activeHours = topic.activeHours;
                     maxRetries = topic.maxRetries;
                     createdAt = topic.createdAt;
+                    siteTypeClassification = "blog"; // Default value for migration
                 })
             }
         );
@@ -259,6 +260,7 @@ actor Admin {
         urlPatterns: [Text];
         status: Text;
         extractionRules: StorageTypes.ExtractionRules;
+        siteTypeClassification: Text;
     };
 
     public shared({ caller }) func createTopic(request: CreateTopicRequest) : async Result.Result<ScrapingTopic, Text> {
@@ -290,13 +292,21 @@ actor Admin {
             };
             maxRetries = 3;
             createdAt = Time.now();
+            siteTypeClassification = request.siteTypeClassification;
         };
 
         topics.put(topic.id, topic);
         #ok(topic);
     };
 
-    public shared({ caller }) func updateTopic(id: Text, request: { name: ?Text; description: ?Text; urlPatterns: ?[Text]; status: ?Text; extractionRules: ?StorageTypes.ExtractionRules }) : async Result.Result<ScrapingTopic, Text> {
+    public shared({ caller }) func updateTopic(id: Text, request: { 
+        name: ?Text; 
+        description: ?Text; 
+        urlPatterns: ?[Text]; 
+        status: ?Text; 
+        extractionRules: ?StorageTypes.ExtractionRules;
+        siteTypeClassification: ?Text;
+    }) : async Result.Result<ScrapingTopic, Text> {
         if (not _isAuthorized(caller)) {
             return #err("Unauthorized");
         };
@@ -311,6 +321,7 @@ actor Admin {
                     urlPatterns = Option.get(request.urlPatterns, topic.urlPatterns);
                     status = Option.get(request.status, topic.status);
                     extractionRules = Option.get(request.extractionRules, topic.extractionRules);
+                    siteTypeClassification = Option.get(request.siteTypeClassification, topic.siteTypeClassification);
                 };
                 topics.put(id, updatedTopic);
                 #ok(updatedTopic)

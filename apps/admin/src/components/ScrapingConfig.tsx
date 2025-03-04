@@ -103,7 +103,10 @@ export const ScrapingConfig: React.FC = () => {
       
       if (selectedTopic) {
         // Update existing topic
-        const result = await actor.updateTopic(topic.id, {
+        console.log('Updating topic with ID:', topic.id);
+        console.log('Topic data:', JSON.stringify(topic, null, 2));
+        
+        const updateRequest = {
           name: [topic.name],
           description: [topic.description],
           urlPatterns: [topic.urlPatterns],
@@ -117,24 +120,28 @@ export const ScrapingConfig: React.FC = () => {
             })),
             customPrompt: topic.extractionRules.customPrompt ? [topic.extractionRules.customPrompt] : []
           }],
-          articleUrlPatterns: topic.articleUrlPatterns ? [topic.articleUrlPatterns] : [],
-          siteTypeClassification: topic.siteTypeClassification ? [topic.siteTypeClassification] : [],
-          contentIdentifiers: topic.contentIdentifiers ? [{
-            selectors: topic.contentIdentifiers.selectors,
-            keywords: topic.contentIdentifiers.keywords
-          }] : [],
-          paginationPatterns: topic.paginationPatterns ? [topic.paginationPatterns] : [],
-          sampleArticleUrls: topic.sampleArticleUrls ? [topic.sampleArticleUrls] : [],
-          urlGenerationStrategy: topic.urlGenerationStrategy ? [topic.urlGenerationStrategy] : [],
-          excludePatterns: topic.excludePatterns ? [topic.excludePatterns] : []
-        });
-        if ('err' in result) {
-          throw new Error(result.err);
+          siteTypeClassification: [topic.siteTypeClassification || 'blog']
+        };
+        
+        console.log('Update request:', JSON.stringify(updateRequest, null, 2));
+        
+        try {
+          const result = await actor.updateTopic(topic.id, updateRequest);
+          console.log('Update result:', result);
+          if ('err' in result) {
+            throw new Error(result.err);
+          }
+          setTopics(prev => prev.map(t => t.id === topic.id ? result.ok : t));
+        } catch (error) {
+          console.error('Error in updateTopic call:', error);
+          throw error;
         }
-        setTopics(prev => prev.map(t => t.id === topic.id ? result.ok : t));
       } else {
         // Create new topic
-        const result = await actor.createTopic({
+        console.log('Creating new topic with ID:', topic.id);
+        console.log('Topic data:', JSON.stringify(topic, null, 2));
+        
+        const createRequest = {
           id: topic.id,
           name: topic.name,
           description: topic.description,
@@ -164,21 +171,22 @@ export const ScrapingConfig: React.FC = () => {
             end: 24
           },
           maxRetries: 3,
-          articleUrlPatterns: topic.articleUrlPatterns || [''],
-          siteTypeClassification: topic.siteTypeClassification || 'blog',
-          contentIdentifiers: topic.contentIdentifiers || {
-            selectors: [''],
-            keywords: ['']
-          },
-          paginationPatterns: topic.paginationPatterns || [''],
-          sampleArticleUrls: topic.sampleArticleUrls || [''],
-          urlGenerationStrategy: topic.urlGenerationStrategy || 'pattern_based',
-          excludePatterns: topic.excludePatterns || ['']
-        });
-        if ('err' in result) {
-          throw new Error(result.err);
+          siteTypeClassification: topic.siteTypeClassification || 'blog'
+        };
+        
+        console.log('Create request:', JSON.stringify(createRequest, null, 2));
+        
+        try {
+          const result = await actor.createTopic(createRequest);
+          console.log('Create result:', result);
+          if ('err' in result) {
+            throw new Error(result.err);
+          }
+          setTopics(prev => [...prev, result.ok]);
+        } catch (error) {
+          console.error('Error in createTopic call:', error);
+          throw error;
         }
-        setTopics(prev => [...prev, result.ok]);
       }
       setTopicsStatus('Topic saved successfully');
       setIsTopicModalOpen(false);

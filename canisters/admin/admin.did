@@ -40,6 +40,7 @@ type ScrapingTopic = record {
     activeHours: ActiveHours;
     maxRetries: nat;
     createdAt: int;
+    siteTypeClassification: text;
 };
 
 type ScrapedData = record {
@@ -65,6 +66,7 @@ type CreateTopicRequest = record {
     scrapingInterval: nat;
     activeHours: ActiveHours;
     maxRetries: nat;
+    siteTypeClassification: text;
 };
 
 type Result = variant {
@@ -119,5 +121,12 @@ service : {
     setTopicActive: (text, bool) -> (Result_1);
     testExtraction: (text, text) -> (Result);
     updateAIConfig: (AIConfig) -> (Result_2);
-    updateTopic: (text, CreateTopicRequest) -> (Result_3);
+    updateTopic: (text, record { 
+        name: opt text; 
+        description: opt text; 
+        urlPatterns: opt vec text; 
+        status: opt text; 
+        extractionRules: opt ExtractionRules;
+        siteTypeClassification: opt text;
+    }) -> (Result_3);
 };

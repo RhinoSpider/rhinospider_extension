@@ -42,6 +42,7 @@ module {
         };
         maxRetries: Nat;       // Max retries per URL
         createdAt: Int;
+        siteTypeClassification: Text;  // Added site type classification field
     };
 
     public type CreateTopicRequest = {
@@ -58,6 +59,7 @@ module {
             end: Nat;
         };
         maxRetries: Nat;
+        siteTypeClassification: Text;
     };
 
     public type ScrapedData = {

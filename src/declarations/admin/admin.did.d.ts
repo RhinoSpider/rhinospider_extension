@@ -23,6 +23,7 @@ export interface CreateTopicRequest {
   'description' : string,
   'urlPatterns' : Array<string>,
   'extractionRules' : ExtractionRules,
+  'siteTypeClassification' : string,
 }
 export interface ExtractionRules {
   'fields' : Array<ScrapingField>,
@@ -72,6 +73,7 @@ export interface ScrapingTopic {
   'extractionRules' : ExtractionRules,
   'aiConfig' : AIConfig,
   'lastScraped' : bigint,
+  'siteTypeClassification' : string,
 }
 export type Time = bigint;
 export interface User {
@@ -117,6 +119,7 @@ export interface _SERVICE {
         'description' : [] | [string],
         'urlPatterns' : [] | [Array<string>],
         'extractionRules' : [] | [ExtractionRules],
+        'siteTypeClassification' : [] | [string],
       },
     ],
     Result

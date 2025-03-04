@@ -72,6 +72,9 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
 
   useEffect(() => {
     if (topic) {
+      console.log('Topic data received:', JSON.stringify(topic, null, 2));
+      console.log('siteTypeClassification:', topic.siteTypeClassification);
+      
       setFormData({
         id: topic.id,
         name: topic.name,
@@ -89,13 +92,16 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
         scrapingInterval: topic.scrapingInterval,
         activeHours: topic.activeHours,
         maxRetries: topic.maxRetries,
-        articleUrlPatterns: topic.articleUrlPatterns,
-        siteTypeClassification: topic.siteTypeClassification,
-        contentIdentifiers: topic.contentIdentifiers,
-        paginationPatterns: topic.paginationPatterns,
-        sampleArticleUrls: topic.sampleArticleUrls,
-        urlGenerationStrategy: topic.urlGenerationStrategy,
-        excludePatterns: topic.excludePatterns
+        articleUrlPatterns: topic.articleUrlPatterns || [''],
+        siteTypeClassification: topic.siteTypeClassification || 'blog',
+        contentIdentifiers: topic.contentIdentifiers || {
+          selectors: [''],
+          keywords: ['']
+        },
+        paginationPatterns: topic.paginationPatterns || [''],
+        sampleArticleUrls: topic.sampleArticleUrls || [''],
+        urlGenerationStrategy: topic.urlGenerationStrategy || 'pattern_based',
+        excludePatterns: topic.excludePatterns || ['']
       });
     } else {
       setFormData({
@@ -495,19 +501,32 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
               
               {/* Site Type Classification */}
               <div className="mb-4">
-                <label className="block text-xs text-gray-400 mb-1">Site Type</label>
-                <select
-                  value={formData.siteTypeClassification}
-                  onChange={(e) => setFormData({ ...formData, siteTypeClassification: e.target.value })}
-                  className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
-                >
-                  <option value="blog">Blog</option>
-                  <option value="news">News</option>
-                  <option value="ecommerce">E-commerce</option>
-                  <option value="forum">Forum</option>
-                  <option value="documentation">Documentation</option>
-                  <option value="product">Product</option>
-                </select>
+                <label className="block text-xs text-gray-400 mb-1">
+                  <span className="font-bold">Site Type Classification</span>
+                </label>
+                <div className="flex items-center">
+                  <select
+                    value={formData.siteTypeClassification || 'blog'}
+                    onChange={(e) => {
+                      console.log('Setting site type to:', e.target.value);
+                      setFormData({ ...formData, siteTypeClassification: e.target.value });
+                    }}
+                    className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
+                  >
+                    <option value="blog">Blog</option>
+                    <option value="news">News</option>
+                    <option value="ecommerce">E-commerce</option>
+                    <option value="forum">Forum</option>
+                    <option value="documentation">Documentation</option>
+                    <option value="social_media">Social Media</option>
+                    <option value="government">Government</option>
+                    <option value="academic">Academic</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  This classification helps determine how to extract content from the site.
+                </p>
               </div>
 
               {/* URL Generation Strategy */}

@@ -29,6 +29,15 @@ export default defineConfig({
     'process.env.VITE_II_URL': JSON.stringify(process.env.VITE_II_URL),
     'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development'),
   },
+  build: {
+    rollupOptions: {
+      output: {
+        entryFileNames: `assets/[name]-${Date.now()}-[hash].js`,
+        chunkFileNames: `assets/[name]-${Date.now()}-[hash].js`,
+        assetFileNames: `assets/[name]-[hash].[ext]`,
+      },
+    },
+  },
   optimizeDeps: {
     esbuildOptions: {
       define: {

@@ -22,6 +22,7 @@ export const idlFactory = ({ IDL }) => {
     'description' : IDL.Text,
     'urlPatterns' : IDL.Vec(IDL.Text),
     'extractionRules' : ExtractionRules,
+    'siteTypeClassification' : IDL.Text,
   });
   const CostLimits = IDL.Record({
     'maxConcurrent' : IDL.Nat,
@@ -46,6 +47,7 @@ export const idlFactory = ({ IDL }) => {
     'extractionRules' : ExtractionRules,
     'aiConfig' : AIConfig,
     'lastScraped' : IDL.Int,
+    'siteTypeClassification' : IDL.Text,
   });
   const Result = IDL.Variant({ 'ok' : ScrapingTopic, 'err' : IDL.Text });
   const AIConfig__1 = IDL.Record({
@@ -88,7 +90,7 @@ export const idlFactory = ({ IDL }) => {
     'deleteTopic' : IDL.Func([IDL.Text], [Result_3], []),
     'getAIConfig' : IDL.Func([], [Result_2], []),
     'getScrapedData' : IDL.Func([IDL.Vec(IDL.Text)], [Result_6], []),
-    'getTopics' : IDL.Func([], [Result_5], []),
+    'getTopics' : IDL.Func([], [Result_5], ['query']),
     'getTopics_with_caller' : IDL.Func([IDL.Principal], [Result_5], []),
     'get_users' : IDL.Func([], [Result_4], []),
     'remove_user' : IDL.Func([IDL.Principal], [Result_3], []),
@@ -117,6 +119,7 @@ export const idlFactory = ({ IDL }) => {
             'description' : IDL.Opt(IDL.Text),
             'urlPatterns' : IDL.Opt(IDL.Vec(IDL.Text)),
             'extractionRules' : IDL.Opt(ExtractionRules),
+            'siteTypeClassification' : IDL.Opt(IDL.Text),
           }),
         ],
         [Result],

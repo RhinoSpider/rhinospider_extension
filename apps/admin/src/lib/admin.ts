@@ -56,6 +56,14 @@ export const clearAdminActor = () => {
   actor = null;
 };
 
+// Helper function to handle BigInt serialization
+function replaceBigInt(key: string, value: any) {
+  if (typeof value === 'bigint') {
+    return Number(value); // Convert BigInt to Number
+  }
+  return value;
+}
+
 // Topic Management
 export async function getTopics(): Promise<ScrapingTopic[]> {
   console.log('Fetching topics...');
@@ -64,23 +72,55 @@ export async function getTopics(): Promise<ScrapingTopic[]> {
   if ('err' in result) {
     throw new Error(result.err);
   }
-  return result.ok || [];
+  
+  // Convert the result to a plain object with BigInt values converted to numbers
+  const topicsWithoutBigInt = JSON.parse(JSON.stringify(result.ok, replaceBigInt));
+  console.log('Topics from backend (BigInt converted):', topicsWithoutBigInt);
+  
+  return topicsWithoutBigInt || [];
 }
 
 export async function createTopic(topic: CreateTopicRequest): Promise<ScrapingTopic> {
   const adminActor = await getAdminActor();
-  const result = await adminActor.createTopic(topic);
-  if ('err' in result) {
-    throw new Error(result.err);
+  
+  // Log the input topic for debugging
+  console.log('Creating topic:', JSON.stringify(topic, replaceBigInt));
+  console.log('siteTypeClassification value:', topic.siteTypeClassification);
+  
+  // Ensure siteTypeClassification is set
+  const createRequest = {
+    ...topic,
+    siteTypeClassification: topic.siteTypeClassification || 'blog'
+  };
+  
+  console.log('Create request:', JSON.stringify(createRequest, replaceBigInt));
+  
+  try {
+    const result = await adminActor.createTopic(createRequest);
+    console.log('Raw create result:', result);
+    
+    if ('err' in result) {
+      console.error('Error from backend:', result.err);
+      throw new Error(result.err);
+    }
+    
+    // Convert the result to a plain object with BigInt values converted to numbers
+    const createdTopic = JSON.parse(JSON.stringify(result.ok, replaceBigInt));
+    console.log('Created topic from backend:', createdTopic);
+    
+    return createdTopic;
+  } catch (error) {
+    console.error('Error in createTopic call:', error);
+    throw error;
   }
-  return result.ok;
 }
 
 export async function updateTopic(id: string, topic: Partial<ScrapingTopic>): Promise<ScrapingTopic> {
   const adminActor = await getAdminActor();
   
-  // Log the input topic for debugging
-  console.log('Original topic:', JSON.stringify(topic, null, 2));
+  // Log the input topic for debugging (with BigInt handling)
+  console.log('Original topic:', JSON.stringify(topic, replaceBigInt));
+  console.log('siteTypeClassification value:', topic.siteTypeClassification);
 
   // Create the update request with proper opt text formatting
   const updateRequest = {
@@ -89,66 +129,38 @@ export async function updateTopic(id: string, topic: Partial<ScrapingTopic>): Pr
     urlPatterns: topic.urlPatterns ? [topic.urlPatterns] : [],
     status: topic.status ? [topic.status] : [],
     extractionRules: topic.extractionRules ? [{
-      fields: topic.extractionRules.fields.map(field => {
-        // Handle aiPrompt - ensure it's not an array
-        const aiPrompt = Array.isArray(field.aiPrompt) 
-          ? field.aiPrompt[0] 
-          : field.aiPrompt;
-
-        return {
-          name: field.name,
-          fieldType: field.fieldType,
-          required: field.required,
-          aiPrompt: typeof aiPrompt === 'string' ? [aiPrompt] : []
-        };
-      }),
-      customPrompt: typeof topic.extractionRules.customPrompt === 'string' 
-        ? [topic.extractionRules.customPrompt] 
-        : []
+      fields: topic.extractionRules.fields.map(field => ({
+        name: field.name,
+        fieldType: field.fieldType,
+        required: field.required,
+        aiPrompt: field.aiPrompt ? [field.aiPrompt] : []
+      })),
+      customPrompt: topic.extractionRules.customPrompt ? [topic.extractionRules.customPrompt] : []
     }] : [],
-    // Handle single-optional arrays (like urlPatterns: ?[Text])
-    articleUrlPatterns: topic.articleUrlPatterns ? [[...topic.articleUrlPatterns]] : [],
-    // Handle single-optional text (like siteTypeClassification: ?Text)
-    siteTypeClassification: topic.siteTypeClassification ? [topic.siteTypeClassification] : [],
-    // Handle optional records with nested optional arrays
-    contentIdentifiers: topic.contentIdentifiers ? [{
-      // For nested optional arrays, we need proper wrapping
-      selectors: topic.contentIdentifiers.selectors?.length > 0 ? [topic.contentIdentifiers.selectors] : [],
-      keywords: topic.contentIdentifiers.keywords?.length > 0 ? [topic.contentIdentifiers.keywords] : []
-    }] : [],
-    // Handle single-optional arrays
-    paginationPatterns: topic.paginationPatterns ? [[...topic.paginationPatterns]] : [],
-    sampleArticleUrls: topic.sampleArticleUrls ? [[...topic.sampleArticleUrls]] : [],
-    // Handle single-optional text
-    urlGenerationStrategy: topic.urlGenerationStrategy ? [topic.urlGenerationStrategy] : [],
-    excludePatterns: topic.excludePatterns ? [[...topic.excludePatterns]] : [],
-    // Handle aiConfig if present
-    aiConfig: topic.aiConfig ? [{
-      apiKey: topic.aiConfig.apiKey,
-      model: topic.aiConfig.model,
-      costLimits: {
-        maxDailyCost: topic.aiConfig.costLimits.maxDailyCost,
-        maxMonthlyCost: topic.aiConfig.costLimits.maxMonthlyCost,
-        maxConcurrent: topic.aiConfig.costLimits.maxConcurrent
-      }
-    }] : [],
-    // Handle activeHours if present
-    activeHours: topic.activeHours ? [{
-      start: topic.activeHours.start,
-      end: topic.activeHours.end
-    }] : [],
-    // Handle numeric fields
-    scrapingInterval: topic.scrapingInterval ? [topic.scrapingInterval] : [],
-    maxRetries: topic.maxRetries ? [topic.maxRetries] : []
+    // Ensure siteTypeClassification is always provided with a default value if missing
+    siteTypeClassification: [topic.siteTypeClassification || 'blog']
   };
 
-  console.log('Update request:', JSON.stringify(updateRequest, null, 2));
+  console.log('Update request:', JSON.stringify(updateRequest, replaceBigInt));
   
-  const result = await adminActor.updateTopic(id, updateRequest);
-  if ('err' in result) {
-    throw new Error(result.err);
+  try {
+    const result = await adminActor.updateTopic(id, updateRequest);
+    console.log('Raw update result:', result);
+    
+    if ('err' in result) {
+      console.error('Error from backend:', result.err);
+      throw new Error(result.err);
+    }
+    
+    // Convert the result to a plain object with BigInt values converted to numbers
+    const updatedTopic = JSON.parse(JSON.stringify(result.ok, replaceBigInt));
+    console.log('Updated topic from backend:', updatedTopic);
+    
+    return updatedTopic;
+  } catch (error) {
+    console.error('Error in updateTopic call:', error);
+    throw error;
   }
-  return result.ok;
 }
 
 export async function deleteTopic(id: string): Promise<void> {
