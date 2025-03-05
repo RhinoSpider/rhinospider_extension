@@ -122,7 +122,7 @@ actor Admin {
                 maxRetries = oldTopic.maxRetries;
                 createdAt = oldTopic.createdAt;
                 siteTypeClassification = oldTopic.siteTypeClassification;
-                urlGenerationStrategy = "pattern_based"; // Default value for migration
+                urlGenerationStrategy = oldTopic.urlGenerationStrategy;
             };
             topics.put(id, newTopic);
         };
