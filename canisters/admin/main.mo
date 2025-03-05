@@ -60,6 +60,7 @@ actor Admin {
         articleUrlPatterns: ?[Text];
         contentIdentifiers: ?StorageTypes.ContentIdentifiers;
         paginationPatterns: ?[Text];
+        excludePatterns: ?[Text];
     })] = [];
     private stable var stableAIConfig : AIConfig = {
         apiKey = "";
@@ -90,6 +91,7 @@ actor Admin {
             Debug.print("Preupgrade - First topic ID: " # id);
             Debug.print("Preupgrade - First topic contentIdentifiers: " # debug_show(topic.contentIdentifiers));
             Debug.print("Preupgrade - First topic paginationPatterns: " # debug_show(topic.paginationPatterns));
+            Debug.print("Preupgrade - First topic excludePatterns: " # debug_show(topic.excludePatterns));
         };
     };
 
@@ -126,6 +128,7 @@ actor Admin {
             Debug.print("Postupgrade - First topic ID: " # id);
             Debug.print("Postupgrade - First topic contentIdentifiers: " # debug_show(topic.contentIdentifiers));
             Debug.print("Postupgrade - First topic paginationPatterns: " # debug_show(topic.paginationPatterns));
+            Debug.print("Postupgrade - First topic excludePatterns: " # debug_show(topic.excludePatterns));
         };
     };
 
@@ -232,6 +235,10 @@ actor Admin {
         if (topicsArray.size() > 0) {
             Debug.print("First topic contentIdentifiers: " # debug_show(topicsArray[0].contentIdentifiers));
             Debug.print("First topic paginationPatterns: " # debug_show(topicsArray[0].paginationPatterns));
+            Debug.print("First topic excludePatterns: " # debug_show(topicsArray[0].excludePatterns));
+            
+            // Print the entire first topic for debugging
+            Debug.print("First topic full data: " # debug_show(topicsArray[0]));
         };
         
         #ok(topicsArray)
@@ -321,6 +328,7 @@ actor Admin {
             articleUrlPatterns = request.articleUrlPatterns;
             contentIdentifiers = request.contentIdentifiers;
             paginationPatterns = request.paginationPatterns;
+            excludePatterns = request.excludePatterns;
         };
 
         topics.put(topic.id, topic);
@@ -338,10 +346,14 @@ actor Admin {
         articleUrlPatterns: ?[Text];
         contentIdentifiers: ?StorageTypes.ContentIdentifiers;
         paginationPatterns: ?[Text];
+        excludePatterns: ?[Text];
     }) : async Result.Result<ScrapingTopic, Text> {
         if (not _isAuthorized(caller)) {
             return #err("Unauthorized");
         };
+        
+        // Debug print to check what's being received for excludePatterns
+        Debug.print("updateTopic called with excludePatterns: " # debug_show(request.excludePatterns));
         
         switch (topics.get(id)) {
             case (null) { #err("Topic not found") };
@@ -373,6 +385,10 @@ actor Admin {
                         case (null) { topic.paginationPatterns };
                         case (?patterns) { ?patterns };
                     };
+                    excludePatterns = switch (request.excludePatterns) {
+                        case (null) { topic.excludePatterns };
+                        case (?patterns) { ?patterns };
+                    };
                 };
                 
                 // Debug print to check if contentIdentifiers is being set correctly
@@ -381,7 +397,19 @@ actor Admin {
                 // Debug print to check if paginationPatterns is being set correctly
                 Debug.print("Updated topic paginationPatterns: " # debug_show(updatedTopic.paginationPatterns));
                 
+                // Debug print to check if excludePatterns is being set correctly
+                Debug.print("Updated topic excludePatterns: " # debug_show(updatedTopic.excludePatterns));
+                
                 topics.put(id, updatedTopic);
+                
+                // Debug print to check if excludePatterns is stored correctly
+                switch (topics.get(id)) {
+                    case (null) { Debug.print("Topic not found after update!"); };
+                    case (?storedTopic) { 
+                        Debug.print("Stored topic excludePatterns: " # debug_show(storedTopic.excludePatterns));
+                    };
+                };
+                
                 #ok(updatedTopic)
             };
         }
@@ -412,11 +440,13 @@ actor Admin {
                     articleUrlPatterns = topic.articleUrlPatterns;
                     contentIdentifiers = topic.contentIdentifiers;
                     paginationPatterns = topic.paginationPatterns;
+                    excludePatterns = topic.excludePatterns;
                 };
                 
                 // Debug print to check if contentIdentifiers is being preserved
                 Debug.print("setTopicActive - contentIdentifiers: " # debug_show(updatedTopic.contentIdentifiers));
                 Debug.print("setTopicActive - paginationPatterns: " # debug_show(updatedTopic.paginationPatterns));
+                Debug.print("setTopicActive - excludePatterns: " # debug_show(updatedTopic.excludePatterns));
                 
                 topics.put(id, updatedTopic);
                 ignore storage.setTopicActive(id, active);

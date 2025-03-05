@@ -50,6 +50,7 @@ type ScrapingTopic = record {
     articleUrlPatterns: opt vec text;
     contentIdentifiers: opt ContentIdentifiers;
     paginationPatterns: opt vec text;
+    excludePatterns: opt vec text;
 };
 
 type ScrapedData = record {
@@ -80,6 +81,7 @@ type CreateTopicRequest = record {
     articleUrlPatterns: opt vec text;
     contentIdentifiers: opt ContentIdentifiers;
     paginationPatterns: opt vec text;
+    excludePatterns: opt vec text;
 };
 
 type Result = variant {
@@ -145,5 +147,6 @@ service : {
         articleUrlPatterns: opt vec text;
         contentIdentifiers: opt ContentIdentifiers;
         paginationPatterns: opt vec text;
+        excludePatterns: opt vec text;
     }) -> (Result_3);
 };

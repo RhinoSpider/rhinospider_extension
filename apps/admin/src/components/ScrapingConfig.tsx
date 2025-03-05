@@ -48,6 +48,20 @@ export const ScrapingConfig: React.FC = () => {
             console.log('Extracted contentIdentifiers:', JSON.stringify(contentIdentifiers, null, 2));
           }
           
+          // Extract excludePatterns from array wrapper if it exists
+          let excludePatterns = undefined;
+          if (topic.excludePatterns && topic.excludePatterns.length > 0) {
+            excludePatterns = topic.excludePatterns[0];
+            console.log('Extracted excludePatterns:', JSON.stringify(excludePatterns, null, 2));
+          }
+          
+          // Extract paginationPatterns from array wrapper if it exists
+          let paginationPatterns = undefined;
+          if (topic.paginationPatterns && topic.paginationPatterns.length > 0) {
+            paginationPatterns = topic.paginationPatterns[0];
+            console.log('Extracted paginationPatterns:', JSON.stringify(paginationPatterns, null, 2));
+          }
+          
           return {
             ...topic,
             extractionRules: {
@@ -55,15 +69,14 @@ export const ScrapingConfig: React.FC = () => {
               fields: topic.extractionRules.fields.map(f => ({
                 ...f,
                 description: f.description || '',
-                type: f.type || 'text',
+                type: f.type || f.fieldType || 'text'
               })),
-              customPrompt: topic.extractionRules.customPrompt || '',
+              customPrompt: topic.extractionRules.customPrompt || []
             },
-            // Ensure contentIdentifiers is properly structured
-            contentIdentifiers: contentIdentifiers || {
-              selectors: [''],
-              keywords: ['']
-            }
+            contentIdentifiers: contentIdentifiers || { selectors: [], keywords: [] },
+            paginationPatterns: paginationPatterns || [],
+            // Ensure excludePatterns always exists
+            excludePatterns: topic.excludePatterns || ['']
           };
         });
         console.log('Processed topics:', JSON.stringify(processedTopics, null, 2));
@@ -163,17 +176,24 @@ export const ScrapingConfig: React.FC = () => {
           contentIdentifiers: contentIdentifiersFormatted.length > 0 ? contentIdentifiersFormatted : [{ selectors: [], keywords: [] }],
           paginationPatterns: topic.paginationPatterns && topic.paginationPatterns.length > 0
               ? [topic.paginationPatterns.filter(p => typeof p === 'string' && p.trim() !== '').map(p => p.trim())]
+              : [],
+          excludePatterns: topic.excludePatterns && topic.excludePatterns.length > 0
+              ? [topic.excludePatterns.filter(p => typeof p === 'string' && p.trim() !== '').map(p => p.trim())]
               : []
         };
 
         console.log('Update request with contentIdentifiers:', JSON.stringify(updateRequest, null, 2));
+        console.log('excludePatterns in update request:', JSON.stringify(updateRequest.excludePatterns, null, 2));
+        console.log('excludePatterns in topic before update:', JSON.stringify(topic.excludePatterns, null, 2));
 
         try {
           const result = await actor.updateTopic(topic.id, updateRequest);
           console.log('Update result:', result);
+          console.log('excludePatterns in result:', result.ok?.excludePatterns);
           if ('err' in result) {
             throw new Error(result.err);
           }
+          // Update the local state with the updated topic
           setTopics(prev => prev.map(t => t.id === topic.id ? result.ok : t));
         } catch (error) {
           console.error('Error in updateTopic call:', error);
@@ -239,6 +259,12 @@ export const ScrapingConfig: React.FC = () => {
           paginationPatterns: topic.paginationPatterns && 
             topic.paginationPatterns.some((p: any) => typeof p === 'string' && p.trim() !== '')
               ? topic.paginationPatterns
+                  .filter((p: any) => typeof p === 'string' && p.trim() !== '')
+                  .map((p: any) => p.trim())
+              : null,
+          excludePatterns: topic.excludePatterns && 
+            topic.excludePatterns.some((p: any) => typeof p === 'string' && p.trim() !== '')
+              ? topic.excludePatterns
                   .filter((p: any) => typeof p === 'string' && p.trim() !== '')
                   .map((p: any) => p.trim())
               : null

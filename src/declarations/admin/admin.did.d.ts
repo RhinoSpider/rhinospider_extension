@@ -23,6 +23,7 @@ export interface CostLimits {
 export interface CreateTopicRequest {
   'id' : string,
   'status' : string,
+  'excludePatterns' : [] | [Array<string>],
   'contentIdentifiers' : [] | [ContentIdentifiers],
   'name' : string,
   'scrapingInterval' : bigint,
@@ -75,6 +76,7 @@ export interface ScrapingField {
 export interface ScrapingTopic {
   'id' : string,
   'status' : string,
+  'excludePatterns' : [] | [Array<string>],
   'contentIdentifiers' : [] | [ContentIdentifiers],
   'name' : string,
   'createdAt' : bigint,
@@ -131,6 +133,7 @@ export interface _SERVICE {
       string,
       {
         'status' : [] | [string],
+        'excludePatterns' : [] | [Array<string>],
         'contentIdentifiers' : [] | [ContentIdentifiers],
         'name' : [] | [string],
         'description' : [] | [string],

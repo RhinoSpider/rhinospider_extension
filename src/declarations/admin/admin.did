@@ -23,6 +23,7 @@ type ScrapingTopic =
    contentIdentifiers: opt ContentIdentifiers;
    createdAt: int;
    description: text;
+   excludePatterns: opt vec text;
    extractionRules: ExtractionRules;
    id: text;
    lastScraped: int;
@@ -104,6 +105,7 @@ type CreateTopicRequest =
    articleUrlPatterns: opt vec text;
    contentIdentifiers: opt ContentIdentifiers;
    description: text;
+   excludePatterns: opt vec text;
    extractionRules: ExtractionRules;
    id: text;
    maxRetries: nat;
@@ -165,6 +167,7 @@ service : {
      articleUrlPatterns: opt vec text;
      contentIdentifiers: opt ContentIdentifiers;
      description: opt text;
+     excludePatterns: opt vec text;
      extractionRules: opt ExtractionRules;
      name: opt text;
      paginationPatterns: opt vec text;

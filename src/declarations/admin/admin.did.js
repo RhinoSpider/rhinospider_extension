@@ -32,6 +32,7 @@ export const idlFactory = ({ IDL }) => {
   const CreateTopicRequest = IDL.Record({
     'id' : IDL.Text,
     'status' : IDL.Text,
+    'excludePatterns' : IDL.Opt(IDL.Vec(IDL.Text)),
     'contentIdentifiers' : IDL.Opt(ContentIdentifiers),
     'name' : IDL.Text,
     'scrapingInterval' : IDL.Nat,
@@ -49,6 +50,7 @@ export const idlFactory = ({ IDL }) => {
   const ScrapingTopic = IDL.Record({
     'id' : IDL.Text,
     'status' : IDL.Text,
+    'excludePatterns' : IDL.Opt(IDL.Vec(IDL.Text)),
     'contentIdentifiers' : IDL.Opt(ContentIdentifiers),
     'name' : IDL.Text,
     'createdAt' : IDL.Int,
@@ -131,6 +133,7 @@ export const idlFactory = ({ IDL }) => {
           IDL.Text,
           IDL.Record({
             'status' : IDL.Opt(IDL.Text),
+            'excludePatterns' : IDL.Opt(IDL.Vec(IDL.Text)),
             'contentIdentifiers' : IDL.Opt(ContentIdentifiers),
             'name' : IDL.Opt(IDL.Text),
             'description' : IDL.Opt(IDL.Text),

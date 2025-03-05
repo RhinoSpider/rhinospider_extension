@@ -116,6 +116,25 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
       
       console.log('Normalized paginationPatterns:', paginationPatterns);
       
+      // Ensure excludePatterns is properly structured
+      let excludePatterns = [''];
+      
+      if (topic.excludePatterns) {
+        if (Array.isArray(topic.excludePatterns)) {
+          if (topic.excludePatterns.length > 0) {
+            if (Array.isArray(topic.excludePatterns[0])) {
+              // If it's a nested array (from backend), flatten it
+              excludePatterns = topic.excludePatterns.flat();
+            } else {
+              // If it's already a flat array
+              excludePatterns = topic.excludePatterns;
+            }
+          }
+        }
+      }
+      
+      console.log('Normalized excludePatterns:', excludePatterns);
+      
       // Ensure articleUrlPatterns is properly structured
       const articleUrlPatterns = Array.isArray(topic.articleUrlPatterns) ? topic.articleUrlPatterns : [''];
       
@@ -163,7 +182,7 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
         paginationPatterns: paginationPatterns,
         sampleArticleUrls: topic.sampleArticleUrls || [''],
         urlGenerationStrategy: topic.urlGenerationStrategy || 'pattern_based',
-        excludePatterns: topic.excludePatterns || ['']
+        excludePatterns: excludePatterns
       });
     } else {
       setFormData({
@@ -775,6 +794,56 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
                 </div>
               </div>
 
+              {/* Exclude Patterns */}
+              <div className="mb-4">
+                <div className="flex justify-between items-center mb-2">
+                  <label className="block text-xs text-gray-400">Exclude Patterns</label>
+                  <button
+                    onClick={() => {
+                      setFormData({
+                        ...formData,
+                        excludePatterns: [...formData.excludePatterns!, '']
+                      });
+                    }}
+                    className="text-[#B692F6] hover:text-white transition-colors text-xs"
+                  >
+                    Add Pattern
+                  </button>
+                </div>
+                {formData.excludePatterns?.map((pattern, index) => (
+                  <div key={index} className="flex items-center gap-2 mb-2">
+                    <input
+                      type="text"
+                      value={pattern}
+                      onChange={(e) => {
+                        const newPatterns = [...formData.excludePatterns!];
+                        newPatterns[index] = e.target.value;
+                        setFormData({
+                          ...formData,
+                          excludePatterns: newPatterns
+                        });
+                      }}
+                      className="flex-1 bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
+                      placeholder="e.g., /tag/*, /category/*"
+                    />
+                    {formData.excludePatterns!.length > 1 && (
+                      <button
+                        onClick={() => {
+                          const newPatterns = formData.excludePatterns!.filter((_, i) => i !== index);
+                          setFormData({
+                            ...formData,
+                            excludePatterns: newPatterns
+                          });
+                        }}
+                        className="text-red-400 hover:text-red-300 transition-colors"
+                      >
+                        <XMarkIcon className="h-5 w-5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
               {/* Pagination Patterns */}
               <div className="mb-4">
                 <div className="flex justify-between items-center mb-2">
@@ -864,56 +933,6 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
                           setFormData({
                             ...formData,
                             sampleArticleUrls: newUrls
-                          });
-                        }}
-                        className="text-red-400 hover:text-red-300 transition-colors"
-                      >
-                        <XMarkIcon className="h-5 w-5" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {/* Exclude Patterns */}
-              <div className="mb-4">
-                <div className="flex justify-between items-center mb-2">
-                  <label className="block text-xs text-gray-400">Exclude Patterns</label>
-                  <button
-                    onClick={() => {
-                      setFormData({
-                        ...formData,
-                        excludePatterns: [...formData.excludePatterns!, '']
-                      });
-                    }}
-                    className="text-[#B692F6] hover:text-white transition-colors text-xs"
-                  >
-                    Add Pattern
-                  </button>
-                </div>
-                {formData.excludePatterns?.map((pattern, index) => (
-                  <div key={index} className="flex items-center gap-2 mb-2">
-                    <input
-                      type="text"
-                      value={pattern}
-                      onChange={(e) => {
-                        const newPatterns = [...formData.excludePatterns!];
-                        newPatterns[index] = e.target.value;
-                        setFormData({
-                          ...formData,
-                          excludePatterns: newPatterns
-                        });
-                      }}
-                      className="flex-1 bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
-                      placeholder="e.g., /tag/*, /category/*"
-                    />
-                    {formData.excludePatterns!.length > 1 && (
-                      <button
-                        onClick={() => {
-                          const newPatterns = formData.excludePatterns!.filter((_, i) => i !== index);
-                          setFormData({
-                            ...formData,
-                            excludePatterns: newPatterns
                           });
                         }}
                         className="text-red-400 hover:text-red-300 transition-colors"

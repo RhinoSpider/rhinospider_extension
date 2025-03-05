@@ -52,6 +52,7 @@ module {
         articleUrlPatterns: ?[Text];   // Added article URL patterns field
         contentIdentifiers: ?ContentIdentifiers; // Added content identifiers field
         paginationPatterns: ?[Text];   // Added pagination patterns field
+        excludePatterns: ?[Text];   // Added exclude patterns field
     };
 
     public type CreateTopicRequest = {
@@ -73,6 +74,7 @@ module {
         articleUrlPatterns: ?[Text];   // Added article URL patterns field
         contentIdentifiers: ?ContentIdentifiers; // Added content identifiers field
         paginationPatterns: ?[Text];   // Added pagination patterns field
+        excludePatterns: ?[Text];   // Added exclude patterns field
     };
 
     public type ScrapedData = {

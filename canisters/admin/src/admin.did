@@ -25,6 +25,15 @@ type ScrapingTopic = record {
     requests_per_hour: nat32;
     max_concurrent: nat32;
   };
+  siteTypeClassification: opt text;
+  urlGenerationStrategy: opt text;
+  articleUrlPatterns: opt vec text;
+  contentIdentifiers: opt record {
+    selectors: vec text;
+    keywords: vec text;
+  };
+  paginationPatterns: opt vec text;
+  excludePatterns: opt vec text;
 };
 
 type CostLimits = record {
@@ -99,4 +108,25 @@ service : {
   get_users : () -> (vec ExtensionUser) query;
   update_user : (text, ExtensionUser) -> (ExtensionUser);
   block_user : (text) -> ();
+  
+  // Topic Management
+  updateTopic: (text, record {
+    name: opt text;
+    description: opt text;
+    url_patterns: opt vec text;
+    active: opt bool;
+    extraction_rules: opt record {
+      fields: vec ScrapingField;
+      custom_prompt: opt text;
+    };
+    siteTypeClassification: opt text;
+    urlGenerationStrategy: opt text;
+    articleUrlPatterns: opt vec text;
+    contentIdentifiers: opt record {
+      selectors: vec text;
+      keywords: vec text;
+    };
+    paginationPatterns: opt vec text;
+    excludePatterns: opt vec text;
+  }) -> (variant { ok: ScrapingTopic; err: text });
 }
