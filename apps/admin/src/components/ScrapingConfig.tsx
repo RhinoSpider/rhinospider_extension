@@ -122,8 +122,10 @@ export const ScrapingConfig: React.FC = () => {
           }],
           siteTypeClassification: [topic.siteTypeClassification || 'blog'],
           urlGenerationStrategy: [topic.urlGenerationStrategy || 'pattern_based'],
-          articleUrlPatterns: topic.articleUrlPatterns && topic.articleUrlPatterns.length > 0 
-            ? [topic.articleUrlPatterns.filter(p => typeof p === 'string' ? p.trim() !== '' : false)] 
+          articleUrlPatterns: topic.articleUrlPatterns 
+            ? [Array.isArray(topic.articleUrlPatterns[0]) 
+                ? [...topic.articleUrlPatterns[0], ...topic.articleUrlPatterns.slice(1).filter(p => typeof p === 'string')] 
+                : topic.articleUrlPatterns.filter(p => typeof p === 'string' ? p.trim() !== '' : false)]
             : []
         };
         
