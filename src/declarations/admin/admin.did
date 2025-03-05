@@ -20,6 +20,7 @@ type ScrapingTopic =
                 };
    aiConfig: AIConfig;
    articleUrlPatterns: opt vec text;
+   contentIdentifiers: opt ContentIdentifiers;
    createdAt: int;
    description: text;
    extractionRules: ExtractionRules;
@@ -94,11 +95,19 @@ type ExtractionRules =
  };
 type CreateTopicRequest = 
  record {
+   activeHours: record {
+                  end: nat;
+                  start: nat;
+                };
+   aiConfig: AIConfig;
    articleUrlPatterns: opt vec text;
+   contentIdentifiers: opt ContentIdentifiers;
    description: text;
    extractionRules: ExtractionRules;
    id: text;
+   maxRetries: nat;
    name: text;
+   scrapingInterval: nat;
    siteTypeClassification: text;
    status: text;
    urlGenerationStrategy: text;
@@ -109,6 +118,11 @@ type CostLimits =
    maxConcurrent: nat;
    maxDailyCost: float64;
    maxMonthlyCost: float64;
+ };
+type ContentIdentifiers = 
+ record {
+   keywords: vec text;
+   selectors: vec text;
  };
 type AIConfig__1 = 
  record {
@@ -147,6 +161,7 @@ service : {
   updateTopic: (text,
    record {
      articleUrlPatterns: opt vec text;
+     contentIdentifiers: opt ContentIdentifiers;
      description: opt text;
      extractionRules: opt ExtractionRules;
      name: opt text;

@@ -11,6 +11,10 @@ export interface AIConfig__1 {
   'costLimits' : CostLimits,
   'apiKey' : string,
 }
+export interface ContentIdentifiers {
+  'keywords' : Array<string>,
+  'selectors' : Array<string>,
+}
 export interface CostLimits {
   'maxConcurrent' : bigint,
   'maxDailyCost' : number,
@@ -19,11 +23,16 @@ export interface CostLimits {
 export interface CreateTopicRequest {
   'id' : string,
   'status' : string,
+  'contentIdentifiers' : [] | [ContentIdentifiers],
   'name' : string,
+  'scrapingInterval' : bigint,
   'description' : string,
+  'maxRetries' : bigint,
   'urlGenerationStrategy' : string,
+  'activeHours' : { 'end' : bigint, 'start' : bigint },
   'urlPatterns' : Array<string>,
   'extractionRules' : ExtractionRules,
+  'aiConfig' : AIConfig,
   'articleUrlPatterns' : [] | [Array<string>],
   'siteTypeClassification' : string,
 }
@@ -65,6 +74,7 @@ export interface ScrapingField {
 export interface ScrapingTopic {
   'id' : string,
   'status' : string,
+  'contentIdentifiers' : [] | [ContentIdentifiers],
   'name' : string,
   'createdAt' : bigint,
   'scrapingInterval' : bigint,
@@ -119,6 +129,7 @@ export interface _SERVICE {
       string,
       {
         'status' : [] | [string],
+        'contentIdentifiers' : [] | [ContentIdentifiers],
         'name' : [] | [string],
         'description' : [] | [string],
         'urlGenerationStrategy' : [] | [string],

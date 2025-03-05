@@ -26,6 +26,11 @@ module {
         customPrompt: ?Text;
     };
 
+    public type ContentIdentifiers = {
+        selectors: [Text];
+        keywords: [Text];
+    };
+
     public type ScrapingTopic = {
         id: Text;
         name: Text;
@@ -45,6 +50,7 @@ module {
         siteTypeClassification: Text;  // Added site type classification field
         urlGenerationStrategy: Text;   // Added URL generation strategy field
         articleUrlPatterns: ?[Text];   // Added article URL patterns field
+        contentIdentifiers: ?ContentIdentifiers; // Added content identifiers field
     };
 
     public type CreateTopicRequest = {
@@ -64,6 +70,7 @@ module {
         siteTypeClassification: Text;
         urlGenerationStrategy: Text;
         articleUrlPatterns: ?[Text];   // Added article URL patterns field
+        contentIdentifiers: ?ContentIdentifiers; // Added content identifiers field
     };
 
     public type ScrapedData = {

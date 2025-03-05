@@ -66,18 +66,47 @@ function replaceBigInt(key: string, value: any) {
 
 // Topic Management
 export async function getTopics(): Promise<ScrapingTopic[]> {
-  console.log('Fetching topics...');
   const adminActor = await getAdminActor();
-  const result = await adminActor.getTopics();
-  if ('err' in result) {
-    throw new Error(result.err);
+  
+  try {
+    console.log('Calling getTopics...');
+    const result = await adminActor.getTopics();
+    console.log('Raw getTopics result:', JSON.stringify(result, replaceBigInt, 2));
+    
+    if ('err' in result) {
+      console.error('Error from backend:', result.err);
+      throw new Error(result.err);
+    }
+    
+    // Convert the result to a plain object with BigInt values converted to numbers
+    const topics = JSON.parse(JSON.stringify(result.ok, replaceBigInt));
+    
+    // Process each topic to ensure proper structure
+    const processedTopics = topics.map((topic: any) => {
+      console.log('Processing topic:', topic.id);
+      console.log('Topic contentIdentifiers:', JSON.stringify(topic.contentIdentifiers, null, 2));
+      
+      // Ensure contentIdentifiers is properly extracted if it exists
+      let contentIdentifiers = undefined;
+      if (topic.contentIdentifiers && topic.contentIdentifiers.length > 0) {
+        // Extract from array wrapper (since it's an opt type in Candid)
+        contentIdentifiers = topic.contentIdentifiers[0];
+        console.log('Extracted contentIdentifiers:', JSON.stringify(contentIdentifiers, null, 2));
+      }
+      
+      return {
+        ...topic,
+        // Ensure contentIdentifiers is properly structured
+        contentIdentifiers: contentIdentifiers
+      };
+    });
+    
+    console.log('Processed topics:', JSON.stringify(processedTopics, null, 2));
+    return processedTopics;
+  } catch (error) {
+    console.error('Error in getTopics call:', error);
+    throw error;
   }
-  
-  // Convert the result to a plain object with BigInt values converted to numbers
-  const topicsWithoutBigInt = JSON.parse(JSON.stringify(result.ok, replaceBigInt));
-  console.log('Topics from backend (BigInt converted):', topicsWithoutBigInt);
-  
-  return topicsWithoutBigInt || [];
 }
 
 export async function createTopic(topic: CreateTopicRequest): Promise<ScrapingTopic> {
@@ -95,7 +124,12 @@ export async function createTopic(topic: CreateTopicRequest): Promise<ScrapingTo
     // Filter out empty patterns and store as a local field
     articleUrlPatterns: topic.articleUrlPatterns && topic.articleUrlPatterns.length > 0 
       ? topic.articleUrlPatterns.filter(p => typeof p === 'string' ? p.trim() !== '' : false) 
-      : undefined
+      : undefined,
+    // Filter out empty selectors and keywords
+    contentIdentifiers: topic.contentIdentifiers ? {
+      selectors: topic.contentIdentifiers.selectors.filter(s => typeof s === 'string' ? s.trim() !== '' : false),
+      keywords: topic.contentIdentifiers.keywords.filter(k => typeof k === 'string' ? k.trim() !== '' : false)
+    } : undefined
   };
   
   console.log('Create request:', JSON.stringify(createRequest, replaceBigInt));
@@ -123,7 +157,8 @@ export async function createTopic(topic: CreateTopicRequest): Promise<ScrapingTo
 export async function updateTopic(id: string, topic: Partial<ScrapingTopic>): Promise<ScrapingTopic> {
   const adminActor = await getAdminActor();
   
-  console.log('Original topic:', JSON.stringify(topic, replaceBigInt));
+  console.log('Original topic:', JSON.stringify(topic, replaceBigInt, 2));
+  console.log('Original contentIdentifiers:', topic.contentIdentifiers);
   
   // Create the update request with proper opt text formatting
   const updateRequest = {
@@ -145,24 +180,34 @@ export async function updateTopic(id: string, topic: Partial<ScrapingTopic>): Pr
     urlGenerationStrategy: topic.urlGenerationStrategy ? [topic.urlGenerationStrategy] : [],
     // Single-optional array for articleUrlPatterns (based on admin.did.dts)
     articleUrlPatterns: topic.articleUrlPatterns && topic.articleUrlPatterns.length > 0 
-      ? topic.articleUrlPatterns.filter(p => typeof p === 'string' ? p.trim() !== '' : false) 
-      : []
+      ? [topic.articleUrlPatterns.filter(p => typeof p === 'string' ? p.trim() !== '' : false)] 
+      : [],
+    // Add contentIdentifiers field
+    contentIdentifiers: topic.contentIdentifiers ? [{
+      selectors: topic.contentIdentifiers.selectors.filter(s => typeof s === 'string' ? s.trim() !== '' : false),
+      keywords: topic.contentIdentifiers.keywords.filter(k => typeof k === 'string' ? k.trim() !== '' : false)
+    }] : []
   };
 
-  console.log('Update request:', JSON.stringify(updateRequest, replaceBigInt));
+  console.log('Update request with contentIdentifiers:', JSON.stringify(updateRequest, replaceBigInt, 2));
   
   try {
+    console.log('Updating topic with ID:', id);
     const result = await adminActor.updateTopic(id, updateRequest);
-    console.log('Update result:', result);
+    console.log('Raw update result:', JSON.stringify(result, replaceBigInt, 2));
     
     if ('err' in result) {
       console.error('Error from backend:', result.err);
       throw new Error(result.err);
     }
     
+    // Log the raw ok value to see exactly what's coming from the backend
+    console.log('Raw ok value from update:', JSON.stringify(result.ok, null, 2));
+    
     // Convert the result to a plain object with BigInt values converted to numbers
     const updatedTopic = JSON.parse(JSON.stringify(result.ok, replaceBigInt));
-    console.log('Updated topic from backend:', updatedTopic);
+    console.log('Updated topic from backend (parsed):', JSON.stringify(updatedTopic, null, 2));
+    console.log('Updated contentIdentifiers:', updatedTopic.contentIdentifiers);
     
     return updatedTopic;
   } catch (error) {

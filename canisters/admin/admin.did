@@ -10,6 +10,11 @@ type ExtractionRules = record {
     customPrompt: opt text;
 };
 
+type ContentIdentifiers = record {
+    selectors: vec text;
+    keywords: vec text;
+};
+
 type CostLimits = record {
     maxDailyCost: float64;
     maxMonthlyCost: float64;
@@ -43,6 +48,7 @@ type ScrapingTopic = record {
     siteTypeClassification: text;
     urlGenerationStrategy: text;
     articleUrlPatterns: opt vec text;
+    contentIdentifiers: opt ContentIdentifiers;
 };
 
 type ScrapedData = record {
@@ -71,6 +77,7 @@ type CreateTopicRequest = record {
     siteTypeClassification: text;
     urlGenerationStrategy: text;
     articleUrlPatterns: opt vec text;
+    contentIdentifiers: opt ContentIdentifiers;
 };
 
 type Result = variant {
@@ -134,5 +141,6 @@ service : {
         siteTypeClassification: opt text;
         urlGenerationStrategy: opt text;
         articleUrlPatterns: opt vec text;
+        contentIdentifiers: opt ContentIdentifiers;
     }) -> (Result_3);
 };

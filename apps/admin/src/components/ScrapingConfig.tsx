@@ -37,19 +37,36 @@ export const ScrapingConfig: React.FC = () => {
         if ('err' in result) {
           throw new Error(result.err);
         }
-        const processedTopics = result.ok.map(topic => ({
-          ...topic,
-          extractionRules: {
-            ...topic.extractionRules,
-            fields: topic.extractionRules.fields.map(f => ({
-              ...f,
-              description: f.description || '',
-              type: f.type || 'text',
-            })),
-            customPrompt: topic.extractionRules.customPrompt || '',
-          },
-        }));
-        console.log('Fetched topics:', processedTopics);
+        const processedTopics = result.ok.map(topic => {
+          console.log(`Processing topic ${topic.id}, contentIdentifiers:`, topic.contentIdentifiers);
+          
+          // Ensure contentIdentifiers is properly extracted if it exists
+          let contentIdentifiers = undefined;
+          if (topic.contentIdentifiers && topic.contentIdentifiers.length > 0) {
+            // Extract from array wrapper (since it's an opt type in Candid)
+            contentIdentifiers = topic.contentIdentifiers[0];
+            console.log('Extracted contentIdentifiers:', JSON.stringify(contentIdentifiers, null, 2));
+          }
+          
+          return {
+            ...topic,
+            extractionRules: {
+              ...topic.extractionRules,
+              fields: topic.extractionRules.fields.map(f => ({
+                ...f,
+                description: f.description || '',
+                type: f.type || 'text',
+              })),
+              customPrompt: topic.extractionRules.customPrompt || '',
+            },
+            // Ensure contentIdentifiers is properly structured
+            contentIdentifiers: contentIdentifiers || {
+              selectors: [''],
+              keywords: ['']
+            }
+          };
+        });
+        console.log('Processed topics:', JSON.stringify(processedTopics, null, 2));
         setTopics(processedTopics);
       } catch (error) {
         console.error('Failed to fetch topics:', error);
@@ -126,10 +143,14 @@ export const ScrapingConfig: React.FC = () => {
             ? [Array.isArray(topic.articleUrlPatterns[0]) 
                 ? [...topic.articleUrlPatterns[0], ...topic.articleUrlPatterns.slice(1).filter(p => typeof p === 'string')] 
                 : topic.articleUrlPatterns.filter(p => typeof p === 'string' ? p.trim() !== '' : false)]
-            : []
+            : [],
+          contentIdentifiers: topic.contentIdentifiers ? [{
+            selectors: topic.contentIdentifiers.selectors.filter(s => typeof s === 'string' ? s.trim() !== '' : false),
+            keywords: topic.contentIdentifiers.keywords.filter(k => typeof k === 'string' ? k.trim() !== '' : false)
+          }] : []
         };
         
-        console.log('Update request with articleUrlPatterns:', JSON.stringify(updateRequest, null, 2));
+        console.log('Update request with contentIdentifiers:', JSON.stringify(updateRequest, null, 2));
         
         try {
           const result = await actor.updateTopic(topic.id, updateRequest);
@@ -181,7 +202,11 @@ export const ScrapingConfig: React.FC = () => {
           urlGenerationStrategy: topic.urlGenerationStrategy || 'pattern_based',
           articleUrlPatterns: topic.articleUrlPatterns && topic.articleUrlPatterns.length > 0 
             ? [topic.articleUrlPatterns.filter(p => typeof p === 'string' ? p.trim() !== '' : false)] 
-            : []
+            : [],
+          contentIdentifiers: topic.contentIdentifiers ? {
+            selectors: topic.contentIdentifiers.selectors.filter(s => typeof s === 'string' ? s.trim() !== '' : false),
+            keywords: topic.contentIdentifiers.keywords.filter(k => typeof k === 'string' ? k.trim() !== '' : false)
+          } : undefined
         };
         
         console.log('Create request:', JSON.stringify(createRequest, null, 2));

@@ -39,7 +39,27 @@ actor Admin {
     // Stable storage
     private stable var stableUsers : [(Principal, User)] = [];
     private stable var stableAdmins : [(Principal, Bool)] = [];
-    private stable var stableTopics : [(Text, ScrapingTopic)] = [];
+    private stable var stableTopics : [(Text, {
+        id: Text;
+        name: Text;
+        description: Text;
+        urlPatterns: [Text];
+        aiConfig: AIConfig;
+        status: Text;
+        extractionRules: StorageTypes.ExtractionRules;
+        scrapingInterval: Nat;
+        lastScraped: Int;
+        activeHours: {
+            start: Nat;
+            end: Nat;
+        };
+        maxRetries: Nat;
+        createdAt: Int;
+        siteTypeClassification: Text;
+        urlGenerationStrategy: Text;
+        articleUrlPatterns: ?[Text];
+        contentIdentifiers: ?StorageTypes.ContentIdentifiers;
+    })] = [];
     private stable var stableAIConfig : AIConfig = {
         apiKey = "";
         model = "gpt-4";
@@ -94,6 +114,7 @@ actor Admin {
                     siteTypeClassification = topic.siteTypeClassification;
                     urlGenerationStrategy = topic.urlGenerationStrategy;
                     articleUrlPatterns = topic.articleUrlPatterns;
+                    contentIdentifiers = topic.contentIdentifiers;
                 })
             }
         );
@@ -125,6 +146,7 @@ actor Admin {
                 siteTypeClassification = oldTopic.siteTypeClassification;
                 urlGenerationStrategy = oldTopic.urlGenerationStrategy;
                 articleUrlPatterns = oldTopic.articleUrlPatterns;
+                contentIdentifiers = null; // Initialize as null for existing topics
             };
             topics.put(id, newTopic);
         };
@@ -234,6 +256,8 @@ actor Admin {
         
         let result = Buffer.Buffer<ScrapingTopic>(0);
         for ((_, topic) in topics.entries()) {
+            // Debug print to check if contentIdentifiers is being included in the returned topics
+            Debug.print("Topic ID: " # topic.id # ", contentIdentifiers: " # debug_show(topic.contentIdentifiers));
             result.add(topic);
         };
         #ok(Buffer.toArray(result))
@@ -281,23 +305,19 @@ actor Admin {
         }
     };
 
-    type CreateTopicRequest = {
-        id: Text;
-        name: Text;
-        description: Text;
-        urlPatterns: [Text];
-        status: Text;
-        extractionRules: StorageTypes.ExtractionRules;
-        siteTypeClassification: Text;
-        urlGenerationStrategy: Text;
-        articleUrlPatterns: ?[Text];
-    };
+    type CreateTopicRequest = StorageTypes.CreateTopicRequest;
 
-    public shared({ caller }) func createTopic(request: CreateTopicRequest) : async Result.Result<ScrapingTopic, Text> {
+    public shared({ caller }) func createTopic(request: CreateTopicRequest): async Result.Result<ScrapingTopic, Text> {
         if (not _isAuthorized(caller)) {
             return #err("Unauthorized");
         };
-
+        
+        // Check if the topic ID already exists
+        switch (topics.get(request.id)) {
+            case (?_) { return #err("Topic ID already exists"); };
+            case (null) {};
+        };
+        
         let topic: ScrapingTopic = {
             id = request.id;
             name = request.name;
@@ -325,6 +345,7 @@ actor Admin {
             siteTypeClassification = request.siteTypeClassification;
             urlGenerationStrategy = request.urlGenerationStrategy;
             articleUrlPatterns = request.articleUrlPatterns;
+            contentIdentifiers = request.contentIdentifiers;
         };
 
         topics.put(topic.id, topic);
@@ -340,6 +361,7 @@ actor Admin {
         siteTypeClassification: ?Text;
         urlGenerationStrategy: ?Text;
         articleUrlPatterns: ?[Text];
+        contentIdentifiers: ?StorageTypes.ContentIdentifiers;
     }) : async Result.Result<ScrapingTopic, Text> {
         if (not _isAuthorized(caller)) {
             return #err("Unauthorized");
@@ -367,7 +389,15 @@ actor Admin {
                         case (null) { topic.articleUrlPatterns };
                         case (?patterns) { ?patterns };
                     };
+                    contentIdentifiers = switch (request.contentIdentifiers) {
+                        case (null) { topic.contentIdentifiers };
+                        case (?identifiers) { ?identifiers };
+                    };
                 };
+                
+                // Debug print to check if contentIdentifiers is being set correctly
+                Debug.print("Updated topic contentIdentifiers: " # debug_show(updatedTopic.contentIdentifiers));
+                
                 topics.put(id, updatedTopic);
                 #ok(updatedTopic)
             };
@@ -397,6 +427,7 @@ actor Admin {
                     siteTypeClassification = topic.siteTypeClassification;
                     urlGenerationStrategy = topic.urlGenerationStrategy;
                     articleUrlPatterns = topic.articleUrlPatterns;
+                    contentIdentifiers = topic.contentIdentifiers;
                 };
                 topics.put(id, updatedTopic);
                 ignore storage.setTopicActive(id, active);

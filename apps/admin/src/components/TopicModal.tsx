@@ -74,6 +74,13 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
     if (topic) {
       console.log('Topic data received:', JSON.stringify(topic, null, 2));
       console.log('siteTypeClassification:', topic.siteTypeClassification);
+      console.log('contentIdentifiers:', topic.contentIdentifiers);
+      
+      // Ensure contentIdentifiers is properly structured
+      const contentIdentifiers = topic.contentIdentifiers || {
+        selectors: [''],
+        keywords: ['']
+      };
       
       setFormData({
         id: topic.id,
@@ -94,10 +101,7 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
         maxRetries: topic.maxRetries,
         articleUrlPatterns: topic.articleUrlPatterns || [''],
         siteTypeClassification: topic.siteTypeClassification || 'blog',
-        contentIdentifiers: topic.contentIdentifiers || {
-          selectors: [''],
-          keywords: ['']
-        },
+        contentIdentifiers: contentIdentifiers,
         paginationPatterns: topic.paginationPatterns || [''],
         sampleArticleUrls: topic.sampleArticleUrls || [''],
         urlGenerationStrategy: topic.urlGenerationStrategy || 'pattern_based',
