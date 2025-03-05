@@ -91,8 +91,9 @@ actor Admin {
                     activeHours = topic.activeHours;
                     maxRetries = topic.maxRetries;
                     createdAt = topic.createdAt;
-                    siteTypeClassification = "blog"; // Default value for migration
-                    urlGenerationStrategy = "pattern_based"; // Default value for migration
+                    siteTypeClassification = topic.siteTypeClassification;
+                    urlGenerationStrategy = topic.urlGenerationStrategy;
+                    articleUrlPatterns = topic.articleUrlPatterns;
                 })
             }
         );
@@ -123,6 +124,7 @@ actor Admin {
                 createdAt = oldTopic.createdAt;
                 siteTypeClassification = oldTopic.siteTypeClassification;
                 urlGenerationStrategy = oldTopic.urlGenerationStrategy;
+                articleUrlPatterns = oldTopic.articleUrlPatterns;
             };
             topics.put(id, newTopic);
         };
@@ -288,6 +290,7 @@ actor Admin {
         extractionRules: StorageTypes.ExtractionRules;
         siteTypeClassification: Text;
         urlGenerationStrategy: Text;
+        articleUrlPatterns: ?[Text];
     };
 
     public shared({ caller }) func createTopic(request: CreateTopicRequest) : async Result.Result<ScrapingTopic, Text> {
@@ -321,6 +324,7 @@ actor Admin {
             createdAt = Time.now();
             siteTypeClassification = request.siteTypeClassification;
             urlGenerationStrategy = request.urlGenerationStrategy;
+            articleUrlPatterns = request.articleUrlPatterns;
         };
 
         topics.put(topic.id, topic);
@@ -335,6 +339,7 @@ actor Admin {
         extractionRules: ?StorageTypes.ExtractionRules;
         siteTypeClassification: ?Text;
         urlGenerationStrategy: ?Text;
+        articleUrlPatterns: ?[Text];
     }) : async Result.Result<ScrapingTopic, Text> {
         if (not _isAuthorized(caller)) {
             return #err("Unauthorized");
@@ -343,15 +348,25 @@ actor Admin {
         switch (topics.get(id)) {
             case (null) { #err("Topic not found") };
             case (?topic) {
-                let updatedTopic = {
-                    topic with
+                let updatedTopic: StorageTypes.ScrapingTopic = {
+                    id = topic.id;
                     name = Option.get(request.name, topic.name);
                     description = Option.get(request.description, topic.description);
                     urlPatterns = Option.get(request.urlPatterns, topic.urlPatterns);
                     status = Option.get(request.status, topic.status);
                     extractionRules = Option.get(request.extractionRules, topic.extractionRules);
+                    aiConfig = topic.aiConfig;
+                    scrapingInterval = topic.scrapingInterval;
+                    lastScraped = topic.lastScraped;
+                    activeHours = topic.activeHours;
+                    maxRetries = topic.maxRetries;
+                    createdAt = topic.createdAt;
                     siteTypeClassification = Option.get(request.siteTypeClassification, topic.siteTypeClassification);
                     urlGenerationStrategy = Option.get(request.urlGenerationStrategy, topic.urlGenerationStrategy);
+                    articleUrlPatterns = switch (request.articleUrlPatterns) {
+                        case (null) { topic.articleUrlPatterns };
+                        case (?patterns) { ?patterns };
+                    };
                 };
                 topics.put(id, updatedTopic);
                 #ok(updatedTopic)
@@ -366,9 +381,22 @@ actor Admin {
         switch (topics.get(id)) {
             case (null) { #err("Topic not found") };
             case (?topic) {
-                let updatedTopic = {
-                    topic with
+                let updatedTopic: StorageTypes.ScrapingTopic = {
+                    id = topic.id;
+                    name = topic.name;
+                    description = topic.description;
+                    urlPatterns = topic.urlPatterns;
                     status = if (active) "active" else "inactive";
+                    extractionRules = topic.extractionRules;
+                    aiConfig = topic.aiConfig;
+                    scrapingInterval = topic.scrapingInterval;
+                    lastScraped = topic.lastScraped;
+                    activeHours = topic.activeHours;
+                    maxRetries = topic.maxRetries;
+                    createdAt = topic.createdAt;
+                    siteTypeClassification = topic.siteTypeClassification;
+                    urlGenerationStrategy = topic.urlGenerationStrategy;
+                    articleUrlPatterns = topic.articleUrlPatterns;
                 };
                 topics.put(id, updatedTopic);
                 ignore storage.setTopicActive(id, active);

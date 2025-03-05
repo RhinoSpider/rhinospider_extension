@@ -42,6 +42,7 @@ type ScrapingTopic = record {
     createdAt: int;
     siteTypeClassification: text;
     urlGenerationStrategy: text;
+    articleUrlPatterns: opt vec text;
 };
 
 type ScrapedData = record {
@@ -69,6 +70,7 @@ type CreateTopicRequest = record {
     maxRetries: nat;
     siteTypeClassification: text;
     urlGenerationStrategy: text;
+    articleUrlPatterns: opt vec text;
 };
 
 type Result = variant {
@@ -131,5 +133,6 @@ service : {
         extractionRules: opt ExtractionRules;
         siteTypeClassification: opt text;
         urlGenerationStrategy: opt text;
+        articleUrlPatterns: opt vec text;
     }) -> (Result_3);
 };

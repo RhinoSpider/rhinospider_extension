@@ -23,6 +23,7 @@ export const idlFactory = ({ IDL }) => {
     'urlGenerationStrategy' : IDL.Text,
     'urlPatterns' : IDL.Vec(IDL.Text),
     'extractionRules' : ExtractionRules,
+    'articleUrlPatterns' : IDL.Opt(IDL.Vec(IDL.Text)),
     'siteTypeClassification' : IDL.Text,
   });
   const CostLimits = IDL.Record({
@@ -48,6 +49,7 @@ export const idlFactory = ({ IDL }) => {
     'urlPatterns' : IDL.Vec(IDL.Text),
     'extractionRules' : ExtractionRules,
     'aiConfig' : AIConfig,
+    'articleUrlPatterns' : IDL.Opt(IDL.Vec(IDL.Text)),
     'lastScraped' : IDL.Int,
     'siteTypeClassification' : IDL.Text,
   });
@@ -122,6 +124,7 @@ export const idlFactory = ({ IDL }) => {
             'urlGenerationStrategy' : IDL.Opt(IDL.Text),
             'urlPatterns' : IDL.Opt(IDL.Vec(IDL.Text)),
             'extractionRules' : IDL.Opt(ExtractionRules),
+            'articleUrlPatterns' : IDL.Opt(IDL.Vec(IDL.Text)),
             'siteTypeClassification' : IDL.Opt(IDL.Text),
           }),
         ],

@@ -24,6 +24,7 @@ export interface CreateTopicRequest {
   'urlGenerationStrategy' : string,
   'urlPatterns' : Array<string>,
   'extractionRules' : ExtractionRules,
+  'articleUrlPatterns' : [] | [Array<string>],
   'siteTypeClassification' : string,
 }
 export interface ExtractionRules {
@@ -74,6 +75,7 @@ export interface ScrapingTopic {
   'urlPatterns' : Array<string>,
   'extractionRules' : ExtractionRules,
   'aiConfig' : AIConfig,
+  'articleUrlPatterns' : [] | [Array<string>],
   'lastScraped' : bigint,
   'siteTypeClassification' : string,
 }
@@ -122,6 +124,7 @@ export interface _SERVICE {
         'urlGenerationStrategy' : [] | [string],
         'urlPatterns' : [] | [Array<string>],
         'extractionRules' : [] | [ExtractionRules],
+        'articleUrlPatterns' : [] | [Array<string>],
         'siteTypeClassification' : [] | [string],
       },
     ],

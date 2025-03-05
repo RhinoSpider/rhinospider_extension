@@ -44,6 +44,7 @@ module {
         createdAt: Int;
         siteTypeClassification: Text;  // Added site type classification field
         urlGenerationStrategy: Text;   // Added URL generation strategy field
+        articleUrlPatterns: ?[Text];   // Added article URL patterns field
     };
 
     public type CreateTopicRequest = {
@@ -62,6 +63,7 @@ module {
         maxRetries: Nat;
         siteTypeClassification: Text;
         urlGenerationStrategy: Text;
+        articleUrlPatterns: ?[Text];   // Added article URL patterns field
     };
 
     public type ScrapedData = {

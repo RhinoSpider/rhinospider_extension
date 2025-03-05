@@ -91,7 +91,11 @@ export async function createTopic(topic: CreateTopicRequest): Promise<ScrapingTo
   const createRequest = {
     ...topic,
     siteTypeClassification: topic.siteTypeClassification || 'blog',
-    urlGenerationStrategy: topic.urlGenerationStrategy || 'pattern_based'
+    urlGenerationStrategy: topic.urlGenerationStrategy || 'pattern_based',
+    // Filter out empty patterns and store as a local field
+    articleUrlPatterns: topic.articleUrlPatterns && topic.articleUrlPatterns.length > 0 
+      ? topic.articleUrlPatterns.filter(p => typeof p === 'string' ? p.trim() !== '' : false) 
+      : undefined
   };
   
   console.log('Create request:', JSON.stringify(createRequest, replaceBigInt));
@@ -119,10 +123,8 @@ export async function createTopic(topic: CreateTopicRequest): Promise<ScrapingTo
 export async function updateTopic(id: string, topic: Partial<ScrapingTopic>): Promise<ScrapingTopic> {
   const adminActor = await getAdminActor();
   
-  // Log the input topic for debugging (with BigInt handling)
   console.log('Original topic:', JSON.stringify(topic, replaceBigInt));
-  console.log('siteTypeClassification value:', topic.siteTypeClassification);
-
+  
   // Create the update request with proper opt text formatting
   const updateRequest = {
     name: topic.name ? [topic.name] : [],
@@ -138,17 +140,20 @@ export async function updateTopic(id: string, topic: Partial<ScrapingTopic>): Pr
       })),
       customPrompt: topic.extractionRules.customPrompt ? [topic.extractionRules.customPrompt] : []
     }] : [],
-    // Ensure siteTypeClassification is always provided with a default value if missing
-    siteTypeClassification: [topic.siteTypeClassification || 'blog'],
-    // Add urlGenerationStrategy with the same pattern as siteTypeClassification
-    urlGenerationStrategy: [topic.urlGenerationStrategy || 'pattern_based']
+    // Single-optional text for these fields (based on admin.did.d.ts)
+    siteTypeClassification: topic.siteTypeClassification ? [topic.siteTypeClassification] : [],
+    urlGenerationStrategy: topic.urlGenerationStrategy ? [topic.urlGenerationStrategy] : [],
+    // Single-optional array for articleUrlPatterns (based on admin.did.dts)
+    articleUrlPatterns: topic.articleUrlPatterns && topic.articleUrlPatterns.length > 0 
+      ? topic.articleUrlPatterns.filter(p => typeof p === 'string' ? p.trim() !== '' : false) 
+      : []
   };
 
   console.log('Update request:', JSON.stringify(updateRequest, replaceBigInt));
   
   try {
     const result = await adminActor.updateTopic(id, updateRequest);
-    console.log('Raw update result:', result);
+    console.log('Update result:', result);
     
     if ('err' in result) {
       console.error('Error from backend:', result.err);

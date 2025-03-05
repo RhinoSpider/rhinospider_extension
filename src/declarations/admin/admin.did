@@ -19,6 +19,7 @@ type ScrapingTopic =
                   start: nat;
                 };
    aiConfig: AIConfig;
+   articleUrlPatterns: opt vec text;
    createdAt: int;
    description: text;
    extractionRules: ExtractionRules;
@@ -93,6 +94,7 @@ type ExtractionRules =
  };
 type CreateTopicRequest = 
  record {
+   articleUrlPatterns: opt vec text;
    description: text;
    extractionRules: ExtractionRules;
    id: text;
@@ -144,6 +146,7 @@ service : {
   updateLastScraped: (text, int) -> (Result_1);
   updateTopic: (text,
    record {
+     articleUrlPatterns: opt vec text;
      description: opt text;
      extractionRules: opt ExtractionRules;
      name: opt text;

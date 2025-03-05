@@ -121,10 +121,13 @@ export const ScrapingConfig: React.FC = () => {
             customPrompt: topic.extractionRules.customPrompt ? [topic.extractionRules.customPrompt] : []
           }],
           siteTypeClassification: [topic.siteTypeClassification || 'blog'],
-          urlGenerationStrategy: [topic.urlGenerationStrategy || 'pattern_based']
+          urlGenerationStrategy: [topic.urlGenerationStrategy || 'pattern_based'],
+          articleUrlPatterns: topic.articleUrlPatterns && topic.articleUrlPatterns.length > 0 
+            ? [topic.articleUrlPatterns.filter(p => typeof p === 'string' ? p.trim() !== '' : false)] 
+            : []
         };
         
-        console.log('Update request:', JSON.stringify(updateRequest, null, 2));
+        console.log('Update request with articleUrlPatterns:', JSON.stringify(updateRequest, null, 2));
         
         try {
           const result = await actor.updateTopic(topic.id, updateRequest);
@@ -173,7 +176,10 @@ export const ScrapingConfig: React.FC = () => {
           },
           maxRetries: 3,
           siteTypeClassification: topic.siteTypeClassification || 'blog',
-          urlGenerationStrategy: topic.urlGenerationStrategy || 'pattern_based'
+          urlGenerationStrategy: topic.urlGenerationStrategy || 'pattern_based',
+          articleUrlPatterns: topic.articleUrlPatterns && topic.articleUrlPatterns.length > 0 
+            ? [topic.articleUrlPatterns.filter(p => typeof p === 'string' ? p.trim() !== '' : false)] 
+            : []
         };
         
         console.log('Create request:', JSON.stringify(createRequest, null, 2));
