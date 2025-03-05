@@ -76,33 +76,91 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
       console.log('siteTypeClassification:', topic.siteTypeClassification);
       console.log('contentIdentifiers:', topic.contentIdentifiers);
       
-      // Ensure contentIdentifiers is properly structured
-      const contentIdentifiers = topic.contentIdentifiers || {
-        selectors: [''],
-        keywords: ['']
-      };
+      // Handle contentIdentifiers that might be an array or an object
+      let contentIdentifiersObj = { selectors: [''], keywords: [''] };
+      
+      if (topic.contentIdentifiers) {
+        if (Array.isArray(topic.contentIdentifiers) && topic.contentIdentifiers.length > 0) {
+          // If it's an array (from backend), take the first item
+          contentIdentifiersObj = {
+            selectors: topic.contentIdentifiers[0]?.selectors || [''],
+            keywords: topic.contentIdentifiers[0]?.keywords || ['']
+          };
+        } else if (typeof topic.contentIdentifiers === 'object') {
+          // If it's already an object
+          contentIdentifiersObj = {
+            selectors: topic.contentIdentifiers.selectors || [''],
+            keywords: topic.contentIdentifiers.keywords || ['']
+          };
+        }
+      }
+      
+      console.log('Normalized contentIdentifiers:', contentIdentifiersObj);
+      
+      // Ensure paginationPatterns is properly structured
+      let paginationPatterns = [''];
+      
+      if (topic.paginationPatterns) {
+        if (Array.isArray(topic.paginationPatterns)) {
+          if (topic.paginationPatterns.length > 0) {
+            if (Array.isArray(topic.paginationPatterns[0])) {
+              // If it's a nested array (from backend), flatten it
+              paginationPatterns = topic.paginationPatterns.flat();
+            } else {
+              // If it's already a flat array
+              paginationPatterns = topic.paginationPatterns;
+            }
+          }
+        }
+      }
+      
+      console.log('Normalized paginationPatterns:', paginationPatterns);
+      
+      // Ensure articleUrlPatterns is properly structured
+      const articleUrlPatterns = Array.isArray(topic.articleUrlPatterns) ? topic.articleUrlPatterns : [''];
+      
+      // Ensure extractionRules fields are properly structured
+      const extractionRulesFields = Array.isArray(topic.extractionRules?.fields) 
+        ? topic.extractionRules.fields.map(field => ({
+            ...field,
+            aiPrompt: field.aiPrompt || ''
+          }))
+        : [{
+            name: '',
+            fieldType: 'text',
+            required: true,
+            aiPrompt: ''
+          }];
       
       setFormData({
         id: topic.id,
         name: topic.name,
         description: topic.description,
-        urlPatterns: topic.urlPatterns,
-        status: topic.status,
+        urlPatterns: topic.urlPatterns || [''],
+        status: topic.status || 'active',
         extractionRules: {
-          fields: topic.extractionRules.fields.map(field => ({
-            ...field,
-            aiPrompt: field.aiPrompt || ''
-          })),
-          customPrompt: topic.extractionRules.customPrompt || ''
+          fields: extractionRulesFields,
+          customPrompt: topic.extractionRules?.customPrompt || ''
         },
-        aiConfig: topic.aiConfig,
-        scrapingInterval: topic.scrapingInterval,
-        activeHours: topic.activeHours,
-        maxRetries: topic.maxRetries,
-        articleUrlPatterns: topic.articleUrlPatterns || [''],
+        aiConfig: topic.aiConfig || {
+          apiKey: "",
+          model: "gpt-3.5-turbo",
+          costLimits: {
+            maxDailyCost: 1.0,
+            maxMonthlyCost: 10.0,
+            maxConcurrent: 5
+          }
+        },
+        scrapingInterval: topic.scrapingInterval || 3600,
+        activeHours: topic.activeHours || {
+          start: 0,
+          end: 24
+        },
+        maxRetries: topic.maxRetries || 3,
+        articleUrlPatterns: articleUrlPatterns,
         siteTypeClassification: topic.siteTypeClassification || 'blog',
-        contentIdentifiers: contentIdentifiers,
-        paginationPatterns: topic.paginationPatterns || [''],
+        contentIdentifiers: contentIdentifiersObj,
+        paginationPatterns: paginationPatterns,
         sampleArticleUrls: topic.sampleArticleUrls || [''],
         urlGenerationStrategy: topic.urlGenerationStrategy || 'pattern_based',
         excludePatterns: topic.excludePatterns || ['']
@@ -606,18 +664,18 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
                 <div className="mb-2">
                   <label className="block text-xs text-gray-400 mb-1">CSS Selectors</label>
                   <div className="flex flex-wrap gap-2">
-                    {formData.contentIdentifiers?.selectors.map((selector, index) => (
+                    {(formData.contentIdentifiers?.selectors || []).map((selector, index) => (
                       <div key={index} className="flex items-center gap-1 bg-[#2C2B33] rounded-lg px-2 py-1">
                         <input
                           type="text"
                           value={selector}
                           onChange={(e) => {
-                            const newSelectors = [...formData.contentIdentifiers!.selectors];
+                            const newSelectors = [...(formData.contentIdentifiers?.selectors || [])];
                             newSelectors[index] = e.target.value;
                             setFormData({
                               ...formData,
                               contentIdentifiers: {
-                                ...formData.contentIdentifiers!,
+                                ...(formData.contentIdentifiers || { selectors: [], keywords: [] }),
                                 selectors: newSelectors
                               }
                             });
@@ -627,11 +685,11 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
                         />
                         <button
                           onClick={() => {
-                            const newSelectors = formData.contentIdentifiers!.selectors.filter((_, i) => i !== index);
+                            const newSelectors = (formData.contentIdentifiers?.selectors || []).filter((_, i) => i !== index);
                             setFormData({
                               ...formData,
                               contentIdentifiers: {
-                                ...formData.contentIdentifiers!,
+                                ...(formData.contentIdentifiers || { selectors: [], keywords: [] }),
                                 selectors: newSelectors
                               }
                             });
@@ -647,8 +705,8 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
                         setFormData({
                           ...formData,
                           contentIdentifiers: {
-                            ...formData.contentIdentifiers!,
-                            selectors: [...formData.contentIdentifiers!.selectors, '']
+                            ...(formData.contentIdentifiers || { selectors: [], keywords: [] }),
+                            selectors: [...(formData.contentIdentifiers?.selectors || []), '']
                           }
                         });
                       }}
@@ -663,18 +721,18 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
                 <div>
                   <label className="block text-xs text-gray-400 mb-1">Keywords</label>
                   <div className="flex flex-wrap gap-2">
-                    {formData.contentIdentifiers?.keywords.map((keyword, index) => (
+                    {(formData.contentIdentifiers?.keywords || []).map((keyword, index) => (
                       <div key={index} className="flex items-center gap-1 bg-[#2C2B33] rounded-lg px-2 py-1">
                         <input
                           type="text"
                           value={keyword}
                           onChange={(e) => {
-                            const newKeywords = [...formData.contentIdentifiers!.keywords];
+                            const newKeywords = [...(formData.contentIdentifiers?.keywords || [])];
                             newKeywords[index] = e.target.value;
                             setFormData({
                               ...formData,
                               contentIdentifiers: {
-                                ...formData.contentIdentifiers!,
+                                ...(formData.contentIdentifiers || { selectors: [], keywords: [] }),
                                 keywords: newKeywords
                               }
                             });
@@ -684,11 +742,11 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
                         />
                         <button
                           onClick={() => {
-                            const newKeywords = formData.contentIdentifiers!.keywords.filter((_, i) => i !== index);
+                            const newKeywords = (formData.contentIdentifiers?.keywords || []).filter((_, i) => i !== index);
                             setFormData({
                               ...formData,
                               contentIdentifiers: {
-                                ...formData.contentIdentifiers!,
+                                ...(formData.contentIdentifiers || { selectors: [], keywords: [] }),
                                 keywords: newKeywords
                               }
                             });
@@ -704,8 +762,8 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
                         setFormData({
                           ...formData,
                           contentIdentifiers: {
-                            ...formData.contentIdentifiers!,
-                            keywords: [...formData.contentIdentifiers!.keywords, '']
+                            ...(formData.contentIdentifiers || { selectors: [], keywords: [] }),
+                            keywords: [...(formData.contentIdentifiers?.keywords || []), '']
                           }
                         });
                       }}

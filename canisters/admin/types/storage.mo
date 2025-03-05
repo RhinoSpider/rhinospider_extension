@@ -51,6 +51,7 @@ module {
         urlGenerationStrategy: Text;   // Added URL generation strategy field
         articleUrlPatterns: ?[Text];   // Added article URL patterns field
         contentIdentifiers: ?ContentIdentifiers; // Added content identifiers field
+        paginationPatterns: ?[Text];   // Added pagination patterns field
     };
 
     public type CreateTopicRequest = {
@@ -71,6 +72,7 @@ module {
         urlGenerationStrategy: Text;
         articleUrlPatterns: ?[Text];   // Added article URL patterns field
         contentIdentifiers: ?ContentIdentifiers; // Added content identifiers field
+        paginationPatterns: ?[Text];   // Added pagination patterns field
     };
 
     public type ScrapedData = {

@@ -59,6 +59,7 @@ actor Admin {
         urlGenerationStrategy: Text;
         articleUrlPatterns: ?[Text];
         contentIdentifiers: ?StorageTypes.ContentIdentifiers;
+        paginationPatterns: ?[Text];
     })] = [];
     private stable var stableAIConfig : AIConfig = {
         apiKey = "";
@@ -76,85 +77,56 @@ actor Admin {
     private var topics = HashMap.HashMap<Text, ScrapingTopic>(1, Text.equal, Text.hash);
     private var _aiConfig : AIConfig = stableAIConfig;
 
+    // System hooks for canister upgrades
     system func preupgrade() {
         stableAdmins := Iter.toArray(admins.entries());
         stableTopics := Iter.toArray(topics.entries());
+        stableUsers := Iter.toArray(users.entries());
         stableAIConfig := _aiConfig;
-        // Migrate old topics to new format if needed
-        stableTopics := Array.map<(Text, ScrapingTopic), (Text, ScrapingTopic)>(
-            stableTopics,
-            func((id, topic)) {
-                let migratedFields = Array.map<StorageTypes.ScrapingField, StorageTypes.ScrapingField>(
-                    topic.extractionRules.fields,
-                    func(field) {
-                        {
-                            name = field.name;
-                            fieldType = "text"; // Default to text for existing fields
-                            required = field.required;
-                            aiPrompt = field.aiPrompt;
-                        }
-                    }
-                );
-                (id, {
-                    id = topic.id;
-                    name = topic.name;
-                    description = topic.description;
-                    urlPatterns = topic.urlPatterns;
-                    aiConfig = topic.aiConfig;
-                    status = topic.status;
-                    extractionRules = {
-                        fields = migratedFields;
-                        customPrompt = topic.extractionRules.customPrompt;
-                    };
-                    scrapingInterval = topic.scrapingInterval;
-                    lastScraped = topic.lastScraped;
-                    activeHours = topic.activeHours;
-                    maxRetries = topic.maxRetries;
-                    createdAt = topic.createdAt;
-                    siteTypeClassification = topic.siteTypeClassification;
-                    urlGenerationStrategy = topic.urlGenerationStrategy;
-                    articleUrlPatterns = topic.articleUrlPatterns;
-                    contentIdentifiers = topic.contentIdentifiers;
-                })
-            }
-        );
+        
+        // Log the state before upgrade
+        if (stableTopics.size() > 0) {
+            let (id, topic) = stableTopics[0];
+            Debug.print("Preupgrade - First topic ID: " # id);
+            Debug.print("Preupgrade - First topic contentIdentifiers: " # debug_show(topic.contentIdentifiers));
+            Debug.print("Preupgrade - First topic paginationPatterns: " # debug_show(topic.paginationPatterns));
+        };
     };
 
     system func postupgrade() {
-        users := HashMap.fromIter<Principal, User>(stableUsers.vals(), 1, Principal.equal, Principal.hash);
-        admins := HashMap.fromIter<Principal, Bool>(stableAdmins.vals(), 1, Principal.equal, Principal.hash);
+        admins := HashMap.fromIter<Principal, Bool>(
+            Iter.fromArray(stableAdmins), 
+            10, 
+            Principal.equal, 
+            Principal.hash
+        );
         
-        // Migrate topics to include the new urlGenerationStrategy field
-        // This is a temporary solution for the current upgrade
-        // In future upgrades, we should use a more robust migration strategy
-        topics := HashMap.HashMap<Text, ScrapingTopic>(1, Text.equal, Text.hash);
-        for ((id, oldTopic) in stableTopics.vals()) {
-            // Create a new topic with the urlGenerationStrategy field
-            let newTopic : ScrapingTopic = {
-                id = oldTopic.id;
-                name = oldTopic.name;
-                description = oldTopic.description;
-                urlPatterns = oldTopic.urlPatterns;
-                aiConfig = oldTopic.aiConfig;
-                status = oldTopic.status;
-                extractionRules = oldTopic.extractionRules;
-                scrapingInterval = oldTopic.scrapingInterval;
-                lastScraped = oldTopic.lastScraped;
-                activeHours = oldTopic.activeHours;
-                maxRetries = oldTopic.maxRetries;
-                createdAt = oldTopic.createdAt;
-                siteTypeClassification = oldTopic.siteTypeClassification;
-                urlGenerationStrategy = oldTopic.urlGenerationStrategy;
-                articleUrlPatterns = oldTopic.articleUrlPatterns;
-                contentIdentifiers = null; // Initialize as null for existing topics
-            };
-            topics.put(id, newTopic);
-        };
+        topics := HashMap.fromIter<Text, ScrapingTopic>(
+            Iter.fromArray(stableTopics), 
+            10, 
+            Text.equal, 
+            Text.hash
+        );
+        
+        users := HashMap.fromIter<Principal, User>(
+            Iter.fromArray(stableUsers), 
+            10, 
+            Principal.equal, 
+            Principal.hash
+        );
         
         _aiConfig := stableAIConfig;
         
         // Always initialize admin
         initializeAdmin();
+        
+        // Log the state after upgrade
+        if (stableTopics.size() > 0) {
+            let (id, topic) = stableTopics[0];
+            Debug.print("Postupgrade - First topic ID: " # id);
+            Debug.print("Postupgrade - First topic contentIdentifiers: " # debug_show(topic.contentIdentifiers));
+            Debug.print("Postupgrade - First topic paginationPatterns: " # debug_show(topic.paginationPatterns));
+        };
     };
 
     // Initialize admin
@@ -254,13 +226,15 @@ actor Admin {
             return #err("Unauthorized");
         };
         
-        let result = Buffer.Buffer<ScrapingTopic>(0);
-        for ((_, topic) in topics.entries()) {
-            // Debug print to check if contentIdentifiers is being included in the returned topics
-            Debug.print("Topic ID: " # topic.id # ", contentIdentifiers: " # debug_show(topic.contentIdentifiers));
-            result.add(topic);
+        let topicsArray = Iter.toArray(topics.vals());
+        
+        // Debug print to check if contentIdentifiers is being included in the returned topics
+        if (topicsArray.size() > 0) {
+            Debug.print("First topic contentIdentifiers: " # debug_show(topicsArray[0].contentIdentifiers));
+            Debug.print("First topic paginationPatterns: " # debug_show(topicsArray[0].paginationPatterns));
         };
-        #ok(Buffer.toArray(result))
+        
+        #ok(topicsArray)
     };
 
     // Topic management for consumer canister
@@ -346,6 +320,7 @@ actor Admin {
             urlGenerationStrategy = request.urlGenerationStrategy;
             articleUrlPatterns = request.articleUrlPatterns;
             contentIdentifiers = request.contentIdentifiers;
+            paginationPatterns = request.paginationPatterns;
         };
 
         topics.put(topic.id, topic);
@@ -362,6 +337,7 @@ actor Admin {
         urlGenerationStrategy: ?Text;
         articleUrlPatterns: ?[Text];
         contentIdentifiers: ?StorageTypes.ContentIdentifiers;
+        paginationPatterns: ?[Text];
     }) : async Result.Result<ScrapingTopic, Text> {
         if (not _isAuthorized(caller)) {
             return #err("Unauthorized");
@@ -393,10 +369,17 @@ actor Admin {
                         case (null) { topic.contentIdentifiers };
                         case (?identifiers) { ?identifiers };
                     };
+                    paginationPatterns = switch (request.paginationPatterns) {
+                        case (null) { topic.paginationPatterns };
+                        case (?patterns) { ?patterns };
+                    };
                 };
                 
                 // Debug print to check if contentIdentifiers is being set correctly
                 Debug.print("Updated topic contentIdentifiers: " # debug_show(updatedTopic.contentIdentifiers));
+                
+                // Debug print to check if paginationPatterns is being set correctly
+                Debug.print("Updated topic paginationPatterns: " # debug_show(updatedTopic.paginationPatterns));
                 
                 topics.put(id, updatedTopic);
                 #ok(updatedTopic)
@@ -416,9 +399,9 @@ actor Admin {
                     name = topic.name;
                     description = topic.description;
                     urlPatterns = topic.urlPatterns;
-                    status = if (active) "active" else "inactive";
-                    extractionRules = topic.extractionRules;
                     aiConfig = topic.aiConfig;
+                    status = if (active) { "active" } else { "inactive" };
+                    extractionRules = topic.extractionRules;
                     scrapingInterval = topic.scrapingInterval;
                     lastScraped = topic.lastScraped;
                     activeHours = topic.activeHours;
@@ -428,10 +411,16 @@ actor Admin {
                     urlGenerationStrategy = topic.urlGenerationStrategy;
                     articleUrlPatterns = topic.articleUrlPatterns;
                     contentIdentifiers = topic.contentIdentifiers;
+                    paginationPatterns = topic.paginationPatterns;
                 };
+                
+                // Debug print to check if contentIdentifiers is being preserved
+                Debug.print("setTopicActive - contentIdentifiers: " # debug_show(updatedTopic.contentIdentifiers));
+                Debug.print("setTopicActive - paginationPatterns: " # debug_show(updatedTopic.paginationPatterns));
+                
                 topics.put(id, updatedTopic);
                 ignore storage.setTopicActive(id, active);
-                #ok(())
+                #ok()
             };
         }
     };

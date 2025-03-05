@@ -42,6 +42,7 @@ export const idlFactory = ({ IDL }) => {
     'urlPatterns' : IDL.Vec(IDL.Text),
     'extractionRules' : ExtractionRules,
     'aiConfig' : AIConfig,
+    'paginationPatterns' : IDL.Opt(IDL.Vec(IDL.Text)),
     'articleUrlPatterns' : IDL.Opt(IDL.Vec(IDL.Text)),
     'siteTypeClassification' : IDL.Text,
   });
@@ -59,6 +60,7 @@ export const idlFactory = ({ IDL }) => {
     'urlPatterns' : IDL.Vec(IDL.Text),
     'extractionRules' : ExtractionRules,
     'aiConfig' : AIConfig,
+    'paginationPatterns' : IDL.Opt(IDL.Vec(IDL.Text)),
     'articleUrlPatterns' : IDL.Opt(IDL.Vec(IDL.Text)),
     'lastScraped' : IDL.Int,
     'siteTypeClassification' : IDL.Text,
@@ -135,6 +137,7 @@ export const idlFactory = ({ IDL }) => {
             'urlGenerationStrategy' : IDL.Opt(IDL.Text),
             'urlPatterns' : IDL.Opt(IDL.Vec(IDL.Text)),
             'extractionRules' : IDL.Opt(ExtractionRules),
+            'paginationPatterns' : IDL.Opt(IDL.Vec(IDL.Text)),
             'articleUrlPatterns' : IDL.Opt(IDL.Vec(IDL.Text)),
             'siteTypeClassification' : IDL.Opt(IDL.Text),
           }),

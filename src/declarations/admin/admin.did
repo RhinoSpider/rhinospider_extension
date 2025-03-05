@@ -28,6 +28,7 @@ type ScrapingTopic =
    lastScraped: int;
    maxRetries: nat;
    name: text;
+   paginationPatterns: opt vec text;
    scrapingInterval: nat;
    siteTypeClassification: text;
    status: text;
@@ -107,6 +108,7 @@ type CreateTopicRequest =
    id: text;
    maxRetries: nat;
    name: text;
+   paginationPatterns: opt vec text;
    scrapingInterval: nat;
    siteTypeClassification: text;
    status: text;
@@ -165,6 +167,7 @@ service : {
      description: opt text;
      extractionRules: opt ExtractionRules;
      name: opt text;
+     paginationPatterns: opt vec text;
      siteTypeClassification: opt text;
      status: opt text;
      urlGenerationStrategy: opt text;

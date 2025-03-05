@@ -64,44 +64,79 @@ function replaceBigInt(key: string, value: any) {
   return value;
 }
 
+// Helper function to fix empty contentIdentifiers
+const fixEmptyContentIdentifiers = (topic) => {
+  // Check if contentIdentifiers exists but has empty values
+  if (topic.contentIdentifiers && 
+      Array.isArray(topic.contentIdentifiers.selectors) && 
+      Array.isArray(topic.contentIdentifiers.keywords) &&
+      topic.contentIdentifiers.selectors.length === 1 && 
+      topic.contentIdentifiers.keywords.length === 1 &&
+      topic.contentIdentifiers.selectors[0] === "" &&
+      topic.contentIdentifiers.keywords[0] === "") {
+    
+    console.log(`Fixing empty contentIdentifiers for topic ${topic.id}`);
+    
+    // Replace with default values
+    topic.contentIdentifiers = {
+      selectors: ["article", "main", ".content", "#content"],
+      keywords: ["article", "news", "blog", "post"]
+    };
+  }
+  
+  return topic;
+};
+
 // Topic Management
 export async function getTopics(): Promise<ScrapingTopic[]> {
   const adminActor = await getAdminActor();
-  
   try {
-    console.log('Calling getTopics...');
     const result = await adminActor.getTopics();
-    console.log('Raw getTopics result:', JSON.stringify(result, replaceBigInt, 2));
-    
     if ('err' in result) {
-      console.error('Error from backend:', result.err);
       throw new Error(result.err);
     }
     
     // Convert the result to a plain object with BigInt values converted to numbers
     const topics = JSON.parse(JSON.stringify(result.ok, replaceBigInt));
     
-    // Process each topic to ensure proper structure
+    // Log the first topic to see its structure
+    if (topics.length > 0) {
+      console.log('First topic from backend:', topics[0]);
+      console.log('First topic contentIdentifiers:', topics[0].contentIdentifiers);
+      console.log('First topic paginationPatterns:', topics[0].paginationPatterns);
+    }
+    
+    // Process the topics to handle optional fields correctly
     const processedTopics = topics.map((topic: any) => {
-      console.log('Processing topic:', topic.id);
-      console.log('Topic contentIdentifiers:', JSON.stringify(topic.contentIdentifiers, null, 2));
-      
-      // Ensure contentIdentifiers is properly extracted if it exists
+      // Handle contentIdentifiers field
       let contentIdentifiers = undefined;
       if (topic.contentIdentifiers && topic.contentIdentifiers.length > 0) {
-        // Extract from array wrapper (since it's an opt type in Candid)
         contentIdentifiers = topic.contentIdentifiers[0];
-        console.log('Extracted contentIdentifiers:', JSON.stringify(contentIdentifiers, null, 2));
       }
       
-      return {
+      // Handle articleUrlPatterns field
+      let articleUrlPatterns = undefined;
+      if (topic.articleUrlPatterns && topic.articleUrlPatterns.length > 0) {
+        articleUrlPatterns = topic.articleUrlPatterns[0];
+      }
+      
+      // Handle paginationPatterns field
+      let paginationPatterns = undefined;
+      if (topic.paginationPatterns && topic.paginationPatterns.length > 0) {
+        paginationPatterns = topic.paginationPatterns[0];
+      }
+      
+      // Apply the fix for empty contentIdentifiers
+      const processedTopic = fixEmptyContentIdentifiers({
         ...topic,
-        // Ensure contentIdentifiers is properly structured
-        contentIdentifiers: contentIdentifiers
-      };
+        contentIdentifiers,
+        articleUrlPatterns,
+        paginationPatterns
+      });
+      
+      return processedTopic;
     });
     
-    console.log('Processed topics:', JSON.stringify(processedTopics, null, 2));
     return processedTopics;
   } catch (error) {
     console.error('Error in getTopics call:', error);
@@ -154,13 +189,23 @@ export async function createTopic(topic: CreateTopicRequest): Promise<ScrapingTo
   }
 }
 
-export async function updateTopic(id: string, topic: Partial<ScrapingTopic>): Promise<ScrapingTopic> {
+export async function updateTopic(id: string, topic: ScrapingTopic): Promise<ScrapingTopic> {
+  console.log('Topic data received:', JSON.stringify(topic, replaceBigInt, 2));
+  console.log('siteTypeClassification:', topic.siteTypeClassification);
+  console.log('contentIdentifiers:', topic.contentIdentifiers);
+  console.log('paginationPatterns:', topic.paginationPatterns);
+  
+  // Apply the fix for empty contentIdentifiers
+  topic = fixEmptyContentIdentifiers(topic);
+  
+  // Ensure paginationPatterns is always an array
+  if (!topic.paginationPatterns) {
+    topic.paginationPatterns = [];
+  }
+  
   const adminActor = await getAdminActor();
   
-  console.log('Original topic:', JSON.stringify(topic, replaceBigInt, 2));
-  console.log('Original contentIdentifiers:', topic.contentIdentifiers);
-  
-  // Create the update request with proper opt text formatting
+  // Create the update request object
   const updateRequest = {
     name: topic.name ? [topic.name] : [],
     description: topic.description ? [topic.description] : [],
@@ -186,10 +231,14 @@ export async function updateTopic(id: string, topic: Partial<ScrapingTopic>): Pr
     contentIdentifiers: topic.contentIdentifiers ? [{
       selectors: topic.contentIdentifiers.selectors.filter(s => typeof s === 'string' ? s.trim() !== '' : false),
       keywords: topic.contentIdentifiers.keywords.filter(k => typeof k === 'string' ? k.trim() !== '' : false)
-    }] : []
+    }] : [],
+    // Add paginationPatterns field - ALWAYS include this field
+    paginationPatterns: topic.paginationPatterns && topic.paginationPatterns.length > 0
+      ? [topic.paginationPatterns.filter(p => typeof p === 'string' ? p.trim() !== '' : false)]
+      : []
   };
 
-  console.log('Update request with contentIdentifiers:', JSON.stringify(updateRequest, replaceBigInt, 2));
+  console.log('Update request:', JSON.stringify(updateRequest, replaceBigInt, 2));
   
   try {
     console.log('Updating topic with ID:', id);
@@ -208,6 +257,7 @@ export async function updateTopic(id: string, topic: Partial<ScrapingTopic>): Pr
     const updatedTopic = JSON.parse(JSON.stringify(result.ok, replaceBigInt));
     console.log('Updated topic from backend (parsed):', JSON.stringify(updatedTopic, null, 2));
     console.log('Updated contentIdentifiers:', updatedTopic.contentIdentifiers);
+    console.log('Updated paginationPatterns:', updatedTopic.paginationPatterns);
     
     return updatedTopic;
   } catch (error) {

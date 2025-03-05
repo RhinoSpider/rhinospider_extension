@@ -122,21 +122,37 @@ export const ScrapingConfig: React.FC = () => {
         // Update existing topic
         console.log('Updating topic with ID:', topic.id);
         console.log('Topic data:', JSON.stringify(topic, null, 2));
-        
+
+        // Format contentIdentifiers correctly
+        const contentIdentifiersFormatted = topic.contentIdentifiers ? 
+          [{
+            selectors: Array.isArray(topic.contentIdentifiers.selectors) 
+              ? topic.contentIdentifiers.selectors.filter((s: any) => typeof s === 'string' && s.trim() !== '') 
+              : [],
+            keywords: Array.isArray(topic.contentIdentifiers.keywords) 
+              ? topic.contentIdentifiers.keywords.filter((k: any) => typeof k === 'string' && k.trim() !== '') 
+              : []
+          }] : [];
+
+        // Prepare update request
         const updateRequest = {
           name: [topic.name],
           description: [topic.description],
           urlPatterns: [topic.urlPatterns],
           status: [topic.status],
-          extractionRules: [{
-            fields: topic.extractionRules.fields.map(field => ({
-              name: field.name,
-              fieldType: field.fieldType,
-              required: field.required,
-              aiPrompt: field.aiPrompt ? [field.aiPrompt] : []
-            })),
-            customPrompt: topic.extractionRules.customPrompt ? [topic.extractionRules.customPrompt] : []
-          }],
+          extractionRules: [
+            {
+              fields: topic.extractionRules.fields.map((field: any) => ({
+                name: field.name,
+                fieldType: field.fieldType,
+                required: field.required,
+                aiPrompt: Array.isArray(field.aiPrompt) ? field.aiPrompt : [field.aiPrompt]
+              })),
+              customPrompt: Array.isArray(topic.extractionRules.customPrompt) 
+                ? topic.extractionRules.customPrompt 
+                : [topic.extractionRules.customPrompt]
+            }
+          ],
           siteTypeClassification: [topic.siteTypeClassification || 'blog'],
           urlGenerationStrategy: [topic.urlGenerationStrategy || 'pattern_based'],
           articleUrlPatterns: topic.articleUrlPatterns 
@@ -144,14 +160,14 @@ export const ScrapingConfig: React.FC = () => {
                 ? [...topic.articleUrlPatterns[0], ...topic.articleUrlPatterns.slice(1).filter(p => typeof p === 'string')] 
                 : topic.articleUrlPatterns.filter(p => typeof p === 'string' ? p.trim() !== '' : false)]
             : [],
-          contentIdentifiers: topic.contentIdentifiers ? [{
-            selectors: topic.contentIdentifiers.selectors.filter(s => typeof s === 'string' ? s.trim() !== '' : false),
-            keywords: topic.contentIdentifiers.keywords.filter(k => typeof k === 'string' ? k.trim() !== '' : false)
-          }] : []
+          contentIdentifiers: contentIdentifiersFormatted.length > 0 ? contentIdentifiersFormatted : [{ selectors: [], keywords: [] }],
+          paginationPatterns: topic.paginationPatterns && topic.paginationPatterns.length > 0
+              ? [topic.paginationPatterns.filter(p => typeof p === 'string' && p.trim() !== '').map(p => p.trim())]
+              : []
         };
-        
+
         console.log('Update request with contentIdentifiers:', JSON.stringify(updateRequest, null, 2));
-        
+
         try {
           const result = await actor.updateTopic(topic.id, updateRequest);
           console.log('Update result:', result);
@@ -167,7 +183,18 @@ export const ScrapingConfig: React.FC = () => {
         // Create new topic
         console.log('Creating new topic with ID:', topic.id);
         console.log('Topic data:', JSON.stringify(topic, null, 2));
-        
+
+        // Format contentIdentifiers correctly for creation
+        const contentIdentifiersFormatted = topic.contentIdentifiers ? 
+          {
+            selectors: Array.isArray(topic.contentIdentifiers.selectors) 
+              ? topic.contentIdentifiers.selectors.filter((s: any) => typeof s === 'string' && s.trim() !== '') 
+              : [],
+            keywords: Array.isArray(topic.contentIdentifiers.keywords) 
+              ? topic.contentIdentifiers.keywords.filter((k: any) => typeof k === 'string' && k.trim() !== '') 
+              : []
+          } : null;
+
         const createRequest = {
           id: topic.id,
           name: topic.name,
@@ -175,42 +202,50 @@ export const ScrapingConfig: React.FC = () => {
           urlPatterns: topic.urlPatterns,
           status: topic.status,
           extractionRules: {
-            fields: topic.extractionRules.fields.map(field => ({
+            fields: topic.extractionRules.fields.map((field: any) => ({
               name: field.name,
               fieldType: field.fieldType,
               required: field.required,
-              aiPrompt: field.aiPrompt ? [field.aiPrompt] : []
+              aiPrompt: Array.isArray(field.aiPrompt) ? field.aiPrompt : [field.aiPrompt]
             })),
-            customPrompt: topic.extractionRules.customPrompt ? [topic.extractionRules.customPrompt] : []
+            customPrompt: Array.isArray(topic.extractionRules.customPrompt) 
+              ? topic.extractionRules.customPrompt 
+              : [topic.extractionRules.customPrompt]
           },
           aiConfig: {
-            apiKey: "",
-            model: "gpt-3.5-turbo",
+            apiKey: topic.aiConfig?.apiKey || "",
+            model: topic.aiConfig?.model || "gpt-3.5-turbo",
             costLimits: {
-              maxDailyCost: 1.0,
-              maxMonthlyCost: 10.0,
-              maxConcurrent: 5
+              maxDailyCost: topic.aiConfig?.costLimits?.maxDailyCost || 1.0,
+              maxMonthlyCost: topic.aiConfig?.costLimits?.maxMonthlyCost || 10.0,
+              maxConcurrent: topic.aiConfig?.costLimits?.maxConcurrent || 5
             }
           },
-          scrapingInterval: 3600,
+          scrapingInterval: topic.scrapingInterval || 3600,
           activeHours: {
-            start: 0,
-            end: 24
+            start: topic.activeHours?.start || 0,
+            end: topic.activeHours?.end || 24
           },
-          maxRetries: 3,
-          siteTypeClassification: topic.siteTypeClassification || 'blog',
-          urlGenerationStrategy: topic.urlGenerationStrategy || 'pattern_based',
-          articleUrlPatterns: topic.articleUrlPatterns && topic.articleUrlPatterns.length > 0 
-            ? [topic.articleUrlPatterns.filter(p => typeof p === 'string' ? p.trim() !== '' : false)] 
-            : [],
-          contentIdentifiers: topic.contentIdentifiers ? {
-            selectors: topic.contentIdentifiers.selectors.filter(s => typeof s === 'string' ? s.trim() !== '' : false),
-            keywords: topic.contentIdentifiers.keywords.filter(k => typeof k === 'string' ? k.trim() !== '' : false)
-          } : undefined
+          maxRetries: topic.maxRetries || 3,
+          siteTypeClassification: topic.siteTypeClassification || null,
+          urlGenerationStrategy: topic.urlGenerationStrategy || null,
+          articleUrlPatterns: topic.articleUrlPatterns && 
+            topic.articleUrlPatterns.some((p: any) => typeof p === 'string' && p.trim() !== '')
+              ? topic.articleUrlPatterns
+                  .filter((p: any) => typeof p === 'string' && p.trim() !== '')
+                  .map((p: any) => p.trim())
+              : null,
+          contentIdentifiers: contentIdentifiersFormatted,
+          paginationPatterns: topic.paginationPatterns && 
+            topic.paginationPatterns.some((p: any) => typeof p === 'string' && p.trim() !== '')
+              ? topic.paginationPatterns
+                  .filter((p: any) => typeof p === 'string' && p.trim() !== '')
+                  .map((p: any) => p.trim())
+              : null
         };
-        
+
         console.log('Create request:', JSON.stringify(createRequest, null, 2));
-        
+
         try {
           const result = await actor.createTopic(createRequest);
           console.log('Create result:', result);
