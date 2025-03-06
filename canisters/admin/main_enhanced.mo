@@ -232,7 +232,7 @@ actor Admin {
         sampleArticleUrls: ?[Text];
         urlGenerationStrategy: ?Text;
         excludePatterns: ?[Text];
-    }) : async Result.Result<Text, Text> {
+    }) : async Result.Result<ScrapingTopic, Text> {
         if (not _isAuthorized(caller)) {
             return #err("Unauthorized");
         };
@@ -262,7 +262,7 @@ actor Admin {
                     excludePatterns = Option.get(request.excludePatterns, topic.excludePatterns);
                 };
                 topics.put(id, updatedTopic);
-                #ok("Topic updated successfully")
+                #ok(updatedTopic)
             };
         }
     };

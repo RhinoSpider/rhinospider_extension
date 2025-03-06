@@ -37,6 +37,18 @@ export const ScrapingConfig: React.FC = () => {
         if ('err' in result) {
           throw new Error(result.err);
         }
+        
+        // Load saved sampleArticleUrls from local storage
+        const savedSampleArticleUrls = {};
+        try {
+          const savedData = localStorage.getItem('rhinoSpiderSampleArticleUrls');
+          if (savedData) {
+            Object.assign(savedSampleArticleUrls, JSON.parse(savedData));
+            console.log('Loaded saved sampleArticleUrls from local storage:', savedSampleArticleUrls);
+          }
+        } catch (e) {
+          console.error('Error loading saved sampleArticleUrls from local storage:', e);
+        }
         const processedTopics = result.ok.map(topic => {
           console.log(`Processing topic ${topic.id}, contentIdentifiers:`, topic.contentIdentifiers);
           
@@ -62,6 +74,17 @@ export const ScrapingConfig: React.FC = () => {
             console.log('Extracted paginationPatterns:', JSON.stringify(paginationPatterns, null, 2));
           }
           
+          // Extract sampleArticleUrls from array wrapper if it exists
+          // or from local storage if available
+          let sampleArticleUrls = undefined;
+          if (topic.sampleArticleUrls && topic.sampleArticleUrls.length > 0) {
+            sampleArticleUrls = topic.sampleArticleUrls[0];
+            console.log('Extracted sampleArticleUrls from backend:', JSON.stringify(sampleArticleUrls, null, 2));
+          } else if (savedSampleArticleUrls[topic.id]) {
+            sampleArticleUrls = savedSampleArticleUrls[topic.id];
+            console.log('Using sampleArticleUrls from local storage for topic', topic.id, ':', sampleArticleUrls);
+          }
+          
           return {
             ...topic,
             extractionRules: {
@@ -75,6 +98,8 @@ export const ScrapingConfig: React.FC = () => {
             },
             contentIdentifiers: contentIdentifiers || { selectors: [], keywords: [] },
             paginationPatterns: paginationPatterns || [],
+            // Ensure sampleArticleUrls always exists
+            sampleArticleUrls: sampleArticleUrls || [],
             // Ensure excludePatterns always exists
             excludePatterns: topic.excludePatterns || ['']
           };
@@ -179,6 +204,10 @@ export const ScrapingConfig: React.FC = () => {
               : [],
           excludePatterns: topic.excludePatterns && topic.excludePatterns.length > 0
               ? [topic.excludePatterns.filter(p => typeof p === 'string' && p.trim() !== '').map(p => p.trim())]
+              : [],
+          // For updateTopic, sampleArticleUrls should be wrapped in a single array for opt vec text
+          sampleArticleUrls: topic.sampleArticleUrls && topic.sampleArticleUrls.length > 0
+              ? [topic.sampleArticleUrls.filter(url => typeof url === 'string' && url.trim() !== '')]
               : []
         };
 
@@ -187,14 +216,37 @@ export const ScrapingConfig: React.FC = () => {
         console.log('excludePatterns in topic before update:', JSON.stringify(topic.excludePatterns, null, 2));
 
         try {
+          console.log('Update request with sampleArticleUrls:', JSON.stringify(updateRequest.sampleArticleUrls, null, 2));
           const result = await actor.updateTopic(topic.id, updateRequest);
           console.log('Update result:', result);
+          console.log('Update result raw:', JSON.stringify(result));
+          console.log('sampleArticleUrls in result:', result.ok?.sampleArticleUrls);
           console.log('excludePatterns in result:', result.ok?.excludePatterns);
           if ('err' in result) {
             throw new Error(result.err);
           }
+          // Ensure sampleArticleUrls is preserved in the response
+          const updatedTopic = {
+            ...result.ok,
+            // If sampleArticleUrls is missing in the response, use the value from the original topic
+            sampleArticleUrls: result.ok.sampleArticleUrls || topic.sampleArticleUrls
+          };
+          
+          console.log('Updated topic with preserved sampleArticleUrls:', updatedTopic);
+          
+          // Save sampleArticleUrls to local storage
+          try {
+            const savedData = localStorage.getItem('rhinoSpiderSampleArticleUrls') || '{}';
+            const savedUrls = JSON.parse(savedData);
+            savedUrls[topic.id] = updatedTopic.sampleArticleUrls;
+            localStorage.setItem('rhinoSpiderSampleArticleUrls', JSON.stringify(savedUrls));
+            console.log('Saved sampleArticleUrls to local storage:', savedUrls);
+          } catch (e) {
+            console.error('Error saving sampleArticleUrls to local storage:', e);
+          }
+          
           // Update the local state with the updated topic
-          setTopics(prev => prev.map(t => t.id === topic.id ? result.ok : t));
+          setTopics(prev => prev.map(t => t.id === topic.id ? updatedTopic : t));
         } catch (error) {
           console.error('Error in updateTopic call:', error);
           throw error;
@@ -267,7 +319,14 @@ export const ScrapingConfig: React.FC = () => {
               ? topic.excludePatterns
                   .filter((p: any) => typeof p === 'string' && p.trim() !== '')
                   .map((p: any) => p.trim())
-              : null
+              : null,
+          // For createTopic, sampleArticleUrls should be DOUBLE-WRAPPED for opt vec text
+          sampleArticleUrls: topic.sampleArticleUrls && 
+            topic.sampleArticleUrls.some((url: any) => typeof url === 'string' && url.trim() !== '')
+              ? [[topic.sampleArticleUrls
+                  .filter((url: any) => typeof url === 'string' && url.trim() !== '')
+                  .map((url: any) => url.trim())]]
+              : []
         };
 
         console.log('Create request:', JSON.stringify(createRequest, null, 2));
