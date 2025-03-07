@@ -577,15 +577,22 @@ app.post('/api/topics', authenticateApiKey, async (req, res) => {
           }
           
           // Add sample contentIdentifiers
-          if (!topic.contentIdentifiers || !topic.contentIdentifiers.selectors || !topic.contentIdentifiers.keywords) {
-            topic.contentIdentifiers = {
-              selectors: isTechCrunch
-                ? ['article', 'article-content', 'article__content']
-                : ['productTitle', '.product-title', '.prod-ProductTitle'],
-              keywords: isTechCrunch
-                ? ['tech', 'startup', 'funding', 'acquisition', 'AI']
-                : ['title', 'ai', 'tech']
-            };
+          if (!topic.contentIdentifiers) {
+            topic.contentIdentifiers = {};
+          }
+          
+          // Ensure selectors array exists and has values
+          if (!topic.contentIdentifiers.selectors || topic.contentIdentifiers.selectors.length === 0) {
+            topic.contentIdentifiers.selectors = isTechCrunch
+              ? ['article', 'article-content', 'article__content']
+              : ['productTitle', '.product-title', '.prod-ProductTitle'];
+          }
+          
+          // Ensure keywords array exists and has values
+          if (!topic.contentIdentifiers.keywords || topic.contentIdentifiers.keywords.length === 0) {
+            topic.contentIdentifiers.keywords = isTechCrunch
+              ? ['tech', 'startup', 'funding', 'acquisition', 'AI']
+              : ['title', 'ai', 'tech'];
           }
           
           // Add sample siteTypeClassification
