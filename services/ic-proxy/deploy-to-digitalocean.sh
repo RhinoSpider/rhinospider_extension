@@ -20,7 +20,7 @@ services:
     deploy_on_push: true
   build_command: npm install
   run_command: npm start
-  http_port: 3000
+  http_port: 3002
   instance_count: 1
   instance_size_slug: basic-xs
   routes:
@@ -33,7 +33,7 @@ services:
     value: "tgyl5-yyaaa-aaaaj-az4wq-cai"
     scope: RUN_TIME
   - key: PORT
-    value: "3000"
+    value: "3002"
     scope: RUN_TIME
 EOL
 

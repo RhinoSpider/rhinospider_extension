@@ -1,0 +1,31 @@
+name: rhinospider-ic-proxy
+region: nyc1
+services:
+- name: ic-proxy
+  github:
+    repo: YOUR_GITHUB_REPO  # Replace with your GitHub repo
+    branch: main
+    deploy_on_push: true
+  build_command: npm install
+  run_command: npm start
+  http_port: 3002
+  instance_count: 1
+  instance_size_slug: basic-xs
+  routes:
+  - path: /
+  envs:
+  - key: IC_HOST
+    value: "https://icp0.io"
+    scope: RUN_TIME
+  - key: CONSUMER_CANISTER_ID
+    value: "tgyl5-yyaaa-aaaaj-az4wq-cai"
+    scope: RUN_TIME
+  - key: PORT
+    value: "3002"
+    scope: RUN_TIME
+  - key: ADMIN_CANISTER_ID
+    value: "444wf-gyaaa-aaaaj-az5sq-cai"
+    scope: RUN_TIME
+  - key: API_PASSWORD
+    value: "ffGpA2saNS47qr"
+    scope: RUN_TIME

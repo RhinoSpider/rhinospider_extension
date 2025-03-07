@@ -28,7 +28,7 @@ actor ConsumerBackend {
 
     // Constants
     private let STORAGE_CANISTER_ID = "smxjh-2iaaa-aaaaj-az4rq-cai";
-    private let ADMIN_CANISTER_ID = "s6r66-wyaaa-aaaaj-az4sq-cai";  // Ensure this matches admin canister ID
+    private let ADMIN_CANISTER_ID = "444wf-gyaaa-aaaaj-az5sq-cai";  // Updated to match extension's .env file
     private let CYCLES_PER_CALL = 100_000_000_000; // 100B cycles per call
 
     // Canister references
@@ -78,12 +78,32 @@ actor ConsumerBackend {
             ExperimentalCycles.add(CYCLES_PER_CALL);
             
             Debug.print("Consumer getTopics: Calling admin canister at " # ADMIN_CANISTER_ID);
-            // Keep using getTopics_with_caller since it's an update call that verifies consumer identity
+            
+            // Try calling getTopics directly first
+            Debug.print("Consumer getTopics: Trying direct getTopics call");
+            let directResult = await admin.getTopics();
+            
+            switch(directResult) {
+                case (#ok(topics)) {
+                    Debug.print("Consumer getTopics: Direct call successful, got " # Nat.toText(topics.size()) # " topics");
+                    return #ok(topics);
+                };
+                case (#err(msg)) {
+                    Debug.print("Consumer getTopics: Direct call failed with error: " # msg);
+                    // Fall back to getTopics_with_caller
+                };
+            };
+            
+            // Fall back to getTopics_with_caller
+            Debug.print("Consumer getTopics: Falling back to getTopics_with_caller");
             let result = await admin.getTopics_with_caller(caller);
             
             switch(result) {
                 case (#ok(topics)) {
-                    Debug.print("Consumer getTopics: Successfully got " # Nat.toText(topics.size()) # " topics");
+                    Debug.print("Consumer getTopics: Successfully got " # Nat.toText(topics.size()) # " topics via getTopics_with_caller");
+                    for (topic in topics.vals()) {
+                        Debug.print("Consumer getTopics: Topic ID: " # topic.id # ", Name: " # topic.name);
+                    };
                     #ok(topics)
                 };
                 case (#err(msg)) {

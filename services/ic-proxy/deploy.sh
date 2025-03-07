@@ -20,9 +20,12 @@ echo -e "${GREEN}Deploying IC Proxy to Digital Ocean...${NC}"
 echo -e "${GREEN}Creating deployment package...${NC}"
 tar -czf ic-proxy.tar.gz \
     package.json \
+    package-lock.json \
     server.js \
+    bigint-patch.js \
     Dockerfile \
     docker-compose.yml \
+    declarations \
     README.md
 
 # Step 2: Copy the package to the server

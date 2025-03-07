@@ -1,0 +1,14 @@
+version: '3'
+
+services:
+  ic-proxy:
+    build: .
+    ports:
+      - "3001:3001"
+    environment:
+      - IC_HOST=https://icp0.io
+      - CONSUMER_CANISTER_ID=tgyl5-yyaaa-aaaaj-az4wq-cai
+      - ADMIN_CANISTER_ID=444wf-gyaaa-aaaaj-az5sq-cai
+      - PORT=3001
+      - API_PASSWORD=ffGpA2saNS47qr
+    restart: always
