@@ -1687,36 +1687,72 @@ function formatDataForBackend(data, isCreate = false) {
   // Handle array fields according to RhinoSpider backend requirements
   if (data.articleUrlPatterns) {
     const patterns = data.articleUrlPatterns.filter(p => typeof p === 'string' && p.trim() !== '');
-    // For createTopic: Double-wrap arrays
-    // For updateTopic: Single-wrap arrays
-    result.articleUrlPatterns = isCreate ? [[patterns]] : [patterns];
+    
+    // For createTopic: Double-wrap arrays [[data]]
+    // For updateTopic: Single-wrap arrays [data]
+    if (isCreate) {
+      result.articleUrlPatterns = patterns.length > 0 ? [[patterns]] : [];
+    } else {
+      result.articleUrlPatterns = patterns.length > 0 ? [patterns] : [];
+    }
   } else {
     result.articleUrlPatterns = [];
   }
   
   if (data.excludePatterns) {
     const patterns = data.excludePatterns.filter(p => typeof p === 'string' && p.trim() !== '');
-    // Based on memory, excludePatterns should be single-wrapped for createTopic
-    result.excludePatterns = isCreate ? [patterns] : [patterns];
+    
+    // For createTopic: Single-wrap arrays [data]
+    // For updateTopic: Single-wrap arrays [data]
+    result.excludePatterns = patterns.length > 0 ? [patterns] : [];
   } else {
     result.excludePatterns = [];
   }
   
   if (data.paginationPatterns) {
     const patterns = data.paginationPatterns.filter(p => typeof p === 'string' && p.trim() !== '');
-    // For createTopic: Double-wrap arrays
-    // For updateTopic: Single-wrap arrays
-    result.paginationPatterns = isCreate ? [[patterns]] : [patterns];
+    
+    // For createTopic: Double-wrap arrays [[data]]
+    // For updateTopic: Single-wrap arrays [data]
+    if (isCreate) {
+      result.paginationPatterns = patterns.length > 0 ? [[patterns]] : [];
+    } else {
+      result.paginationPatterns = patterns.length > 0 ? [patterns] : [];
+    }
   } else {
     result.paginationPatterns = [];
   }
   
-  // Handle record fields - contentIdentifiers should NOT be wrapped in an array
+  // Handle record fields - contentIdentifiers should NOT be wrapped in an array for createTopic
+  // but should be single-wrapped for updateTopic
   if (data.contentIdentifiers) {
-    // Based on memory, contentIdentifiers should NOT be wrapped for either create or update
-    result.contentIdentifiers = data.contentIdentifiers;
+    // Format contentIdentifiers according to memories
+    if (isCreate) {
+      // For createTopic: contentIdentifiers should NOT be wrapped in an array
+      result.contentIdentifiers = data.contentIdentifiers;
+    } else {
+      // For updateTopic: contentIdentifiers should be single-wrapped [data]
+      result.contentIdentifiers = [data.contentIdentifiers];
+    }
   } else {
-    result.contentIdentifiers = { selectors: [], keywords: [] };
+    // Default empty contentIdentifiers
+    if (isCreate) {
+      result.contentIdentifiers = { selectors: [], keywords: [] };
+    } else {
+      result.contentIdentifiers = [{ selectors: [], keywords: [] }];
+    }
+  }
+  
+  // Handle optional text fields for updateTopic
+  if (!isCreate) {
+    // For updateTopic: All optional fields should be single-wrapped
+    ['name', 'description', 'status', 'urlGenerationStrategy', 'siteTypeClassification'].forEach(field => {
+      if (data[field]) {
+        result[field] = [data[field]];
+      } else {
+        result[field] = [];
+      }
+    });
   }
   
   return result;
@@ -1910,45 +1946,27 @@ app.post('/api/update-topic', authenticateApiKey, async (req, res) => {
       // Create admin actor using the standard pattern
       const adminActor = createActor(adminCanisterId, adminIdlFactory, 'admin');
       
-      // Format topic data according to RhinoSpider backend requirements for updateTopic
-      // Based on the Candid interface for updateTopic from memory
-      const formattedTopic = {
-        // Single-wrapped optional fields for updateTopic
-        status: topic.status ? [topic.status] : [],
-        name: topic.name ? [topic.name] : [],
-        description: topic.description ? [topic.description] : [],
-        urlGenerationStrategy: topic.urlGenerationStrategy ? [topic.urlGenerationStrategy] : [],
-        
-        // Single-wrapped arrays for updateTopic
-        urlPatterns: topic.urlPatterns && topic.urlPatterns.length > 0 
-          ? [topic.urlPatterns.filter(p => typeof p === 'string' && p.trim() !== '')] 
-          : [],
-        
-        // IMPORTANT: Do NOT wrap the array in another array for articleUrlPatterns
-        articleUrlPatterns: topic.articleUrlPatterns && topic.articleUrlPatterns.length > 0 
-          ? topic.articleUrlPatterns.filter(p => typeof p === 'string' && p.trim() !== '') 
-          : [],
-          
-        paginationPatterns: topic.paginationPatterns && topic.paginationPatterns.length > 0 
-          ? [topic.paginationPatterns.filter(p => typeof p === 'string' && p.trim() !== '')] 
-          : [],
-          
-        excludePatterns: topic.excludePatterns && topic.excludePatterns.length > 0 
-          ? [topic.excludePatterns.filter(p => typeof p === 'string' && p.trim() !== '')] 
-          : [],
-        
-        // Format contentIdentifiers - should NOT be wrapped in an array according to memory
-        contentIdentifiers: topic.contentIdentifiers 
-          ? topic.contentIdentifiers 
-          : { selectors: [], keywords: [] },
-          
-        // Format extractionRules
-        extractionRules: topic.extractionRules ? [topic.extractionRules] : [],
-        
-        siteTypeClassification: topic.siteTypeClassification 
-          ? [topic.siteTypeClassification] 
-          : []
+      // Prepare base topic data with all required fields
+      const baseTopic = {
+        name: topic.name || '',
+        description: topic.description || '',
+        urlGenerationStrategy: topic.urlGenerationStrategy || "manual",
+        urlPatterns: topic.urlPatterns || [],
+        status: topic.status || "active",
+        articleUrlPatterns: topic.articleUrlPatterns || [],
+        paginationPatterns: topic.paginationPatterns || [],
+        excludePatterns: topic.excludePatterns || [],
+        contentIdentifiers: topic.contentIdentifiers || { selectors: [], keywords: [] },
+        extractionRules: topic.extractionRules || {
+          fields: [],
+          customPrompt: null
+        },
+        siteTypeClassification: topic.siteTypeClassification || null
       };
+      
+      // Apply formatting for RhinoSpider backend using our updated function
+      // false for update operation (not create)
+      const formattedTopic = formatDataForBackend(baseTopic, false);
       
       console.log(`[/api/update-topic] Formatted topic data:`, JSON.stringify(formattedTopic, null, 2));
       

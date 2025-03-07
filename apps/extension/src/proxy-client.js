@@ -322,7 +322,7 @@ class ProxyClient {
    */
   async isAvailable() {
     try {
-      const response = await fetch(`${this.proxyUrl}/health`, {
+      const response = await fetch(`${this.proxyUrl}/api/health`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json'

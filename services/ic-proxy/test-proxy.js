@@ -9,8 +9,8 @@ const API_PASSWORD = process.env.API_PASSWORD || 'ffGpA2saNS47qr';
 // Test the health endpoint
 async function testHealth() {
   try {
-    console.log(`Testing health endpoint: ${PROXY_URL}/health`);
-    const response = await fetch(`${PROXY_URL}/health`);
+    console.log(`Testing health endpoint: ${PROXY_URL}/api/health`);
+    const response = await fetch(`${PROXY_URL}/api/health`);
     const data = await response.json();
     console.log('Health check response:', data);
     return data.status === 'ok';
