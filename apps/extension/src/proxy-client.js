@@ -50,7 +50,7 @@ class ProxyClient {
       
       // Set timeout for fetch request
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
       
       try {
         const response = await fetch(fullUrl, {
@@ -123,6 +123,21 @@ class ProxyClient {
         }
       } catch (fetchError) {
         clearTimeout(timeoutId);
+        
+        // Handle AbortError specifically
+        if (fetchError.name === 'AbortError') {
+          console.warn('[ProxyClient] Request timed out after 30 seconds');
+          
+          // Special handling for specific endpoints
+          if (endpoint === '/api/topics') {
+            console.warn('[ProxyClient] Returning empty topics array due to timeout');
+            return { topics: [] };
+          } else if (endpoint === '/api/profile') {
+            console.warn('[ProxyClient] Returning null profile due to timeout');
+            return { ok: null };
+          }
+        }
+        
         throw fetchError;
       }
     } catch (error) {

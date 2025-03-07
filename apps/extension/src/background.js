@@ -85,8 +85,9 @@ function setupActionListeners() {
         chrome.browserAction.onClicked.addListener(handleBrowserActionClick);
     }
     
-    // Set up tab update listener
-    chrome.tabs.onUpdated.addListener(handleTabUpdated);
+    // DISABLED: We should not monitor user's browsing activity
+    // This functionality has been disabled for privacy reasons
+    // chrome.tabs.onUpdated.addListener(handleTabUpdated);
 }
 
 // Initialize basic functionality that doesn't depend on authentication
@@ -675,11 +676,9 @@ function handleBrowserActionClick() {
 
 // Handle tab updates
 function handleTabUpdated(tabId, changeInfo, tab) {
-    // Only process if the URL has changed and we're authenticated
-    if (changeInfo.url && isAuthenticated) {
-        // Check if the URL matches any of our topic patterns
-        processUrlChange(tab.url, tabId);
-    }
+    // DISABLED: We should not monitor user's browsing activity
+    // This functionality has been disabled for privacy reasons
+    // We will not process URL changes from user's browsing activity
 }
 
 // Handle extension installation or update
@@ -1154,7 +1153,8 @@ if (chrome.action) {
     chrome.browserAction.onClicked.addListener(handleBrowserActionClick);
 }
 
-chrome.tabs.onUpdated.addListener(handleTabUpdated);
+// DISABLED: We should not monitor user's browsing activity
+// chrome.tabs.onUpdated.addListener(handleTabUpdated);
 chrome.runtime.onInstalled.addListener(handleInstalled);
 
 // Handle extension install/update
