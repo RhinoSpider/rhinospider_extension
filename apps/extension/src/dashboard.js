@@ -652,10 +652,11 @@ async function getUserProfile(identity) {
             throw new Error('Invalid response format from getProfile');
         }
     } catch (error) {
-        logger.error('[Profile] All profile fetch attempts failed:', error);
+        // Change from error to warn level since we have a fallback
+        logger.warn('[Profile] Profile fetch attempts failed, using fallback:', error.message);
         
         // Return fake profile as fallback using our model class
-        logger.warn('[Profile] Returning fake profile as fallback');
+        logger.info('[Profile] Using fallback profile with current identity');
         return new UserProfileModel({
             principal: identity.getPrincipal(),
             created: BigInt(Date.now() * 1000000),

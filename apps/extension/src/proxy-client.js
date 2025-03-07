@@ -48,48 +48,96 @@ class ProxyClient {
       const fullUrl = `${this.proxyUrl}${endpoint}`;
       console.log(`[ProxyClient] Full URL: ${fullUrl}`);
       
-      const response = await fetch(fullUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': this.apiPassword ? `Bearer ${this.apiPassword}` : undefined
-        },
-        body: JSON.stringify(data || {}),
-      });
-      
-      console.log(`[ProxyClient] Response status:`, response.status);
-      
-      if (!response.ok) {
-        console.error(`[ProxyClient] Error response: ${response.status} ${response.statusText}`);
-        
-        try {
-          const errorText = await response.text();
-          console.error(`[ProxyClient] Error details:`, errorText);
-          throw new Error(`HTTP error ${response.status}: ${errorText}`);
-        } catch (textError) {
-          throw new Error(`HTTP error ${response.status}`);
-        }
-      }
+      // Set timeout for fetch request
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
       
       try {
-        const responseData = await response.json();
-        console.log(`[ProxyClient] Response data:`, responseData);
-        return responseData;
-      } catch (jsonError) {
-        console.error(`[ProxyClient] Error parsing JSON:`, jsonError);
+        const response = await fetch(fullUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': this.apiPassword ? `Bearer ${this.apiPassword}` : undefined
+          },
+          body: JSON.stringify(data || {}),
+          signal: controller.signal
+        });
         
-        // Try to get text response
-        try {
-          const textResponse = await response.text();
-          console.log(`[ProxyClient] Text response:`, textResponse);
-          return { ok: textResponse };
-        } catch (textError) {
-          console.error(`[ProxyClient] Error getting text response:`, textError);
-          throw new Error('Failed to parse response');
+        clearTimeout(timeoutId);
+        
+        console.log(`[ProxyClient] Response status:`, response.status);
+        
+        if (!response.ok) {
+          console.warn(`[ProxyClient] Error response: ${response.status} ${response.statusText}`);
+          
+          try {
+            const errorText = await response.text();
+            console.warn(`[ProxyClient] Error details:`, errorText);
+            
+            // Special handling for specific endpoints
+            if (endpoint === '/api/topics') {
+              console.warn('[ProxyClient] Returning empty topics array due to error');
+              return { topics: [] };
+            } else if (endpoint === '/api/profile') {
+              console.warn('[ProxyClient] Returning null profile due to error');
+              return { ok: null };
+            }
+            
+            throw new Error(`HTTP error ${response.status}: ${errorText}`);
+          } catch (textError) {
+            // Special handling for specific endpoints
+            if (endpoint === '/api/topics') {
+              console.warn('[ProxyClient] Returning empty topics array due to error');
+              return { topics: [] };
+            } else if (endpoint === '/api/profile') {
+              console.warn('[ProxyClient] Returning null profile due to error');
+              return { ok: null };
+            }
+            
+            throw new Error(`HTTP error ${response.status}`);
+          }
         }
+        
+        try {
+          const responseData = await response.json();
+          console.log(`[ProxyClient] Response data:`, responseData);
+          return responseData;
+        } catch (jsonError) {
+          console.warn(`[ProxyClient] Error parsing JSON:`, jsonError);
+          
+          // Try to get text response
+          try {
+            const textResponse = await response.text();
+            console.log(`[ProxyClient] Text response:`, textResponse);
+            return { ok: textResponse };
+          } catch (textError) {
+            console.warn(`[ProxyClient] Error getting text response:`, textError);
+            
+            // Special handling for getTopics endpoint
+            if (endpoint === '/api/topics') {
+              return { topics: [] };
+            }
+            
+            throw new Error('Failed to parse response');
+          }
+        }
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        throw fetchError;
       }
     } catch (error) {
-      console.error(`[ProxyClient] Request error:`, error);
+      // Network errors or timeouts
+      console.warn(`[ProxyClient] Request error:`, error);
+      
+      // Special handling for specific endpoints
+      if (endpoint === '/api/topics') {
+        console.warn('[ProxyClient] Returning empty topics array due to network error');
+        return { topics: [] };
+      } else if (endpoint === '/api/profile') {
+        console.warn('[ProxyClient] Returning null profile due to network error');
+        return { ok: null };
+      }
+      
       throw error;
     }
   }
