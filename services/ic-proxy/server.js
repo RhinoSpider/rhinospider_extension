@@ -11,6 +11,7 @@ const { Actor, HttpAgent } = require('@dfinity/agent');
 const { Principal } = require('@dfinity/principal');
 const { Ed25519KeyIdentity } = require('@dfinity/identity');
 const { idlFactory: consumerIdlFactory } = require('./declarations/consumer/consumer.did.js');
+const { idlFactory: adminIdlFactory } = require('./declarations/admin/admin.did.js');
 const fetch = require('node-fetch');
 const path = require('path');
 const fs = require('fs');
@@ -18,6 +19,7 @@ const fs = require('fs');
 // Environment variables
 const IC_HOST = process.env.IC_HOST || 'https://icp0.io';
 const CONSUMER_CANISTER_ID = process.env.CONSUMER_CANISTER_ID || 'tgyl5-yyaaa-aaaaj-az4wq-cai';
+const ADMIN_CANISTER_ID = process.env.ADMIN_CANISTER_ID || '444wf-gyaaa-aaaaj-az5sq-cai';
 const PORT = process.env.PORT || 3001;
 const API_PASSWORD = process.env.API_PASSWORD || 'ffGpA2saNS47qr';
 
@@ -177,7 +179,7 @@ const replaceBigInt = (data) => {
 };
 
 // Health check endpoint
-app.get('/health', (req, res) => {
+app.get('/api/health', (req, res) => {
   // Allow CORS for health check
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET');
@@ -219,18 +221,8 @@ app.post('/api/profile', authenticateApiKey, async (req, res) => {
       const profile = await actor.getProfile();
       console.log(`[/api/profile] Raw profile result:`, JSON.stringify(profile));
       
-      // Check if profile.principal exists and log its type
-      if (profile && profile.principal) {
-        console.log(`[/api/profile] Principal type: ${typeof profile.principal}`);
-        console.log(`[/api/profile] Principal constructor: ${profile.principal.constructor ? profile.principal.constructor.name : 'No constructor'}`);
-        if (typeof profile.principal === 'object') {
-          console.log(`[/api/profile] Principal toString result: ${profile.principal.toString()}`);
-          console.log(`[/api/profile] Principal keys: ${Object.keys(profile.principal).join(', ')}`);
-        }
-      }
-      
       // Process the profile to handle BigInt and Principal objects
-      const processedProfile = replaceBigInt(profile);
+      const processedProfile = processResponse(profile);
       console.log(`[/api/profile] Processed profile:`, safeStringify(processedProfile));
       
       return res.json(processedProfile);
@@ -260,6 +252,57 @@ app.post('/api/profile', authenticateApiKey, async (req, res) => {
 });
 
 // Get topics endpoint
+// Process the response to handle BigInt and Principal objects
+const processResponse = (response) => {
+  try {
+    if (response === null || response === undefined) {
+      return null;
+    }
+
+    // Special case for profile endpoint - if we get NotFound, return an empty profile object
+    if (response && response.err && response.err.NotFound !== undefined) {
+      return {
+        ok: {
+          principal: null,
+          created: Date.now().toString(),
+          preferences: {},
+          devices: [],
+          lastLogin: Date.now().toString()
+        }
+      };
+    }
+
+    // Handle arrays
+    if (Array.isArray(response)) {
+      return response.map(item => processResponse(item));
+    }
+
+    // Handle objects (including Principal)
+    if (typeof response === 'object' && response !== null) {
+      if (response._isPrincipal) {
+        return response.toString();
+      }
+
+      const result = {};
+      for (const key in response) {
+        result[key] = processResponse(response[key]);
+      }
+      return result;
+    }
+
+    // Handle BigInt
+    if (typeof response === 'bigint') {
+      return response.toString();
+    }
+
+    // Return primitive values as is
+    return response;
+  } catch (error) {
+    console.error('Error processing response:', error);
+    return null;
+  }
+};
+
 app.post('/api/topics', authenticateApiKey, async (req, res) => {
   try {
     const { principalId } = req.body;
@@ -269,9 +312,13 @@ app.post('/api/topics', authenticateApiKey, async (req, res) => {
     }
     
     console.log(`[/api/topics] Getting topics for principal: ${principalId}`);
+    console.log(`[/api/topics] Using consumer canister ID: ${CONSUMER_CANISTER_ID}`);
+    console.log(`[/api/topics] Using admin canister ID: ${ADMIN_CANISTER_ID}`);
+    console.log(`[/api/topics] Using IC host: ${IC_HOST}`);
     
     // Create identity from principal
     const identity = createIdentityFromPrincipal(principalId);
+    console.log(`[/api/topics] Created identity from principal`);
     
     // Create agent
     const agent = new HttpAgent({
@@ -279,87 +326,46 @@ app.post('/api/topics', authenticateApiKey, async (req, res) => {
       identity,
       fetchRootKey: true
     });
+    console.log(`[/api/topics] Created HTTP agent with fetchRootKey: true`);
     
     // Create actor
     const actor = Actor.createActor(consumerIdlFactory, {
       agent,
       canisterId: CONSUMER_CANISTER_ID
     });
-    
-    // Call getTopics
-    console.log(`[/api/topics] Calling getTopics for principal: ${principalId}`);
+    console.log(`[/api/topics] Created actor for consumer canister`);
     
     try {
-      const result = await actor.getTopics();
-      console.log(`[/api/topics] Raw result type:`, typeof result);
+      // Call getTopics with timestamp to avoid any caching
+      const timestamp = Date.now();
+      console.log(`[/api/topics] Calling getTopics for principal: ${principalId} at timestamp: ${timestamp}`);
       
-      // Send an empty array as a fallback
-      if (!result) {
-        console.log(`[/api/topics] No topics found, returning empty array`);
-        return res.json([]);
-      }
+      // Force a fresh call by invalidating any potential cache
+      agent.invalidateIdentity();
+      console.log(`[/api/topics] Invalidated identity to ensure fresh call`);
       
-      // Handle the case where result is an object with 'ok' property
-      if (result && typeof result === 'object' && 'ok' in result) {
-        const okValue = result.ok;
-        
-        // If ok is an array, convert each item
-        if (Array.isArray(okValue)) {
-          const processedArray = okValue.map(item => {
-            const processed = {};
-            
-            // Process each property in the item
-            for (const key in item) {
-              if (typeof item[key] === 'bigint') {
-                processed[key] = item[key].toString();
-              } else if (item[key] && typeof item[key] === 'object' && item[key].constructor && item[key].constructor.name === 'Principal') {
-                processed[key] = item[key].toString();
-              } else {
-                processed[key] = item[key];
-              }
-            }
-            
-            return processed;
-          });
-          
-          console.log(`[/api/topics] Processed ${processedArray.length} topics`);
-          return res.json(processedArray);
-        }
-        
-        // If ok is not an array, just return it
-        console.log(`[/api/topics] Result ok is not an array, returning as is`);
-        return res.json(okValue);
-      }
+      const topics = await actor.getTopics();
       
-      // If result is an array, convert each item
-      if (Array.isArray(result)) {
-        const processedArray = result.map(item => {
-          const processed = {};
-          
-          // Process each property in the item
-          for (const key in item) {
-            if (typeof item[key] === 'bigint') {
-              processed[key] = item[key].toString();
-            } else if (item[key] && typeof item[key] === 'object' && item[key].constructor && item[key].constructor.name === 'Principal') {
-              processed[key] = item[key].toString();
-            } else {
-              processed[key] = item[key];
-            }
-          }
-          
-          return processed;
+      // Log the response for debugging
+      console.log(`[/api/topics] Raw response type: ${typeof topics}`);
+      console.log(`[/api/topics] Raw response: ${JSON.stringify(topics, (key, value) => typeof value === 'bigint' ? value.toString() : value)}`);
+      
+      // Process the response to handle BigInt and Principal objects
+      const processedTopics = processResponse(topics);
+      console.log(`[/api/topics] Successfully processed topics with ${processedTopics.ok ? processedTopics.ok.length : 0} items`);
+      
+      // Log individual topics for debugging
+      if (processedTopics.ok && processedTopics.ok.length > 0) {
+        console.log(`[/api/topics] Topic details:`);
+        processedTopics.ok.forEach((topic, index) => {
+          console.log(`[/api/topics] Topic ${index + 1}: ID=${topic.id}, Name=${topic.name}, CreatedAt=${topic.createdAt}`);
         });
-        
-        console.log(`[/api/topics] Processed ${processedArray.length} topics`);
-        return res.json(processedArray);
       }
       
-      // Fallback: just return an empty array
-      console.log(`[/api/topics] Unhandled result type, returning empty array`);
-      return res.json([]);
-      
+      return res.json(processedTopics);
     } catch (error) {
-      console.error(`Error calling getTopics:`, error);
+      console.error('[/api/topics] Error calling getTopics:', error);
+      console.error('[/api/topics] Error stack:', error.stack);
       return res.status(500).json({
         error: 'Failed to get topics',
         details: error.message
@@ -374,40 +380,7 @@ app.post('/api/topics', authenticateApiKey, async (req, res) => {
   }
 });
 
-// Helper function to convert objects with BigInt to plain objects
-function convertToPlainObject(obj) {
-  if (obj === null || obj === undefined) {
-    return obj;
-  }
-  
-  // Handle BigInt
-  if (typeof obj === 'bigint') {
-    return obj.toString();
-  }
-  
-  // Handle Principal objects
-  if (obj && typeof obj === 'object' && typeof obj.toString === 'function' && 
-      ((obj.constructor && obj.constructor.name === 'Principal') || 
-       (Object.prototype.toString.call(obj) === '[object Object]' && '_arr' in obj))) {
-    return obj.toString();
-  }
-  
-  // Handle arrays
-  if (Array.isArray(obj)) {
-    return obj.map(item => convertToPlainObject(item));
-  }
-  
-  // Handle objects
-  if (typeof obj === 'object') {
-    const result = {};
-    for (const key in obj) {
-      result[key] = convertToPlainObject(obj[key]);
-    }
-    return result;
-  }
-  
-  return obj;
-}
+// Note: convertToPlainObject is imported from bigint-patch.js
 
 // Submit scraped data endpoint
 app.post('/api/submit', authenticateApiKey, async (req, res) => {
@@ -487,9 +460,19 @@ app.post('/api/submit', authenticateApiKey, async (req, res) => {
 
 // Helper function to create identity from principal
 const createIdentityFromPrincipal = (principalId) => {
-  const principal = Principal.fromText(principalId);
-  const identity = Ed25519KeyIdentity.generate();
-  return identity;
+  // Instead of generating a new identity each time, use a seeded identity based on the principal ID
+  // This ensures we get the same identity for the same principal, providing consistency
+  const seed = new Uint8Array(32);
+  const textEncoder = new TextEncoder();
+  const principalBytes = textEncoder.encode(principalId);
+  
+  // Copy the principal bytes into the seed (up to 32 bytes)
+  for (let i = 0; i < Math.min(principalBytes.length, 32); i++) {
+    seed[i] = principalBytes[i];
+  }
+  
+  // Create a deterministic identity from the seed
+  return Ed25519KeyIdentity.generate(seed);
 };
 
 // Fetch content endpoint - helps avoid CORS issues for the extension
