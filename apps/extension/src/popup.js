@@ -3,7 +3,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.log('Popup loaded');
     
     // Get stored state
-    const { isActive } = await chrome.storage.local.get(['isActive']);
+    const { enabled, isScrapingActive } = await chrome.storage.local.get(['enabled', 'isScrapingActive']);
+    // Use enabled as the primary state indicator
+    const isActive = enabled !== false;
     console.log('State loaded:', { isActive });
     
     // Update status
@@ -20,7 +22,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             const newState = !isActive;
             await chrome.runtime.sendMessage({ 
                 type: 'SET_STATE', 
-                isActive: newState 
+                enabled: newState,
+                isScrapingActive: newState
             });
             window.location.reload();
         });

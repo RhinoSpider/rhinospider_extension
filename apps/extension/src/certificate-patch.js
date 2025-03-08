@@ -10,40 +10,29 @@ window.patchSpecificActorFile = patchSpecificActorFile;
 
 // Function to patch certificate verification
 function patchCertificateVerification() {
-    console.log('[Patch] Starting certificate verification patching');
-    
     try {
         // 1. Patch window.ic if it exists
         if (window.ic) {
-            console.log('[Patch] Found window.ic, patching');
-            
             // Patch Certificate.verify if it exists
             if (window.ic.Certificate && window.ic.Certificate.prototype) {
-                console.log('[Patch] Patching window.ic.Certificate.prototype.verify');
                 window.ic.Certificate.prototype.verify = async function() {
-                    console.log('[Patch] Bypassing window.ic.Certificate.verify');
                     return true;
                 };
             }
             
             // Patch HttpAgent.verifyQuerySignatures if it exists
             if (window.ic.HttpAgent && window.ic.HttpAgent.prototype) {
-                console.log('[Patch] Setting window.ic.HttpAgent.prototype.verifyQuerySignatures = false');
                 window.ic.HttpAgent.prototype.verifyQuerySignatures = false;
             }
             
             // Patch agent if it exists
             if (window.ic.agent) {
-                console.log('[Patch] Patching window.ic.agent');
-                
                 // Disable query signature verification
                 window.ic.agent.verifyQuerySignatures = false;
                 
                 // Patch Certificate.verify if it exists
                 if (window.ic.agent.Certificate && window.ic.agent.Certificate.prototype) {
-                    console.log('[Patch] Patching window.ic.agent.Certificate.prototype.verify');
                     window.ic.agent.Certificate.prototype.verify = async function() {
-                        console.log('[Patch] Bypassing window.ic.agent.Certificate.verify');
                         return true;
                     };
                 }
@@ -59,7 +48,6 @@ function patchCertificateVerification() {
         // 4. Patch the specific actor file (actor-DXyMoorp.js)
         patchSpecificActorFile();
         
-        console.log('[Patch] Certificate verification patching completed successfully');
         return true;
     } catch (error) {
         console.error('[Patch] Error in certificate verification patching:', error);
@@ -77,18 +65,14 @@ function patchObjectRecursively(obj, path = 'window', visited = new Set()) {
     try {
         // Check if this object has a verify method
         if (typeof obj.verify === 'function') {
-            console.log(`[Patch] Patching verify method at ${path}`);
             obj.verify = async function() {
-                console.log(`[Patch] Bypassing verify at ${path}`);
                 return true;
             };
         }
         
         // Check for prototype verify methods
         if (obj.prototype && typeof obj.prototype.verify === 'function') {
-            console.log(`[Patch] Patching prototype verify method at ${path}.prototype`);
             obj.prototype.verify = async function() {
-                console.log(`[Patch] Bypassing prototype verify at ${path}.prototype`);
                 return true;
             };
         }
@@ -109,7 +93,7 @@ function patchActorModule(actorModule) {
     if (!actorModule) return;
     
     try {
-        console.log('[Patch] Patching specific actor module');
+
         
         // Patch the module itself
         patchObjectRecursively(actorModule);
@@ -120,20 +104,15 @@ function patchActorModule(actorModule) {
                 key === 'ic' || 
                 (typeof key === 'string' && key.toLowerCase().includes('certificate'))) {
                 
-                console.log(`[Patch] Found Certificate class: ${key}`);
-                
                 // Patch the Certificate class
                 if (actorModule[key] && actorModule[key].prototype) {
-                    console.log(`[Patch] Patching ${key}.prototype.verify`);
                     actorModule[key].prototype.verify = async function() {
-                        console.log(`[Patch] Bypassed ${key}.prototype.verify`);
                         return true;
                     };
                 }
             }
         }
         
-        console.log('[Patch] Actor module patching completed');
     } catch (e) {
         console.error('[Patch] Error patching actor module:', e);
     }
@@ -141,8 +120,6 @@ function patchActorModule(actorModule) {
 
 // Function to specifically patch the actor-DXyMoorp.js file
 function patchSpecificActorFile() {
-    console.log('[Patch] Attempting to patch actor files');
-    
     try {
         // Create a separate JavaScript file for patching instead of inline script
         // This is a direct function call approach that complies with CSP
@@ -157,7 +134,7 @@ function patchSpecificActorFile() {
 
 // Direct function to patch fe.verify without using inline scripts
 function patchFeVerifyDirectly() {
-    console.log('[Patch] Direct function patching for fe.verify');
+
     
     // Function to find and patch fe.verify
     function attemptPatch() {
@@ -180,13 +157,11 @@ function patchFeVerifyDirectly() {
                                 potential.prototype && 
                                 typeof potential.prototype.verify === 'function') {
                                 
-                                console.log('[Patch] Found fe class, patching prototype.verify');
                                 const originalVerify = potential.prototype.verify;
                                 potential.prototype.verify = async function(...args) {
                                     try {
                                         return await originalVerify.apply(this, args);
                                     } catch (error) {
-                                        console.log('[Patch] Bypassing fe.prototype.verify error:', error.message);
                                         // Return a valid-looking certificate result
                                         return {
                                             certificate: {},
@@ -206,13 +181,11 @@ function patchFeVerifyDirectly() {
                                 potential.constructor.name === 'fe' && 
                                 typeof potential.verify === 'function') {
                                 
-                                console.log('[Patch] Found fe instance, patching verify method');
                                 const originalVerify = potential.verify;
                                 potential.verify = async function(...args) {
                                     try {
                                         return await originalVerify.apply(this, args);
                                     } catch (error) {
-                                        console.log('[Patch] Bypassing fe.verify error:', error.message);
                                         // Return a valid-looking certificate result
                                         return {
                                             certificate: {},
@@ -236,13 +209,11 @@ function patchFeVerifyDirectly() {
 
         // Also look for window.fe directly
         if (window.fe && typeof window.fe.verify === 'function') {
-            console.log('[Patch] Found window.fe, patching verify method');
             const originalVerify = window.fe.verify;
             window.fe.verify = async function(...args) {
                 try {
                     return await originalVerify.apply(this, args);
                 } catch (error) {
-                    console.log('[Patch] Bypassing window.fe.verify error:', error.message);
                     // Return a valid-looking certificate result
                     return {
                         certificate: {},
@@ -270,7 +241,6 @@ function patchFeVerifyDirectly() {
             success = attemptPatch();
             
             if (success || attempts >= maxAttempts) {
-                console.log('[Patch] Patching attempt ' + attempts + ': ' + (success ? 'successful' : 'failed'));
                 clearInterval(interval);
             }
         }, 200);
@@ -288,9 +258,7 @@ function setupScriptObserver() {
                 for (const node of mutation.addedNodes) {
                     if (node.tagName === 'SCRIPT' && node.src && 
                         (node.src.includes('actor-') || node.src.includes('agent'))) {
-                        console.log('[Patch] New actor/agent script detected:', node.src);
                         node.addEventListener('load', () => {
-                            console.log('[Patch] Actor/agent script loaded, attempting patch');
                             setTimeout(patchFeVerifyDirectly, 100);
                         });
                     }
@@ -300,8 +268,6 @@ function setupScriptObserver() {
     });
     
     observer.observe(document, { childList: true, subtree: true });
-    console.log('[Patch] Script observer installed');
-    
     // Also patch XMLHttpRequest to intercept and modify responses
     patchXhrAndFetch();
 }
@@ -313,9 +279,7 @@ function patchXhrAndFetch() {
     XMLHttpRequest.prototype.open = function(method, url, ...args) {
         if (url && typeof url === 'string' && 
             (url.includes('actor-') || url.includes('agent'))) {
-            console.log('[Patch] Intercepted XHR for actor/agent script:', url);
             this.addEventListener('load', function() {
-                console.log('[Patch] Actor/agent script loaded via XHR, attempting patch');
                 setTimeout(patchFeVerifyDirectly, 100);
             });
         }
@@ -337,13 +301,11 @@ function patchXhrAndFetch() {
         return originalFetch.apply(this, arguments);
     };
     
-    console.log('[Patch] XHR and fetch patched for script detection');
+
 }
 
 // Function to patch all verify methods in the window
 function patchAllVerifyMethods() {
-    console.log('[Patch] Searching for actor modules to patch');
-    
     // Look for actor module in window
     for (const key in window) {
         try {
@@ -358,7 +320,6 @@ function patchAllVerifyMethods() {
                     (obj.Certificate && obj.Certificate.prototype) ||
                     (obj.HttpAgent && obj.HttpAgent.prototype)) {
                     
-                    console.log(`[Patch] Found potential actor module: ${key}`);
                     patchObjectRecursively(obj, `window.${key}`);
                 }
             }
@@ -375,8 +336,6 @@ function patchAllVerifyMethods() {
         // Look for the actor script
         for (const script of scripts) {
             if (script.src && script.src.includes('actor-')) {
-                console.log(`[Patch] Found actor script: ${script.src}`);
-                
                 // Try to find the actor module in window
                 setTimeout(() => {
                     // Look for any new objects that might have been added
@@ -413,11 +372,8 @@ function patchAllVerifyMethods() {
             if (mutation.type === 'childList') {
                 mutation.addedNodes.forEach((node) => {
                     if (node.tagName === 'SCRIPT' && node.src) {
-                        console.log(`[Patch] Detected script addition: ${node.src}`);
-                        
                         // If this is an actor script, patch it
                         if (node.src.includes('actor-') || node.src.includes('ic-agent')) {
-                            console.log('[Patch] Running post-script patching');
                             setTimeout(() => {
                                 patchCertificateVerification();
                                 patchAllVerifyMethods();
@@ -432,7 +388,7 @@ function patchAllVerifyMethods() {
     
     // Start observing the document
     observer.observe(document, { childList: true, subtree: true });
-    console.log('[Patch] Installed MutationObserver for script detection');
+
 }
 
 // Function to intercept script loading
@@ -459,8 +415,6 @@ function interceptScriptLoading() {
                 
                 // If this is setting the src attribute
                 if (name === 'src' && (value.includes('actor-') || value.includes('ic-agent'))) {
-                    console.log(`[Patch] Intercepted script src attribute: ${value}`);
-                    
                     // Store the original onload handler
                     const originalOnload = this.onload;
                     
@@ -473,7 +427,6 @@ function interceptScriptLoading() {
                         
                         // Apply patching after the script has loaded
                         setTimeout(() => {
-                            console.log('[Patch] Script loaded, applying patching');
                             patchCertificateVerification();
                             patchAllVerifyMethods();
                             patchFeVerifyDirectly(); // Use our CSP-compliant function
@@ -486,12 +439,11 @@ function interceptScriptLoading() {
         return element;
     };
     
-    console.log('[Patch] Installed script load interceptor');
+
 }
 
 // Initialize patching when the script is loaded
 setTimeout(() => {
-    console.log('[Patch] Auto-initializing certificate patching');
     patchCertificateVerification();
     interceptScriptLoading();
     patchAllVerifyMethods();

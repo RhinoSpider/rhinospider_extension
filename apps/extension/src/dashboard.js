@@ -15,16 +15,16 @@ const RETRY_DELAY = 1000;
 // Set up logger
 const logger = {
     debug: (message, ...args) => {
-        console.debug(`[${new Date().toISOString()}] [DEBUG] ${message}`, ...args);
+        console.debug(`[Dashboard] ${message}`, ...args);
     },
     info: (message, ...args) => {
-        console.info(`[${new Date().toISOString()}] [INFO] ${message}`, ...args);
+        console.info(`[Dashboard] ${message}`, ...args);
     },
     warn: (message, ...args) => {
-        console.warn(`[${new Date().toISOString()}] [WARN] ${message}`, ...args);
+        console.warn(`[Dashboard] ${message}`, ...args);
     },
     error: (message, ...args) => {
-        console.error(`[${new Date().toISOString()}] [ERROR] ${message}`, ...args);
+        console.error(`[Dashboard] ${message}`, ...args);
     }
 };
 
@@ -162,8 +162,6 @@ const Result = IDL.Variant({ 'ok': UserProfile, 'err': Error });
 
 // Function to patch certificate verification
 function patchCertificateVerification() {
-    logger.debug('[Patch] Starting certificate verification patching');
-    
     try {
         // Call the window functions if they exist
         if (window.patchCertificateVerification) {
@@ -175,7 +173,7 @@ function patchCertificateVerification() {
             window.interceptScriptLoading();
         }
         
-        logger.debug('[Patch] Certificate verification patching completed successfully');
+        logger.debug('[Patch] Certificate verification patching completed');
         return true;
     } catch (error) {
         logger.error('[Patch] Error in certificate verification patching:', error);
@@ -185,8 +183,6 @@ function patchCertificateVerification() {
 
 // Function to patch the bundled actor file
 function patchBundledActorFile() {
-    logger.debug('[Patch] Attempting to patch bundled actor file');
-    
     try {
         // Find all script tags
         const scripts = document.querySelectorAll('script');
@@ -194,11 +190,8 @@ function patchBundledActorFile() {
         // Look for the actor script
         for (const script of scripts) {
             if (script.src && (script.src.includes('actor-') || script.src.includes('ic-agent'))) {
-                logger.debug('[Patch] Found actor script:', script.src);
-                
                 // Get the extension URL for the certificate patch script
                 const extensionUrl = chrome.runtime.getURL('certificate-patch.js');
-                logger.debug('[Patch] Loading patch script from:', extensionUrl);
                 
                 // Create a new script element to load our patching code
                 const patchScript = document.createElement('script');
@@ -208,7 +201,7 @@ function patchBundledActorFile() {
                 // Add the script to the document
                 document.head.appendChild(patchScript);
                 
-                logger.debug('[Patch] Injected patching script');
+                logger.debug('[Patch] Injected patching script for actor');
                 
                 // Call the patching function after a short delay
                 setTimeout(() => {
@@ -233,8 +226,6 @@ function patchBundledActorFile() {
 
 // Function to monkey patch the verify method directly
 function monkeyPatchVerifyMethod() {
-    logger.debug('[Patch] Attempting to monkey patch verify method directly');
-    
     try {
         // Override Function.prototype.toString to detect when verify is called
         const originalToString = Function.prototype.toString;
@@ -243,15 +234,12 @@ function monkeyPatchVerifyMethod() {
             
             // Check if this is the verify method
             if (result.includes('Invalid certificate') && this.name === 'verify') {
-                logger.debug('[Patch] Found verify method through toString:', this.name);
-                
                 // Replace the verify method
                 const self = this;
                 const originalVerify = this;
                 
                 // Create a wrapper function that returns true
                 const wrapper = async function() {
-                    logger.debug('[Patch] Bypassing verify method called through toString detection');
                     return true;
                 };
                 
@@ -1508,8 +1496,9 @@ async function checkAuthAndToggleState() {
     
     try {
         // Get principal ID and toggle state from storage
-        const { principalId, extensionEnabled } = await new Promise(resolve => {
-            chrome.storage.local.get(['principalId', 'extensionEnabled'], result => resolve(result));
+        const { principalId, enabled, extensionEnabled } = await new Promise(resolve => {
+            chrome.storage.local.get(['principalId', 'enabled', 'extensionEnabled'], result => resolve(result));
+            // We'll check both enabled and extensionEnabled for backward compatibility
         });
         
         // If authenticated and toggle is on, notify background script
@@ -1558,8 +1547,11 @@ function addEventListeners() {
     const extensionStatusToggle = document.getElementById('extensionStatus');
     if (extensionStatusToggle) {
         // Get initial state from storage
-        chrome.storage.local.get(['isScrapingActive'], (result) => {
-            extensionStatusToggle.checked = result.isScrapingActive === true;
+        chrome.storage.local.get(['enabled', 'isScrapingActive'], (result) => {
+            // Use enabled as the primary state indicator
+            const isEnabled = result.enabled !== false;
+            logger.debug('[Auth] Toggle state in updateUIForAuthenticated:', isEnabled);
+            extensionStatusToggle.checked = isEnabled;
         });
         
         // Add event listener for toggle change
