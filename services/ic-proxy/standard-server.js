@@ -84,7 +84,7 @@ const consumerIdlFactory = ({ IDL }) => {
 };
 
 // Configure environment variables
-const PORT = process.env.PORT || 3002; // Using port 3002 to avoid conflicts
+const PORT = process.env.PORT || 3001; // Using port 3001 for the proxy server
 const IC_HOST = process.env.IC_HOST || 'https://icp0.io';
 const CONSUMER_CANISTER_ID = process.env.CONSUMER_CANISTER_ID || 'tgyl5-yyaaa-aaaaj-az4wq-cai';
 const DEFAULT_ADMIN_CANISTER_ID = process.env.DEFAULT_ADMIN_CANISTER_ID || '444wf-gyaaa-aaaaj-az5sq-cai';

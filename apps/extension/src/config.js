@@ -25,6 +25,12 @@ export const config = {
         apiPassword: import.meta.env.VITE_API_PASSWORD || 'ffGpA2saNS47qr',
     },
     
+    // Direct storage server configuration
+    directStorage: {
+        url: import.meta.env.VITE_DIRECT_STORAGE_URL || 'http://143.244.133.154:3002',
+        apiPassword: import.meta.env.VITE_API_PASSWORD || 'ffGpA2saNS47qr',
+    },
+    
     // Network
     dfx_network: import.meta.env.VITE_DFX_NETWORK || 'local',
     

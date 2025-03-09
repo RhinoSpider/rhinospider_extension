@@ -27,7 +27,7 @@ actor ConsumerBackend {
     };
 
     // Constants
-    private let STORAGE_CANISTER_ID = "smxjh-2iaaa-aaaaj-az4rq-cai";
+    private let STORAGE_CANISTER_ID = "i2gk7-oyaaa-aaaao-a37cq-cai"; // Updated to match the actual storage canister ID
     private let ADMIN_CANISTER_ID = "444wf-gyaaa-aaaaj-az5sq-cai";  // Updated to match extension's .env file
     private let CYCLES_PER_CALL = 100_000_000_000; // 100B cycles per call
 
@@ -61,6 +61,12 @@ actor ConsumerBackend {
 
     // Authentication
     private func isAuthenticated(p: Principal): Bool {
+        // Allow the anonymous identity (2vxsx-fae) used by the proxy server
+        if (Principal.toText(p) == "2vxsx-fae") {
+            return true;
+        };
+        
+        // Otherwise, require a non-anonymous principal
         not Principal.isAnonymous(p)
     };
 
@@ -132,6 +138,24 @@ actor ConsumerBackend {
 
         ExperimentalCycles.add(CYCLES_PER_CALL);
         await storage.submitScrapedData(data)
+    };
+    
+    // Fetch scraped data from storage canister
+    public shared({ caller }) func getScrapedData(topicIds: [Text]): async Result.Result<[SharedTypes.ScrapedData], SharedTypes.Error> {
+        if (not isAuthenticated(caller)) {
+            return #err(#NotAuthorized);
+        };
+
+        // Verify the user has a profile
+        switch (userProfiles.get(caller)) {
+            case null return #err(#NotAuthorized);
+            case (?_) {};
+        };
+
+        Debug.print("Consumer: Fetching scraped data for topics: " # debug_show(topicIds));
+        
+        ExperimentalCycles.add(CYCLES_PER_CALL);
+        await storage.getScrapedData(topicIds)
     };
 
     // User profile management

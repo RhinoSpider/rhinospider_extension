@@ -1,0 +1,13 @@
+{
+  "name": "rhinospider-authorization-scripts",
+  "version": "1.0.0",
+  "description": "Utility scripts for RhinoSpider authorization",
+  "main": "authorize-consumer.js",
+  "scripts": {
+    "authorize": "node authorize-consumer.js"
+  },
+  "dependencies": {
+    "@dfinity/agent": "^0.15.6",
+    "@dfinity/principal": "^0.15.6"
+  }
+}

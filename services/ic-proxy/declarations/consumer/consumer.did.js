@@ -69,6 +69,7 @@ const idlFactory = ({ IDL }) => {
   return IDL.Service({
     'getProfile' : IDL.Func([], [Result_2], []), 
     'getTopics' : IDL.Func([], [Result_1], []),
+    'getScrapedData' : IDL.Func([IDL.Vec(IDL.Text)], [IDL.Variant({ 'ok' : IDL.Vec(ScrapedData), 'err' : Error })], []),
     'registerDevice' : IDL.Func([IDL.Text], [Result], []),
     'submitScrapedData' : IDL.Func([ScrapedData], [Result], []),
     'updatePreferences' : IDL.Func([IDL.Bool, IDL.Text], [Result], []),
