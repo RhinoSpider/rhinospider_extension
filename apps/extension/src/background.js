@@ -7,6 +7,7 @@ import submissionHelper from './submission-helper';
 // Import our new modules
 // Note: These will be used gradually as we migrate functionality
 import * as scraperPatch from './scraper-patch.js';
+import { initialize as initializeUrlSelector, selectTopicAndUrl, trackSuccessfulUrl } from './simplified-url-selector.js';
 
 // Logger utility
 const logger = {
@@ -639,6 +640,59 @@ async function performScrape() {
         // Use simplified URL selector to select a topic and URL
         const selectedData = await scraperPatch.selectTopicAndUrl(activeTopics);
         
+        // Check if all sample URLs have been scraped
+        // First check if the selectedData already indicates all URLs are scraped
+        let allScraped = selectedData.allScraped || false;
+        
+        // If not already determined, make an explicit check
+        if (!allScraped) {
+            logger.log('Performing explicit check to see if all sample URLs have been scraped');
+            allScraped = await scraperPatch.areAllSampleUrlsScraped();
+        }
+        
+        if (allScraped) {
+            logger.log('🎉 All sample URLs have been scraped, stopping the scraping process');
+            
+            // Double-check to make absolutely sure
+            const confirmCheck = await scraperPatch.areAllSampleUrlsScraped();
+            if (!confirmCheck) {
+                logger.warn('⚠️ Confirmation check failed - some URLs may not be scraped. Continuing process.');
+                // Continue with scraping since confirmation failed
+            } else {
+                // Update badge to indicate scraping is completed
+                chrome.action.setBadgeText({ text: 'DONE' });
+                chrome.action.setBadgeBackgroundColor({ color: '#2196F3' });
+                
+                // Set scraping state to inactive but don't disable the extension
+                isScrapingActive = false;
+                await chrome.storage.local.set({ 
+                    isScrapingActive: false, 
+                    lastStopTime: Date.now(),
+                    allSampleUrlsScraped: true // Store this state persistently
+                });
+                
+                // Clear any existing alarms
+                if (chrome.alarms && typeof chrome.alarms.clear === 'function') {
+                    try {
+                        await chrome.alarms.clear('scrapeAlarm');
+                        logger.log('✅ Scrape alarm cleared successfully');
+                    } catch (error) {
+                        logger.error('❌ Error clearing scrape alarm:', error);
+                    }
+                }
+                
+                // Clear the scraping interval
+                if (scrapingInterval !== null) {
+                    clearInterval(scrapingInterval);
+                    scrapingInterval = null;
+                    logger.log('✅ Scraping interval cleared successfully');
+                }
+                
+                logger.log('🏁 Scraping process stopped successfully after all sample URLs were scraped');
+                return;
+            }
+        }
+        
         // Check if we have a valid topic and URL
         if (!selectedData.topic || !selectedData.url) {
             return;
@@ -648,7 +702,20 @@ async function performScrape() {
         const selectedUrl = selectedData.url;
         
         // Update the recently scraped URLs list for tracking
-        await scraperPatch.trackScrapedUrl(selectedTopic.id, selectedUrl);
+        logger.log(`🔄 Tracking URL for topic ${selectedTopic.id}: ${selectedUrl}`);
+        const trackingResult = await scraperPatch.trackScrapedUrl(selectedTopic.id, selectedUrl);
+        
+        if (!trackingResult) {
+            logger.warn(`⚠️ Failed to track URL for topic ${selectedTopic.id}. This may affect scraping completion detection.`);
+        } else {
+            logger.log(`✅ Successfully tracked URL for topic ${selectedTopic.id}`);
+            
+            // Check if this URL tracking has completed all sample URLs
+            const allScrapedAfterTracking = await scraperPatch.areAllSampleUrlsScraped();
+            if (allScrapedAfterTracking) {
+                logger.log('🎉 After tracking this URL, all sample URLs are now scraped!');
+            }
+        }
         
         // Get IP and internet speed before scraping
         const [ipAddress, internetSpeed] = await Promise.all([
@@ -755,15 +822,51 @@ async function performScrape() {
             
             // Mark this URL as successfully processed in our tracking systems
             // This helps ensure we don't reuse the same URLs repeatedly
-            const urlPool = await getUrlPoolForTopic(selectedTopic.id);
-            if (urlPool && urlPool.urls) {
-                const urlIndex = urlPool.urls.findIndex(item => item.url === selectedUrl);
-                if (urlIndex !== -1) {
-                    urlPool.urls[urlIndex].used = true;
-                    urlPool.urls[urlIndex].lastUsed = Date.now();
-                    urlPool.urls[urlIndex].successful = true;
-                    await saveUrlPoolForTopic(selectedTopic.id, urlPool);
+            try {
+                const urlPool = await getUrlPoolForTopic(selectedTopic.id);
+                if (urlPool && urlPool.urls) {
+                    // Normalize the selected URL using the same logic as in other functions
+                    let cleanSelectedUrl = selectedUrl;
+                    
+                    // Remove any URL parameters
+                    if (cleanSelectedUrl.includes('?')) {
+                        cleanSelectedUrl = cleanSelectedUrl.split('?')[0];
+                    }
+                    
+                    // Remove trailing slashes
+                    cleanSelectedUrl = cleanSelectedUrl.replace(/\/$/, '');
+                    
+                    logger.log(`Looking for URL match in pool: ${cleanSelectedUrl}`);
+                    
+                    // Find the URL in the pool using case-insensitive comparison
+                    const urlIndex = urlPool.urls.findIndex(item => {
+                        return item.url.toLowerCase() === cleanSelectedUrl.toLowerCase();
+                    });
+                    
+                    if (urlIndex !== -1) {
+                        // Update the URL status in the pool
+                        urlPool.urls[urlIndex].used = true;
+                        urlPool.urls[urlIndex].lastUsed = Date.now();
+                        urlPool.urls[urlIndex].successful = true;
+                        await saveUrlPoolForTopic(selectedTopic.id, urlPool);
+                        logger.log(`✅ Updated URL status in URL pool for topic ${selectedTopic.id}`);
+                        
+                        // Also update the URL in the simplified-url-selector tracking system
+                        // This ensures both tracking systems are in sync
+                        await scraperPatch.trackScrapedUrl(selectedTopic.id, cleanSelectedUrl);
+                        logger.log(`✅ Also updated URL in simplified-url-selector tracking system`);
+                    } else {
+                        logger.warn(`⚠️ URL not found in the URL pool for topic ${selectedTopic.id}`);
+                        logger.log(`🔍 Available URLs in pool:`);
+                        urlPool.urls.forEach((item, index) => {
+                            logger.log(`  ${index + 1}. ${item.url}`);
+                        });
+                    }
+                } else {
+                    logger.warn(`⚠️ No URL pool available for topic ${selectedTopic.id}`);
                 }
+            } catch (error) {
+                logger.error('❌ Error updating URL pool:', error);
             }
         } catch (submitError) {
             // Still update last scrape time even if submission fails
@@ -1082,21 +1185,52 @@ async function submitScrapedData(url, content, topicId, status = 'completed', ex
             logger.log('Submission result: ' + JSON.stringify(result));
             console.log('Submission result:', result);
             
-            // TEMPORARY WORKAROUND: Accept any response as success
+            // Check if the submission was actually successful
+            let isReallySuccessful = false;
+            
+            // First check if the response has an 'ok' property with dataSubmitted=true
+            if (result.ok && result.ok.dataSubmitted === true) {
+                // Then check if there's no actual error in the result
+                if (!result.ok.result || !result.ok.result.err) {
+                    isReallySuccessful = true;
+                    logger.log('Submission was genuinely successful');
+                } else {
+                    // If there's an error but it's just NotAuthorized, we'll still consider it successful
+                    // This is part of the temporary workaround
+                    if (result.ok.result.err.NotAuthorized !== undefined) {
+                        isReallySuccessful = true;
+                        logger.log('Submission had NotAuthorized error but still considering it successful');
+                    } else {
+                        logger.log('Submission had an error:', result.ok.result.err);
+                    }
+                }
+            } else if (result.err) {
+                logger.log('Submission failed with error:', result.err);
+            }
+            
+            // TEMPORARY WORKAROUND: Accept any response as success for pending submissions
             // This is to accommodate the current server response format
             // The server is temporarily configured to always return a 200 response
             // regardless of the actual result
-            logger.log('TEMPORARY WORKAROUND: Accepting any response as success');
+            logger.log('TEMPORARY WORKAROUND: Accepting any response as success for pending submissions');
             
-            // Success - remove this item from pending submissions if it exists
+            // Always remove this item from pending submissions if it exists
             try {
                 const pendingSubmissions = await chrome.storage.local.get('pendingSubmissions') || { pendingSubmissions: [] };
                 const submissions = pendingSubmissions.pendingSubmissions || [];
                 const filteredSubmissions = submissions.filter(item => item.url !== submissionPayload.url);
                 await chrome.storage.local.set({ pendingSubmissions: filteredSubmissions });
                 logger.log('Removed submitted URL from pending submissions');
+                
+                // Only track this URL as successfully scraped if it was really successful
+                if (isReallySuccessful) {
+                    await trackSuccessfulUrl(topicId, url);
+                    logger.log('Marked URL as successfully scraped:', url);
+                } else {
+                    logger.log('URL not marked as successfully scraped due to submission issues:', url);
+                }
             } catch (storageError) {
-                logger.error('Error updating pending submissions after success:', storageError);
+                logger.error('Error updating pending submissions after submission:', storageError);
             }
             
             // Log original behavior for reference
@@ -3666,5 +3800,105 @@ async function getUrlQualityTracking() {
     } catch (error) {
         logger.error('Error getting URL quality tracking:', error);
         return {};
+    }
+}
+
+// Get URL pool for a specific topic
+async function getUrlPoolForTopic(topicId) {
+    if (!topicId) {
+        logger.error('Invalid topicId provided to getUrlPoolForTopic');
+        return null;
+    }
+    
+    try {
+        // Get URL pools from storage
+        const result = await chrome.storage.local.get(['urlPools']);
+        const urlPools = result.urlPools || {};
+        
+        // If there's no pool for this topic, initialize it
+        if (!urlPools[topicId]) {
+            logger.log(`No URL pool found for topic ${topicId}, initializing new pool`);
+            
+            // Get the topic to initialize with its sample URLs
+            const topicsResult = await chrome.storage.local.get(['topics']);
+            const topics = topicsResult.topics || [];
+            const topic = topics.find(t => t.id === topicId);
+            
+            if (topic && topic.sampleArticleUrls && topic.sampleArticleUrls.length > 0) {
+                // Create a new URL pool with the sample URLs
+                const newPool = {
+                    topicId,
+                    lastUpdated: Date.now(),
+                    urls: topic.sampleArticleUrls.map(url => {
+                        // More robust URL normalization
+                        let cleanUrl = url;
+                        
+                        // Remove any URL parameters
+                        if (cleanUrl.includes('?')) {
+                            cleanUrl = cleanUrl.split('?')[0];
+                        }
+                        
+                        // Remove trailing slashes
+                        cleanUrl = cleanUrl.replace(/\/$/, '');
+                        
+                        return {
+                            url: cleanUrl,
+                            originalUrl: url, // Keep original for reference
+                            used: false,
+                            lastUsed: null,
+                            successful: false
+                        };
+                    })
+                };
+                
+                // Save the new pool
+                urlPools[topicId] = newPool;
+                await chrome.storage.local.set({ urlPools });
+                
+                logger.log(`Initialized new URL pool for topic ${topicId} with ${newPool.urls.length} URLs`);
+                return newPool;
+            } else {
+                logger.warn(`Could not initialize URL pool for topic ${topicId}: topic not found or no sample URLs`);
+                return null;
+            }
+        }
+        
+        logger.log(`Retrieved URL pool for topic ${topicId} with ${urlPools[topicId].urls.length} URLs`);
+        return urlPools[topicId];
+    } catch (error) {
+        logger.error('Error getting URL pool for topic:', error);
+        return null;
+    }
+}
+
+// Save URL pool for a specific topic
+async function saveUrlPoolForTopic(topicId, urlPool) {
+    if (!topicId) {
+        logger.error('Invalid topicId provided to saveUrlPoolForTopic');
+        return false;
+    }
+    
+    if (!urlPool) {
+        logger.error('Invalid urlPool provided to saveUrlPoolForTopic');
+        return false;
+    }
+    
+    try {
+        // Get existing URL pools
+        const result = await chrome.storage.local.get(['urlPools']);
+        const urlPools = result.urlPools || {};
+        
+        // Update the pool for this topic
+        urlPool.lastUpdated = Date.now();
+        urlPools[topicId] = urlPool;
+        
+        // Save back to storage
+        await chrome.storage.local.set({ urlPools });
+        
+        logger.log(`Saved URL pool for topic ${topicId} with ${urlPool.urls.length} URLs`);
+        return true;
+    } catch (error) {
+        logger.error('Error saving URL pool for topic:', error);
+        return false;
     }
 }

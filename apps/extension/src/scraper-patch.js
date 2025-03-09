@@ -41,16 +41,48 @@ async function selectTopicAndUrl(topics) {
     }
 }
 
-// Track a scraped URL for a topic
+// Track a successfully scraped URL for a topic
 async function trackScrapedUrl(topicId, url) {
-    logger.log(`Tracking scraped URL for topic ${topicId}: ${url}`);
+    if (!topicId) {
+        logger.error('Invalid topicId provided to trackScrapedUrl');
+        return false;
+    }
+    
+    if (!url) {
+        logger.error('Invalid URL provided to trackScrapedUrl');
+        return false;
+    }
+    
+    // Clean the URL before logging to ensure consistent display
+    const cleanUrl = url.split('?_cb=')[0];
+    logger.log(`Tracking successfully scraped URL for topic ${topicId}: ${cleanUrl}`);
     
     try {
         // Store the URL in the simplified URL selector's tracking system
-        await urlSelector.trackScrapedUrl(topicId, url);
-        return true;
+        const result = await urlSelector.trackSuccessfulUrl(topicId, url);
+        
+        // Log the result with a visual indicator
+        const statusSymbol = result ? '✅' : '❌';
+        logger.log(`${statusSymbol} URL tracking result for topic ${topicId}: ${result ? 'Success' : 'Failed'}`);
+        
+        return result;
     } catch (error) {
-        logger.error('Error tracking scraped URL', error);
+        logger.error('Error tracking successfully scraped URL', error);
+        return false;
+    }
+}
+
+// Check if all sample URLs have been scraped
+async function areAllSampleUrlsScraped() {
+    logger.log('Checking if all sample URLs have been scraped');
+    
+    try {
+        const result = await urlSelector.areAllSampleUrlsScraped();
+        const statusSymbol = result ? '🎉' : '⏳';
+        logger.log(`${statusSymbol} All sample URLs scraped status: ${result}`);
+        return result;
+    } catch (error) {
+        logger.error('Error checking if all sample URLs have been scraped', error);
         return false;
     }
 }
@@ -119,5 +151,6 @@ export {
     initialize,
     selectTopicAndUrl,
     trackScrapedUrl,
+    areAllSampleUrlsScraped,
     testSampleUrlSelection
 };
