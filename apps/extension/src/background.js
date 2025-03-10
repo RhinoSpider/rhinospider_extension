@@ -651,45 +651,24 @@ async function performScrape() {
         }
         
         if (allScraped) {
-            logger.log('🎉 All sample URLs have been scraped, stopping the scraping process');
+            // Log that all sample URLs have been scraped, but continue with DuckDuckGo URLs
+            logger.log('🎉 All sample URLs have been scraped, continuing with DuckDuckGo-generated URLs');
             
             // Double-check to make absolutely sure
             const confirmCheck = await scraperPatch.areAllSampleUrlsScraped();
             if (!confirmCheck) {
-                logger.warn('⚠️ Confirmation check failed - some URLs may not be scraped. Continuing process.');
-                // Continue with scraping since confirmation failed
+                logger.warn('⚠️ Confirmation check failed - some sample URLs may not be scraped.');
             } else {
-                // Update badge to indicate scraping is completed
-                chrome.action.setBadgeText({ text: 'DONE' });
-                chrome.action.setBadgeBackgroundColor({ color: '#2196F3' });
+                // Update badge to indicate sample URLs are completed
+                chrome.action.setBadgeText({ text: 'GEN' });
+                chrome.action.setBadgeBackgroundColor({ color: '#4CAF50' });
                 
-                // Set scraping state to inactive but don't disable the extension
-                isScrapingActive = false;
+                // Store the state that all sample URLs are scraped, but keep scraping active
                 await chrome.storage.local.set({ 
-                    isScrapingActive: false, 
-                    lastStopTime: Date.now(),
                     allSampleUrlsScraped: true // Store this state persistently
                 });
                 
-                // Clear any existing alarms
-                if (chrome.alarms && typeof chrome.alarms.clear === 'function') {
-                    try {
-                        await chrome.alarms.clear('scrapeAlarm');
-                        logger.log('✅ Scrape alarm cleared successfully');
-                    } catch (error) {
-                        logger.error('❌ Error clearing scrape alarm:', error);
-                    }
-                }
-                
-                // Clear the scraping interval
-                if (scrapingInterval !== null) {
-                    clearInterval(scrapingInterval);
-                    scrapingInterval = null;
-                    logger.log('✅ Scraping interval cleared successfully');
-                }
-                
-                logger.log('🏁 Scraping process stopped successfully after all sample URLs were scraped');
-                return;
+                logger.log('🔄 Continuing scraping process with generated URLs');
             }
         }
         

@@ -1,7 +1,8 @@
-// Simplified URL selector that only uses sample URLs from topics
+// Simplified URL selector that uses sample URLs from topics and DuckDuckGo search as fallback
 // This replaces the complex URL generation logic
 
 import { addCacheBusterToUrl } from './url-utils.js';
+import { getUrlsForTopic } from './duckduckgo-search.js';
 
 // Logger utility
 const logger = {  
@@ -184,12 +185,10 @@ async function selectTopicAndUrl(topics) {
         return { topic: null, url: null };
     }
     
-    // Check if all sample URLs have been scraped
-    if (checkAllSampleUrlsScraped(topics)) {
-        // Set the flag to true to indicate all sample URLs have been scraped
-        allSampleUrlsScraped = true;
-        logger.log('All sample URLs have been scraped, stopping scraping process');
-        return { topic: null, url: null, allScraped: true };
+    // Get the current status of sample URL scraping (for logging only)
+    const allSamplesDone = checkAllSampleUrlsScraped(topics);
+    if (allSamplesDone) {
+        logger.log('🔄 All sample URLs have been scraped, continuing with generated URLs');
     }
     
     // Filter active topics
@@ -215,14 +214,34 @@ async function selectTopicAndUrl(topics) {
     // Use sample URLs from the topic
     let url = null;
     
-    // Try using a sample URL from the topic if available
-    if (selectedTopic.sampleArticleUrls && selectedTopic.sampleArticleUrls.length > 0) {
+    // Check if all sample URLs have been scraped for all topics
+    const allSamplesScraped = await chrome.storage.local.get(['allSampleUrlsScraped']);
+    const isAllSamplesScraped = allSamplesScraped.allSampleUrlsScraped === true;
+    
+    // If all samples are scraped, go directly to generating new URLs
+    if (isAllSamplesScraped) {
+        logger.log('🔄 All sample URLs have been scraped, generating new URLs from DuckDuckGo');
+        try {
+            // Generate a batch of new URLs for this topic
+            const generatedUrls = await getUrlsForTopic(selectedTopic);
+            
+            if (generatedUrls && generatedUrls.length > 0) {
+                // Take a random URL from the generated URLs
+                const randomUrlIndex = Math.floor(Math.random() * Math.min(generatedUrls.length, 5));
+                url = generatedUrls[randomUrlIndex];
+                logger.log(`🔍 Using generated URL: ${url}`);
+            } else {
+                logger.log('❌ No URLs could be generated for this topic, will try another topic next time');
+                return { topic: null, url: null };
+            }
+        } catch (error) {
+            logger.error('Error generating URLs:', error);
+            return { topic: null, url: null };
+        }
+    }
+    // Otherwise, try sample URLs first, then fall back to generated URLs
+    else if (selectedTopic.sampleArticleUrls && selectedTopic.sampleArticleUrls.length > 0) {
         logger.log(`Topic has ${selectedTopic.sampleArticleUrls.length} sample URLs available`);
-        
-        // Log all available sample URLs for debugging
-        selectedTopic.sampleArticleUrls.forEach((sampleUrl, index) => {
-            logger.log(`Sample URL ${index + 1}: ${sampleUrl}`);
-        });
         
         // Filter out successfully scraped URLs using the same URL normalization
         const availableSampleUrls = selectedTopic.sampleArticleUrls.filter(sampleUrl => {
@@ -252,13 +271,47 @@ async function selectTopicAndUrl(topics) {
             url = availableSampleUrls[randomUrlIndex];
             logger.log(`🔄 Using new sample URL: ${url}`);
         } else {
-            // If all sample URLs for this topic have been scraped, try another topic
-            logger.log('✅ All sample URLs for this topic have been scraped, will try another topic next time');
-            return { topic: null, url: null };
+            // If all sample URLs for this topic have been scraped, generate new URLs
+            logger.log('🔍 All sample URLs for this topic have been scraped, generating new URLs...');
+            try {
+                // Generate a batch of new URLs for this topic
+                const generatedUrls = await getUrlsForTopic(selectedTopic);
+                
+                if (generatedUrls && generatedUrls.length > 0) {
+                    // Always use newly generated URLs without filtering against scraped ones
+                    // This ensures we always have fresh URLs to try
+                    const randomUrlIndex = Math.floor(Math.random() * Math.min(generatedUrls.length, 5));
+                    url = generatedUrls[randomUrlIndex];
+                    logger.log(`🔍 Using generated URL: ${url}`);
+                } else {
+                    logger.log('❌ No URLs could be generated for this topic, will try another topic next time');
+                    return { topic: null, url: null };
+                }
+            } catch (error) {
+                logger.error('Error generating URLs:', error);
+                return { topic: null, url: null };
+            }
         }
     } else {
-        logger.log('❌ No sample URLs available for topic');
-        return { topic: selectedTopic, url: null };
+        // No sample URLs available, generate URLs directly
+        logger.log('⚠️ No sample URLs available for topic, generating URLs directly');
+        try {
+            // Generate a batch of new URLs for this topic
+            const generatedUrls = await getUrlsForTopic(selectedTopic);
+            
+            if (generatedUrls && generatedUrls.length > 0) {
+                // Take a random URL from the first 5 generated URLs
+                const randomUrlIndex = Math.floor(Math.random() * Math.min(generatedUrls.length, 5));
+                url = generatedUrls[randomUrlIndex];
+                logger.log(`🔍 Using generated URL: ${url}`);
+            } else {
+                logger.log('❌ No URLs could be generated for this topic, will try another topic next time');
+                return { topic: null, url: null };
+            }
+        } catch (error) {
+            logger.error('Error generating URLs:', error);
+            return { topic: null, url: null };
+        }
     }
     
     // If we have a valid URL, add a cache buster
@@ -300,15 +353,19 @@ async function trackSuccessfulUrl(topicId, url) {
     // More robust URL normalization - handles various URL formats
     let cleanUrl = url;
     
+    // Remove cache buster parameter if present
+    if (cleanUrl.includes('?_cb=')) {
+        cleanUrl = cleanUrl.split('?_cb=')[0];
+    }
     // Remove any URL parameters (everything after ?)
-    if (cleanUrl.includes('?')) {
+    else if (cleanUrl.includes('?')) {
         cleanUrl = cleanUrl.split('?')[0];
     }
     
     // Remove trailing slashes for consistency
     cleanUrl = cleanUrl.replace(/\/$/, '');
     
-    logger.log(`Tracking successfully scraped URL for topic ${topicId}: ${cleanUrl}`);
+    logger.log(`Checking URL for tracking: ${cleanUrl}`);
     
     // Initialize tracking for this topic if not exists
     if (!successfullyScrapedUrls[topicId]) {
@@ -316,48 +373,74 @@ async function trackSuccessfulUrl(topicId, url) {
         logger.log(`Initialized tracking for new topic ${topicId}`);
     }
     
-    // Check if URL is already tracked (case-insensitive comparison)
-    const isAlreadyTracked = successfullyScrapedUrls[topicId].some(trackedUrl => {
-        return trackedUrl.toLowerCase() === cleanUrl.toLowerCase();
-    });
-    
-    // Only add the URL if it's not already in the list
-    if (!isAlreadyTracked) {
-        // Add the URL to the tracked list
-        successfullyScrapedUrls[topicId].push(cleanUrl);
-        
-        // Save updated URL history immediately
-        await saveSuccessfullyScrapedUrls();
-        logger.log(`✅ URL tracked successfully for topic ${topicId}`);
-        
-        // Log the current count of tracked URLs for this topic
-        logger.log(`📊 Topic ${topicId} now has ${successfullyScrapedUrls[topicId].length} tracked URLs`);
-        
-        // After adding a new URL, check if all sample URLs have been scraped
-        // We need to get the topics to check this
-        try {
-            const result = await chrome.storage.local.get(['topics']);
-            if (result.topics && result.topics.length > 0) {
-                // Update the allSampleUrlsScraped flag
-                const wasAllScraped = allSampleUrlsScraped;
-                allSampleUrlsScraped = checkAllSampleUrlsScraped(result.topics);
+    // First, determine if this is a sample URL that should be tracked
+    try {
+        const result = await chrome.storage.local.get(['topics']);
+        if (result.topics && result.topics.length > 0) {
+            // Find the current topic
+            const currentTopic = result.topics.find(topic => topic.id === topicId);
+            
+            if (currentTopic && currentTopic.sampleArticleUrls && currentTopic.sampleArticleUrls.length > 0) {
+                // Check if the URL is one of the sample URLs
+                const isSampleUrl = currentTopic.sampleArticleUrls.some(sampleUrl => {
+                    // Normalize the sample URL the same way
+                    let normalizedSampleUrl = sampleUrl;
+                    if (normalizedSampleUrl.includes('?')) {
+                        normalizedSampleUrl = normalizedSampleUrl.split('?')[0];
+                    }
+                    normalizedSampleUrl = normalizedSampleUrl.replace(/\/$/, '');
+                    
+                    // Case-insensitive comparison
+                    return normalizedSampleUrl.toLowerCase() === cleanUrl.toLowerCase();
+                });
                 
-                // Use different symbols based on the change in status
-                let flagSymbol = allSampleUrlsScraped ? '🏁' : '⏳';
-                if (!wasAllScraped && allSampleUrlsScraped) {
-                    flagSymbol = '🎉';
-                    logger.log('🎉 MILESTONE: All sample URLs are now scraped!');
+                // Only track if it's a sample URL
+                if (isSampleUrl) {
+                    logger.log(`💾 URL identified as a sample URL, will be tracked: ${cleanUrl}`);
+                    
+                    // Check if URL is already tracked (case-insensitive comparison)
+                    const isAlreadyTracked = successfullyScrapedUrls[topicId].some(trackedUrl => {
+                        return trackedUrl.toLowerCase() === cleanUrl.toLowerCase();
+                    });
+                    
+                    // Only add the URL if it's not already in the list
+                    if (!isAlreadyTracked) {
+                        // Add the URL to the tracked list
+                        successfullyScrapedUrls[topicId].push(cleanUrl);
+                        
+                        // Save updated URL history immediately
+                        await saveSuccessfullyScrapedUrls();
+                        logger.log(`✅ Sample URL tracked successfully for topic ${topicId}`);
+                        
+                        // Log the current count of tracked URLs for this topic
+                        logger.log(`📊 Topic ${topicId} now has ${successfullyScrapedUrls[topicId].length} tracked sample URLs`);
+                        
+                        // After adding a new URL, check if all sample URLs have been scraped
+                        const wasAllScraped = allSampleUrlsScraped;
+                        allSampleUrlsScraped = checkAllSampleUrlsScraped(result.topics);
+                        
+                        // Use different symbols based on the change in status
+                        let flagSymbol = allSampleUrlsScraped ? '🏁' : '⏳';
+                        if (!wasAllScraped && allSampleUrlsScraped) {
+                            flagSymbol = '🎉';
+                            logger.log('🎉 MILESTONE: All sample URLs are now scraped!');
+                        }
+                        
+                        logger.log(`${flagSymbol} Updated allSampleUrlsScraped flag: ${allSampleUrlsScraped}`);
+                    } else {
+                        logger.log(`⏭️ Sample URL already tracked for topic ${topicId}: ${cleanUrl}`);
+                    }
+                } else {
+                    logger.log(`🔎 URL is not a sample URL, skipping tracking: ${cleanUrl}`);
                 }
-                
-                logger.log(`${flagSymbol} Updated allSampleUrlsScraped flag: ${allSampleUrlsScraped}`);
             } else {
-                logger.warn('No topics found when checking all sample URLs scraped');
+                logger.log(`ℹ️ Topic ${topicId} has no sample URLs, skipping tracking`);
             }
-        } catch (err) {
-            logger.error('Error checking all sample URLs scraped after tracking:', err);
+        } else {
+            logger.warn('No topics found when checking sample URLs');
         }
-    } else {
-        logger.log(`⏭️ URL already tracked for topic ${topicId}: ${cleanUrl}`);
+    } catch (err) {
+        logger.error('Error determining if URL should be tracked:', err);
     }
     
     return true;
@@ -379,7 +462,7 @@ async function areAllSampleUrlsScraped() {
             let statusSymbol = allSampleUrlsScraped ? '✅' : '⏳';
             if (!previousState && allSampleUrlsScraped) {
                 statusSymbol = '🎉';
-                logger.log('🎉 MILESTONE: All sample URLs are now scraped!');
+                logger.log('🎉 MILESTONE: All sample URLs are now scraped! Continuing with generated URLs');
             }
             
             logger.log(`${statusSymbol} Rechecked allSampleUrlsScraped flag: ${allSampleUrlsScraped}`);

@@ -5,12 +5,14 @@
   "description": "RhinoSpider Chrome Extension",
   "permissions": [
     "storage",
-    "tabs"
+    "tabs",
+    "webRequest"
   ],
   "host_permissions": [
     "https://*.ic0.app/*",
     "https://icp0.io/*",
-    "https://identity.ic0.app/*"
+    "https://identity.ic0.app/*",
+    "https://duckduckgo.com/*"
   ],
   "background": {
     "service_worker": "background.js",

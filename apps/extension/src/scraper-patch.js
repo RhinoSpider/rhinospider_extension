@@ -79,7 +79,16 @@ async function areAllSampleUrlsScraped() {
     try {
         const result = await urlSelector.areAllSampleUrlsScraped();
         const statusSymbol = result ? '🎉' : '⏳';
-        logger.log(`${statusSymbol} All sample URLs scraped status: ${result}`);
+        
+        if (result) {
+            logger.log(`${statusSymbol} All sample URLs have been scraped. Continuing with DuckDuckGo-generated URLs.`);
+            
+            // Store this state in local storage for other components to reference
+            await chrome.storage.local.set({ allSampleUrlsScraped: true });
+        } else {
+            logger.log(`${statusSymbol} All sample URLs scraped status: ${result}. Still processing sample URLs.`);
+        }
+        
         return result;
     } catch (error) {
         logger.error('Error checking if all sample URLs have been scraped', error);
