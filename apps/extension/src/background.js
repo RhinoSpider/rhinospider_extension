@@ -651,7 +651,7 @@ async function performScrape() {
         }
         
         if (allScraped) {
-            logger.log('🎉 All sample URLs have been scraped, stopping the scraping process');
+            logger.log('🎉 All sample URLs have been scraped, continuing with URLs from search proxy service');
             
             // Double-check to make absolutely sure
             const confirmCheck = await scraperPatch.areAllSampleUrlsScraped();
@@ -659,37 +659,18 @@ async function performScrape() {
                 logger.warn('⚠️ Confirmation check failed - some URLs may not be scraped. Continuing process.');
                 // Continue with scraping since confirmation failed
             } else {
-                // Update badge to indicate scraping is completed
-                chrome.action.setBadgeText({ text: 'DONE' });
+                // Update badge to indicate we're now using search proxy URLs
+                chrome.action.setBadgeText({ text: 'PROXY' });
                 chrome.action.setBadgeBackgroundColor({ color: '#2196F3' });
                 
-                // Set scraping state to inactive but don't disable the extension
-                isScrapingActive = false;
+                // Store the state persistently but keep scraping active
                 await chrome.storage.local.set({ 
-                    isScrapingActive: false, 
-                    lastStopTime: Date.now(),
-                    allSampleUrlsScraped: true // Store this state persistently
+                    allSampleUrlsScraped: true, // Store this state persistently
+                    isScrapingActive: true // Keep scraping active
                 });
                 
-                // Clear any existing alarms
-                if (chrome.alarms && typeof chrome.alarms.clear === 'function') {
-                    try {
-                        await chrome.alarms.clear('scrapeAlarm');
-                        logger.log('✅ Scrape alarm cleared successfully');
-                    } catch (error) {
-                        logger.error('❌ Error clearing scrape alarm:', error);
-                    }
-                }
-                
-                // Clear the scraping interval
-                if (scrapingInterval !== null) {
-                    clearInterval(scrapingInterval);
-                    scrapingInterval = null;
-                    logger.log('✅ Scraping interval cleared successfully');
-                }
-                
-                logger.log('🏁 Scraping process stopped successfully after all sample URLs were scraped');
-                return;
+                logger.log('🔄 Continuing scraping process with URLs from search proxy service');
+                // We don't return here, we continue with the scraping process
             }
         }
         
@@ -1953,8 +1934,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     // Load topics
                     getTopics().then(loadedTopics => {
                         // If no topics were loaded from proxy, use fallback mock topics
-                        if (!loadedTopics || loadedTopics.length === 0) {
-                            loadedTopics = getMockTopicsFallback();
+                        if (!loadedTopics || loadedTopics.length === 0) {            
                             topics = loadedTopics;
                             
                             // Cache the fallback topics
@@ -1975,10 +1955,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                             sendResponse({ success: false, error: error.message });
                         });
                     }).catch(error => {
-                        logger.error('Error loading topics:', error);
-                        
-                        // Use mock topics as fallback in case of error
-                        topics = getMockTopicsFallback();
+                        logger.error('Error loading topics:', error);                                        
                         
                         // Cache the fallback topics
                         chrome.storage.local.set({
@@ -2046,8 +2023,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                                 
                                 // If no topics were loaded, use mock topics as fallback
                                 if (!loadedTopics || loadedTopics.length === 0) {
-                                    logger.log('No topics loaded from proxy, using fallback mock topics');
-                                    loadedTopics = getMockTopicsFallback();
+                                    logger.log('No topics loaded from proxy, using fallback mock topics');                                
                                     topics = loadedTopics;
                                     
                                     // Cache the fallback topics
@@ -2068,8 +2044,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                                 logger.error('Error loading topics after login:', error);
                                 
                                 // Use mock topics as fallback in case of error
-                                logger.log('Error loading topics, using fallback mock topics');
-                                topics = getMockTopicsFallback();
+                                logger.log('Error loading topics, using fallback mock topics');                                
                                 
                                 // Cache the fallback topics
                                 chrome.storage.local.set({
@@ -2216,104 +2191,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Return true to indicate we'll respond asynchronously
     return true;
 });
-
-// Get mock topics for testing
-function getMockTopics() {
-    logger.log('Creating mock topics for testing');
-    return [
-        {
-            id: 'topic_mock_1',
-            status: 'active',
-            name: 'Mock Topic 1',
-            description: 'This is a mock topic for testing',
-            urlPatterns: ['https://example.com/*', 'https://test.com/*'],
-            extractionRules: {
-                fields: [
-                    { name: 'Title', required: true, fieldType: 'text' },
-                    { name: 'Content', required: true, fieldType: 'text' }
-                ]
-            }
-        },
-        {
-            id: 'topic_mock_2',
-            status: 'active',
-            name: 'Mock Topic 2',
-            description: 'This is another mock topic for testing',
-            urlPatterns: ['https://test.org/*'],
-            extractionRules: {
-                fields: [
-                    { name: 'Title', required: true, fieldType: 'text' },
-                    { name: 'Description', required: true, fieldType: 'text' },
-                    { name: 'Author', required: false, fieldType: 'text' }
-                ]
-            }
-        }
-    ];
-}
-
-// Get mock topics for fallback
-function getMockTopicsFallback() {
-    return [
-        {
-            id: 'topic_45b4mrcnl',
-            status: 'active',
-            name: 'Product Hunt Launches',
-            description: 'Scrape latest product launches from Product Hunt\'s homepage URL',
-            urlPatterns: ['https://www.producthunt.com/*'],
-            sampleArticleUrls: [
-                'https://www.producthunt.com/posts/chatgpt-4o',
-                'https://www.producthunt.com/posts/perplexity-pro'
-            ],
-            extractionRules: {
-                fields: [
-                    { name: 'Title', required: true, fieldType: 'text' },
-                    { name: 'Description', required: true, fieldType: 'text' },
-                    { name: 'Votes', required: true, fieldType: 'text' },
-                    { name: 'Maker', required: true, fieldType: 'text' },
-                    { name: 'LaunchDate', required: true, fieldType: 'text' }
-                ],
-                customPrompt: 'Extract information from the webpage about Product Hunt Launches'
-            },
-            aiConfig: {
-                model: 'gpt-3.5-turbo',
-                costLimits: {
-                    maxConcurrent: 5,
-                    maxDailyCost: 1,
-                    maxMonthlyCost: 10
-                }
-            }
-        },
-        {
-            id: 'topic_7i792lvvl',
-            status: 'active',
-            name: 'TechCrunch News',
-            description: 'Scrape latest technology news articles from TechCrunch',
-            urlPatterns: ['https://techcrunch.com/*/', 'https://techcrunch.com/20*/'],
-            sampleArticleUrls: [
-                'https://techcrunch.com/2023/12/15/openai-announces-gpt-store-for-january-launch/',
-                'https://techcrunch.com/2024/02/15/anthropic-introduces-claude-3-family-of-ai-models/'
-            ],
-            extractionRules: {
-                fields: [
-                    { name: 'Title', required: true, fieldType: 'text' },
-                    { name: 'Author', required: true, fieldType: 'text' },
-                    { name: 'Date', required: true, fieldType: 'text' },
-                    { name: 'Content', required: true, fieldType: 'text' },
-                    { name: 'Category', required: false, fieldType: 'text' }
-                ],
-                customPrompt: 'Extract information from the webpage about TechCrunch News'
-            },
-            aiConfig: {
-                model: 'gpt-3.5-turbo',
-                costLimits: {
-                    maxConcurrent: 5,
-                    maxDailyCost: 1,
-                    maxMonthlyCost: 10
-                }
-            }
-        }
-    ];
-}
 
 // Get mock AI config for fallback
 function getMockAIConfig() {

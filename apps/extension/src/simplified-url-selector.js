@@ -1,7 +1,8 @@
-// Simplified URL selector that only uses sample URLs from topics
+// Simplified URL selector that uses sample URLs from topics and search proxy service as fallback
 // This replaces the complex URL generation logic
 
 import { addCacheBusterToUrl } from './url-utils.js';
+import { getUrlForTopic } from './search-proxy-client.js';
 
 // Logger utility
 const logger = {  
@@ -188,8 +189,8 @@ async function selectTopicAndUrl(topics) {
     if (checkAllSampleUrlsScraped(topics)) {
         // Set the flag to true to indicate all sample URLs have been scraped
         allSampleUrlsScraped = true;
-        logger.log('All sample URLs have been scraped, stopping scraping process');
-        return { topic: null, url: null, allScraped: true };
+        logger.log('All sample URLs have been scraped, switching to search proxy service');
+        // Continue with the process, we'll use search proxy service as fallback
     }
     
     // Filter active topics
@@ -252,13 +253,40 @@ async function selectTopicAndUrl(topics) {
             url = availableSampleUrls[randomUrlIndex];
             logger.log(`🔄 Using new sample URL: ${url}`);
         } else {
-            // If all sample URLs for this topic have been scraped, try another topic
-            logger.log('✅ All sample URLs for this topic have been scraped, will try another topic next time');
-            return { topic: null, url: null };
+            // If all sample URLs for this topic have been scraped, try using search proxy service
+            logger.log('✅ All sample URLs for this topic have been scraped, trying search proxy service');
+            try {
+                // Get a URL for this topic from the search proxy service
+                url = await getUrlForTopic(selectedTopic);
+                
+                if (url) {
+                    logger.log(`🔍 Using URL from search proxy service: ${url}`);
+                } else {
+                    logger.log('❌ No URLs could be generated for this topic, will try another topic next time');
+                    return { topic: null, url: null };
+                }
+            } catch (error) {
+                logger.error('Error getting URL from search proxy service:', error);
+                return { topic: null, url: null };
+            }
         }
     } else {
-        logger.log('❌ No sample URLs available for topic');
-        return { topic: selectedTopic, url: null };
+        // No sample URLs available, use search proxy service directly
+        logger.log('❌ No sample URLs available for topic, using search proxy service');
+        try {
+            // Get a URL for this topic from the search proxy service
+            url = await getUrlForTopic(selectedTopic);
+            
+            if (url) {
+                logger.log(`🔍 Using URL from search proxy service: ${url}`);
+            } else {
+                logger.log('❌ No URLs could be generated for this topic, will try another topic next time');
+                return { topic: null, url: null };
+            }
+        } catch (error) {
+            logger.error('Error getting URL from search proxy service:', error);
+            return { topic: null, url: null };
+        }
     }
     
     // If we have a valid URL, add a cache buster
