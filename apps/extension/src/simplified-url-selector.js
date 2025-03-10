@@ -2,7 +2,10 @@
 // This replaces the complex URL generation logic
 
 import { addCacheBusterToUrl } from './url-utils.js';
-import { getUrlForTopic } from './search-proxy-client.js';
+import { getUrlForTopic, prefetchUrlsForAllTopics } from './search-proxy-client.js';
+
+// Cache for prefetched URLs
+let prefetchedUrlsByTopic = {};
 
 // Logger utility
 const logger = {  
@@ -202,11 +205,34 @@ async function selectTopicAndUrl(topics) {
         return { topic: null, url: null };
     }
     
-    // Select a random topic from active topics
-    const randomIndex = Math.floor(Math.random() * activeTopics.length);
-    const selectedTopic = activeTopics[randomIndex];
+    // Prefetch URLs for all topics if we haven't already
+    if (Object.keys(prefetchedUrlsByTopic).length === 0) {
+        logger.log('No prefetched URLs available, prefetching for all topics');
+        await prefetchUrlsForTopics(activeTopics);
+    }
     
-    logger.log(`Selected topic: ${selectedTopic.name}`);
+    // Get all topics that have prefetched URLs available
+    const topicsWithUrls = activeTopics.filter(topic => 
+        prefetchedUrlsByTopic[topic.id] && 
+        prefetchedUrlsByTopic[topic.id].length > 0
+    );
+    
+    // Select a topic - prioritize topics with available prefetched URLs
+    let selectedTopic;
+    
+    if (topicsWithUrls.length > 0) {
+        // Select a random topic from those with available URLs
+        const randomIndex = Math.floor(Math.random() * topicsWithUrls.length);
+        selectedTopic = topicsWithUrls[randomIndex];
+        logger.log(`Selected topic with available URLs: ${selectedTopic.name}`);
+    } else {
+        // Fall back to selecting a random topic if none have prefetched URLs
+        const randomIndex = Math.floor(Math.random() * activeTopics.length);
+        selectedTopic = activeTopics[randomIndex];
+        logger.log(`Selected random topic (no prefetched URLs available): ${selectedTopic.name}`);
+    }
+    
+    logger.log(`Processing topic: ${selectedTopic.name}`);
     
     // Initialize tracking for this topic if not exists
     if (!successfullyScrapedUrls[selectedTopic.id]) {
@@ -253,8 +279,65 @@ async function selectTopicAndUrl(topics) {
             url = availableSampleUrls[randomUrlIndex];
             logger.log(`🔄 Using new sample URL: ${url}`);
         } else {
-            // If all sample URLs for this topic have been scraped, try using search proxy service
-            logger.log('✅ All sample URLs for this topic have been scraped, trying search proxy service');
+            // If all sample URLs for this topic have been scraped, try using prefetched URLs or search proxy service
+            logger.log('✅ All sample URLs for this topic have been scraped, checking for prefetched URLs');
+            
+            // Check if we have prefetched URLs for this topic
+            if (prefetchedUrlsByTopic[selectedTopic.id] && prefetchedUrlsByTopic[selectedTopic.id].length > 0) {
+                // Get a URL from the prefetched URLs
+                const prefetchedUrl = prefetchedUrlsByTopic[selectedTopic.id].shift();
+                url = prefetchedUrl;
+                logger.log(`🔍 Using prefetched URL: ${url}`);
+                
+                // If we've used all prefetched URLs for this topic, prefetch more in the background
+                if (prefetchedUrlsByTopic[selectedTopic.id].length === 0) {
+                    logger.log(`Prefetched URLs for topic ${selectedTopic.name} depleted, will prefetch more in the background`);
+                    // Prefetch more URLs for this topic in the background
+                    getUrlForTopic(selectedTopic).catch(error => {
+                        logger.error('Error prefetching more URLs in background:', error);
+                    });
+                }
+            } else {
+                // No prefetched URLs available, get from search proxy service directly
+                logger.log('No prefetched URLs available, getting from search proxy service');
+                try {
+                    // Get a URL for this topic from the search proxy service
+                    url = await getUrlForTopic(selectedTopic);
+                    
+                    if (url) {
+                        logger.log(`🔍 Using URL from search proxy service: ${url}`);
+                    } else {
+                        logger.log('❌ No URLs could be generated for this topic, will try another topic next time');
+                        return { topic: null, url: null };
+                    }
+                } catch (error) {
+                    logger.error('Error getting URL from search proxy service:', error);
+                    return { topic: null, url: null };
+                }
+            }
+        }
+    } else {
+        // No sample URLs available, check for prefetched URLs or use search proxy service
+        logger.log('❌ No sample URLs available for topic, checking for prefetched URLs');
+        
+        // Check if we have prefetched URLs for this topic
+        if (prefetchedUrlsByTopic[selectedTopic.id] && prefetchedUrlsByTopic[selectedTopic.id].length > 0) {
+            // Get a URL from the prefetched URLs
+            const prefetchedUrl = prefetchedUrlsByTopic[selectedTopic.id].shift();
+            url = prefetchedUrl;
+            logger.log(`🔍 Using prefetched URL: ${url}`);
+            
+            // If we've used all prefetched URLs for this topic, prefetch more in the background
+            if (prefetchedUrlsByTopic[selectedTopic.id].length === 0) {
+                logger.log(`Prefetched URLs for topic ${selectedTopic.name} depleted, will prefetch more in the background`);
+                // Prefetch more URLs for this topic in the background
+                getUrlForTopic(selectedTopic).catch(error => {
+                    logger.error('Error prefetching more URLs in background:', error);
+                });
+            }
+        } else {
+            // No prefetched URLs available, get from search proxy service directly
+            logger.log('No prefetched URLs available, getting from search proxy service');
             try {
                 // Get a URL for this topic from the search proxy service
                 url = await getUrlForTopic(selectedTopic);
@@ -269,23 +352,6 @@ async function selectTopicAndUrl(topics) {
                 logger.error('Error getting URL from search proxy service:', error);
                 return { topic: null, url: null };
             }
-        }
-    } else {
-        // No sample URLs available, use search proxy service directly
-        logger.log('❌ No sample URLs available for topic, using search proxy service');
-        try {
-            // Get a URL for this topic from the search proxy service
-            url = await getUrlForTopic(selectedTopic);
-            
-            if (url) {
-                logger.log(`🔍 Using URL from search proxy service: ${url}`);
-            } else {
-                logger.log('❌ No URLs could be generated for this topic, will try another topic next time');
-                return { topic: null, url: null };
-            }
-        } catch (error) {
-            logger.error('Error getting URL from search proxy service:', error);
-            return { topic: null, url: null };
         }
     }
     
@@ -305,11 +371,53 @@ async function selectTopicAndUrl(topics) {
     };
 }
 
+// Prefetch URLs for all topics
+async function prefetchUrlsForTopics(topics) {
+    if (!topics || topics.length === 0) {
+        logger.log('No topics to prefetch URLs for');
+        return {};
+    }
+    
+    logger.log(`Starting URL prefetch for ${topics.length} topics`);
+    
+    try {
+        // Prefetch URLs for all topics at once
+        prefetchedUrlsByTopic = await prefetchUrlsForAllTopics(topics);
+        
+        const totalPrefetchedUrls = Object.values(prefetchedUrlsByTopic)
+            .reduce((total, urls) => total + urls.length, 0);
+        
+        logger.log(`✅ Successfully prefetched ${totalPrefetchedUrls} URLs for ${Object.keys(prefetchedUrlsByTopic).length} topics`);
+        return prefetchedUrlsByTopic;
+    } catch (error) {
+        logger.error('Error prefetching URLs for topics', error);
+        return {};
+    }
+}
+
 // Initialize the module
 async function initialize() {
     await loadSuccessfullyScrapedUrls();
     allSampleUrlsScraped = false;
     logger.log('URL selector initialized');
+    
+    // Try to prefetch URLs for topics if they're available
+    try {
+        // Get topics from storage
+        const result = await chrome.storage.local.get(['topics']);
+        if (result.topics && Array.isArray(result.topics) && result.topics.length > 0) {
+            logger.log(`Found ${result.topics.length} topics in storage, prefetching URLs`);
+            // Prefetch URLs for all topics in the background
+            prefetchUrlsForTopics(result.topics).catch(error => {
+                logger.error('Error prefetching URLs during initialization:', error);
+            });
+        } else {
+            logger.log('No topics found in storage, skipping URL prefetch');
+        }
+    } catch (error) {
+        logger.error('Error checking for topics during initialization:', error);
+    }
+    
     return true;
 }
 
@@ -447,5 +555,6 @@ export {
     saveSuccessfullyScrapedUrls,
     trackSuccessfulUrl,
     checkAllSampleUrlsScraped,
-    areAllSampleUrlsScraped
+    areAllSampleUrlsScraped,
+    prefetchUrlsForTopics
 };

@@ -146,11 +146,26 @@ async function testSampleUrlSelection(topics) {
     };
 }
 
+// Prefetch URLs for all topics
+async function prefetchUrlsForTopics(topics) {
+    logger.log('Prefetching URLs for all topics');
+    
+    try {
+        await urlSelector.prefetchUrlsForTopics(topics);
+        logger.log('Successfully prefetched URLs for all topics');
+        return true;
+    } catch (error) {
+        logger.error('Error prefetching URLs for topics', error);
+        return false;
+    }
+}
+
 // Export the patch functions
 export {
     initialize,
     selectTopicAndUrl,
     trackScrapedUrl,
     areAllSampleUrlsScraped,
-    testSampleUrlSelection
+    testSampleUrlSelection,
+    prefetchUrlsForTopics
 };

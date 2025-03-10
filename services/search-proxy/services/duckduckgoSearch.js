@@ -33,75 +33,106 @@ async function searchDuckDuckGo(topic, keywords = [], page = 0) {
       query += ' ' + keywords.join(' ');
     }
     
-    // DuckDuckGo uses 's' parameter for pagination, 30 results per page
-    const start = page * 30;
+    // Determine how many pages to fetch based on the requested page
+    // For page 0, fetch 3 pages; for page 1, fetch pages 3-5, etc.
+    const startPageOffset = page * 3;
+    const pagesToFetch = 3; // Fetch 3 pages at a time
     
-    // Construct search URL - DuckDuckGo HTML search
-    const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}&s=${start}`;
+    // Array to hold all URLs
+    const allUrls = [];
     
-    console.log(`Searching DuckDuckGo for: ${query} (page ${page})`);
+    // Fetch multiple pages in parallel
+    const fetchPromises = [];
     
-    // Make request with a random user agent
-    const response = await axios.get(searchUrl, {
-      headers: {
-        'User-Agent': getRandomUserAgent(),
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache'
-      },
-      responseEncoding: 'utf-8',
-      timeout: 15000,
-      maxRedirects: 5
+    for (let i = 0; i < pagesToFetch; i++) {
+      const currentPage = startPageOffset + i;
+      const start = currentPage * 30; // DuckDuckGo uses 's' parameter for pagination, 30 results per page
+      
+      // Construct search URL - DuckDuckGo HTML search
+      const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}&s=${start}`;
+      
+      console.log(`Searching DuckDuckGo for: ${query} (page ${currentPage})`);
+      
+      // Create a fetch promise for this page
+      const fetchPromise = axios.get(searchUrl, {
+        headers: {
+          'User-Agent': getRandomUserAgent(),
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        },
+        responseEncoding: 'utf-8',
+        timeout: 15000,
+        maxRedirects: 5
+      }).then(response => {
+        // Parse HTML
+        const $ = cheerio.load(response.data);
+        
+        // Extract URLs from search results
+        const pageUrls = [];
+        
+        // DuckDuckGo HTML results are in .result elements with links
+        $('.result .links_main a').each((i, element) => {
+          const href = $(element).attr('href');
+          
+          // Skip if no href
+          if (!href) return;
+          
+          // DuckDuckGo HTML search uses redirects
+          // Extract the actual URL from the redirect URL
+          let url = href;
+          
+          if (url.includes('/d.js?')) {
+            const urlParam = new URLSearchParams(url.split('?')[1]).get('uddg');
+            if (urlParam) {
+              url = decodeURIComponent(urlParam);
+            }
+          }
+          
+          // Skip unwanted domains
+          if (
+            url && 
+            url.startsWith('http') && 
+            !url.includes('duckduckgo.com') && 
+            !url.includes('google.com') && 
+            !url.includes('youtube.com') && 
+            !url.includes('bing.com') && 
+            !url.includes('yahoo.com') && 
+            !url.includes('baidu.com') &&
+            !url.includes('facebook.com') &&
+            !url.includes('twitter.com') &&
+            !url.includes('instagram.com') &&
+            !url.includes('linkedin.com')
+          ) {
+            // Add URL if not already in the list
+            if (!pageUrls.includes(url)) {
+              pageUrls.push(url);
+            }
+          }
+        });
+        
+        console.log(`Found ${pageUrls.length} URLs from DuckDuckGo for topic: ${topic} (page ${currentPage})`);
+        return pageUrls;
+      }).catch(error => {
+        console.error(`Error fetching page ${currentPage} for topic ${topic}:`, error.message);
+        return []; // Return empty array on error
+      });
+      
+      fetchPromises.push(fetchPromise);
+    }
+    
+    // Wait for all pages to be fetched
+    const results = await Promise.all(fetchPromises);
+    
+    // Combine all URLs, ensuring uniqueness
+    const urlSet = new Set();
+    results.forEach(pageUrls => {
+      pageUrls.forEach(url => urlSet.add(url));
     });
     
-    // Parse HTML
-    const $ = cheerio.load(response.data);
-    
-    // Extract URLs from search results
-    const urls = [];
-    
-    // DuckDuckGo HTML results are in .result elements with links
-    $('.result .links_main a').each((i, element) => {
-      const href = $(element).attr('href');
-      
-      // Skip if no href
-      if (!href) return;
-      
-      // DuckDuckGo HTML search uses redirects
-      // Extract the actual URL from the redirect URL
-      let url = href;
-      
-      if (url.includes('/d.js?')) {
-        const urlParam = new URLSearchParams(url.split('?')[1]).get('uddg');
-        if (urlParam) {
-          url = decodeURIComponent(urlParam);
-        }
-      }
-      
-      // Skip unwanted domains
-      if (
-        url && 
-        url.startsWith('http') && 
-        !url.includes('duckduckgo.com') && 
-        !url.includes('google.com') && 
-        !url.includes('youtube.com') && 
-        !url.includes('bing.com') && 
-        !url.includes('yahoo.com') && 
-        !url.includes('baidu.com') &&
-        !url.includes('facebook.com') &&
-        !url.includes('twitter.com') &&
-        !url.includes('instagram.com') &&
-        !url.includes('linkedin.com')
-      ) {
-        // Add URL if not already in the list
-        if (!urls.includes(url)) {
-          urls.push(url);
-        }
-      }
-    });
-    
-    console.log(`Found ${urls.length} URLs from DuckDuckGo for topic: ${topic} (page ${page})`);
+    const urls = Array.from(urlSet);
+    console.log(`Total unique URLs found from DuckDuckGo for topic: ${topic} (batch ${page}): ${urls.length}`);
     
     return urls;
   } catch (error) {

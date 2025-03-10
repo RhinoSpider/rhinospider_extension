@@ -637,6 +637,12 @@ async function performScrape() {
             return;
         }
         
+        // Prefetch URLs for all active topics in the background
+        logger.log(`Prefetching URLs for ${activeTopics.length} active topics`);
+        scraperPatch.prefetchUrlsForTopics(activeTopics).catch(error => {
+            logger.error('Error prefetching URLs for topics:', error);
+        });
+        
         // Use simplified URL selector to select a topic and URL
         const selectedData = await scraperPatch.selectTopicAndUrl(activeTopics);
         

@@ -129,12 +129,27 @@ router.post('/urls', async (req, res, next) => {
     urlPoolCache.set(cacheKey, urlPool);
     
     // Prepare response batch with fair distribution across topics
-    const urlsPerTopic = Math.ceil(batchSize / topics.length);
+    // Calculate how many URLs to return per topic, ensuring we return as many as possible
+    // while maintaining fairness across topics
+    const availableUrls = topics.reduce((sum, topic) => sum + (urlPool[topic.id] ? urlPool[topic.id].length : 0), 0);
+    console.log(`Total available URLs across all topics: ${availableUrls}`);
+    
+    // Determine how many URLs to return per topic
+    // If we have fewer URLs than requested, return all available
+    // Otherwise, distribute fairly across topics
+    const effectiveBatchSize = Math.min(batchSize, availableUrls);
+    const urlsPerTopic = Math.ceil(effectiveBatchSize / topics.length);
+    
+    console.log(`Returning up to ${effectiveBatchSize} URLs (${urlsPerTopic} per topic)`);
+    
     let responseBatch = [];
     
     topics.forEach(topic => {
+      if (!topic || !topic.id || !urlPool[topic.id]) return;
+      
       // Take up to urlsPerTopic URLs from this topic's pool
       const topicUrls = urlPool[topic.id].splice(0, urlsPerTopic);
+      console.log(`Taking ${topicUrls.length} URLs for topic: ${topic.name}`);
       
       // Add topic info to each URL
       const topicUrlsWithInfo = topicUrls.map(url => ({
@@ -149,7 +164,7 @@ router.post('/urls', async (req, res, next) => {
     // Shuffle the response batch for randomization
     responseBatch.sort(() => Math.random() - 0.5);
     
-    // Limit to requested batch size
+    // Limit to requested batch size (should already be limited by urlsPerTopic calculation)
     responseBatch = responseBatch.slice(0, batchSize);
     
     // Update URL pool after removing the returned URLs

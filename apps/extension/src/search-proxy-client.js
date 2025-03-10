@@ -43,11 +43,11 @@ async function getExtensionId() {
 /**
  * Get URLs for topics from the search proxy service
  * @param {Array} topics - Array of topic objects
- * @param {Number} batchSize - Number of URLs to fetch (default: 500)
+ * @param {Number} batchSize - Number of URLs to fetch per topic (default: 15)
  * @param {Boolean} reset - Whether to reset the URL pool (default: false)
  * @returns {Promise<Array>} - Promise resolving to array of URLs with topic info
  */
-async function getUrlsForTopics(topics, batchSize = 500, reset = false) {
+async function getUrlsForTopics(topics, batchSize = 15, reset = false) {
     if (!topics || !Array.isArray(topics) || topics.length === 0) {
         logger.error('Invalid topics provided');
         return [];
@@ -150,8 +150,8 @@ async function getUrlForTopic(topic) {
     }
     
     try {
-        // Get URLs for this topic
-        const urlsWithInfo = await getUrlsForTopics([topic], 5);
+        // Get URLs for this topic - increased batch size to 15 to take advantage of improved search proxy service
+        const urlsWithInfo = await getUrlsForTopics([topic], 15);
         
         if (urlsWithInfo.length === 0) {
             logger.warn(`No URLs found for topic "${topic.name}"`);
@@ -166,9 +166,66 @@ async function getUrlForTopic(topic) {
     }
 }
 
+/**
+ * Prefetch URLs for all active topics at once
+ * This is more efficient than fetching URLs for one topic at a time
+ * @param {Array} topics - Array of topic objects
+ * @param {Number} urlsPerTopic - Number of URLs to fetch per topic (default: 15)
+ * @returns {Promise<Object>} - Promise resolving to object with topic IDs as keys and arrays of URLs as values
+ */
+async function prefetchUrlsForAllTopics(topics, urlsPerTopic = 15) {
+    if (!topics || !Array.isArray(topics) || topics.length === 0) {
+        logger.error('Invalid topics provided to prefetchUrlsForAllTopics');
+        return {};
+    }
+    
+    // Filter active topics
+    const activeTopics = topics.filter(topic => topic.status === 'active');
+    logger.log(`Prefetching URLs for ${activeTopics.length} active topics (${urlsPerTopic} per topic)`);
+    
+    if (activeTopics.length === 0) {
+        logger.log('No active topics to prefetch URLs for');
+        return {};
+    }
+    
+    try {
+        // Get URLs for all topics at once
+        const urlsWithInfo = await getUrlsForTopics(activeTopics, urlsPerTopic);
+        
+        if (urlsWithInfo.length === 0) {
+            logger.warn('No URLs found for any topics');
+            return {};
+        }
+        
+        // Organize URLs by topic ID
+        const urlsByTopic = {};
+        
+        urlsWithInfo.forEach(urlInfo => {
+            if (!urlsByTopic[urlInfo.topicId]) {
+                urlsByTopic[urlInfo.topicId] = [];
+            }
+            
+            urlsByTopic[urlInfo.topicId].push(urlInfo.url);
+        });
+        
+        // Log the number of URLs fetched for each topic
+        Object.keys(urlsByTopic).forEach(topicId => {
+            const topic = activeTopics.find(t => t.id === topicId);
+            const topicName = topic ? topic.name : 'Unknown';
+            logger.log(`Prefetched ${urlsByTopic[topicId].length} URLs for topic: ${topicName}`);
+        });
+        
+        return urlsByTopic;
+    } catch (error) {
+        logger.error('Failed to prefetch URLs for topics:', error);
+        return {};
+    }
+}
+
 // Export the module functions
 export {
     getUrlsForTopics,
     getUrlForTopic,
-    resetUrlPool
+    resetUrlPool,
+    prefetchUrlsForAllTopics
 };

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "RhinoSpider",
   "description": "RhinoSpider Extension",
-  "version": "1.3.2",
+  "version": "3.2.2",
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
