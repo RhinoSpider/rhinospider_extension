@@ -1,29 +1,50 @@
-# RhinoSpider Extension
+# RhinoSpider
 
-RhinoSpider - Web3-enabled distributed web scraping platform extension.
+RhinoSpider is a privacy-focused distributed web scraping platform built on the Internet Computer Protocol (ICP).
 
 ## Project Structure
 
 ```
-rhinospider_extension/
+rhinospider/
 ├── apps/
 │   ├── admin/             # Admin dashboard application
-│   └── extension/         # Chrome extension
-├── packages/
-│   └── web3-client/      # Shared Web3 integration package
-├── canisters/            # ICP canisters
-├── services/             # Backend services
-├── infrastructure/       # Infrastructure code
-└── docs/                 # Documentation
+│   ├── extension/         # Chrome extension
+│   ├── backend/           # Backend services
+│   ├── scraper-service/   # Scraper service
+│   └── viewer/            # Content viewer
+├── packages/              # Shared packages
+├── canisters/             # ICP canisters
+│   ├── admin/             # Admin canister
+│   ├── consumer/          # Consumer canister
+│   └── storage/           # Storage canister
+├── services/              # Backend services
+│   ├── ic-proxy/          # IC Proxy service
+│   └── scraper/           # Scraper service
+└── docs-consolidated/     # Consolidated documentation
 ```
 
-## Features
+## Key Features
 
-- 🌐 Web scraping with AI-powered configuration
-- 🔒 Web3 authentication with NFID
-- 💾 Decentralized storage on Internet Computer
-- 🔄 Distributed scraping network
-- 📊 Real-time analytics and monitoring
+- 🔒 **Privacy-First Design**: Extension never accesses user browsing data
+- 🌐 **Distributed Scraping**: Background scraping based on server-provided topics
+- 🔐 **Internet Identity Authentication**: Secure Web3 authentication
+- 💾 **Decentralized Storage**: Content stored on Internet Computer
+- 🤖 **AI-Powered Processing**: Field-specific extraction with custom prompts
+- 📊 **Admin Dashboard**: Topic management and content monitoring
+
+## Architecture
+
+RhinoSpider follows a strict data flow pattern:
+
+```
+Extension → Consumer Canister → Admin/Storage Canisters
+```
+
+Key principles:
+- Extension NEVER directly accesses admin or storage canisters
+- All data flows through consumer canister
+- All requests are properly authenticated with Internet Identity
+- Extension operates in read-only mode for admin data
 
 ## Development
 
@@ -35,70 +56,36 @@ pnpm install
 pnpm build
 
 # Run extension in development mode
-pnpm --filter extension dev
+cd apps/extension
+npm run dev
 
 # Run admin dashboard in development mode
-pnpm --filter admin dev
+cd apps/admin
+npm run dev
 
-# Run tests
-pnpm test
+# Deploy canisters to local network
+cd canisters
+dfx deploy --network=local
 ```
 
-## ICP Canisters
+## Documentation
 
-The project uses several Internet Computer canisters:
+Comprehensive documentation is available in the `docs-consolidated` directory:
 
-1. **Admin Backend** (`s6r66-wyaaa-aaaaj-az4sq-cai`)
-   - Manages topics, users, and AI configuration
-   - Handles authentication and authorization
-   - Provides APIs for the admin dashboard
+- [Architecture Documentation](docs-consolidated/architecture/)
+- [Extension Documentation](docs-consolidated/extension/)
+- [Deployment Guides](docs-consolidated/deployment/)
+- [Development Guides](docs-consolidated/development/)
+- [Feature Documentation](docs-consolidated/features/)
 
-2. **Admin Frontend** (`sxsvc-aqaaa-aaaaj-az4ta-cai`)
-   - Serves the admin dashboard web application
-   - URL: https://sxsvc-aqaaa-aaaaj-az4ta-cai.icp0.io/
+## Security & Privacy
 
-3. **Auth** (`slwpt-xqaaa-aaaaj-az4ra-cai`)
-   - Handles user authentication
-   - Manages user roles and permissions
-
-4. **Storage** (`smxjh-2iaaa-aaaaj-az4rq-cai`)
-   - Stores scraped data
-   - Manages data persistence and retrieval
-
-5. **Internet Identity** (Remote canister)
-   - ID: `rdmx6-jaaaa-aaaaa-aaadq-cai`
-   - Provides decentralized authentication
-
-### Deploying Canisters
-
-```bash
-# Deploy all canisters
-dfx deploy --network ic
-
-# Deploy specific canister
-dfx deploy --network ic <canister_name>
-
-# Deploy admin frontend
-cd apps/admin && npm run build
-dfx deploy --network ic admin_frontend
-```
-
-## Architecture
-
-- **Extension**: Chrome extension built with React and Vite
-- **Admin Dashboard**: React application for managing scraping configuration
-- **Web3 Client**: Shared package for Web3 integration
-- **ICP Canisters**: Smart contracts for storage, authentication, and administration
-- **Backend Services**: Supporting microservices
-
-## Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+RhinoSpider adheres to strict privacy and security guidelines:
+- NEVER accesses user's browsing history, open tabs, or personal data
+- ONLY works as a background process based on server-provided topics
+- NEVER opens new tabs or pages
+- NEVER tracks what the user is browsing
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+Copyright 2025 RhinoSpider Team

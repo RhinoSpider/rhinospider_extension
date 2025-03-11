@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2025-03-11
+
+### Added
+- Consolidated documentation in `docs-consolidated` directory
+- Comprehensive architecture documentation
+- Detailed deployment guides for all services
+- Extension documentation with privacy and security focus
+- Chrome Web Store submission preparation
+
+### Changed
+- Updated main README.md to reflect current project structure
+- Improved extension build process for Chrome Web Store submission
+- Reorganized documentation structure for better clarity
+- Enhanced security and privacy documentation
+
 ## [1.2.8] - 2025-02-03
 
 ### Added
