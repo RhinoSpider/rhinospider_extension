@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.3.0] - 2025-03-11
+## [3.2.2] - 2025-03-11
 
 ### Added
 - Consolidated documentation in `docs-consolidated` directory
@@ -20,7 +20,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reorganized documentation structure for better clarity
 - Enhanced security and privacy documentation
 
-## [1.2.8] - 2025-02-03
+## [3.2.1] - 2025-02-15
+
+### Fixed
+- Fixed IC Proxy deployment script to include all required endpoints
+- Resolved 404 errors when extension tried to access missing endpoints
+- Fixed authentication flow with Internet Identity
+- Corrected data submission process to consumer canister
+
+### Changed
+- Improved error handling in extension background service
+- Enhanced logging for debugging purposes
+- Optimized scraping performance
+
+## [3.2.0] - 2025-02-03
 
 ### Added
 - Added gradient background with colors: #131217, #360D68, #B692F6
