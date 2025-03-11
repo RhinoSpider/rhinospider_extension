@@ -16,8 +16,9 @@ actor class Storage() = this {
 
     // Stable storage
     private stable var authorizedCanisterIds: [Principal] = [
-        Principal.fromText("s6r66-wyaaa-aaaaj-az4sq-cai"), // admin
-        Principal.fromText("tgyl5-yyaaa-aaaaj-az4wq-cai")  // consumer
+        Principal.fromText("444wf-gyaaa-aaaaj-az5sq-cai"), // admin (corrected ID)
+        Principal.fromText("tgyl5-yyaaa-aaaaj-az4wq-cai"),  // consumer
+        Principal.fromText("t52au-jmmys-xpd7e-f2cc7-xgsya-2ajbl-22leo-e7hep-kclwp-kqzoq-jae") // user's principal
     ];
     private stable var stableTopics: [(Text, SharedTypes.ScrapingTopic)] = [];
     private stable var stableScrapedData: [(Text, SharedTypes.ScrapedData)] = [];
@@ -67,17 +68,25 @@ actor class Storage() = this {
 
     // Admin management
     public shared({ caller }) func addAuthorizedCanister(id: Principal): async Result.Result<(), SharedTypes.Error> {
-        if (Principal.toText(caller) != "s6r66-wyaaa-aaaaj-az4sq-cai") {
+        // Allow both the admin canister and the user's principal to add authorized canisters
+        if (Principal.toText(caller) != "444wf-gyaaa-aaaaj-az5sq-cai" and 
+            Principal.toText(caller) != "t52au-jmmys-xpd7e-f2cc7-xgsya-2ajbl-22leo-e7hep-kclwp-kqzoq-jae") {
+            Debug.print("Unauthorized caller trying to add canister: " # Principal.toText(caller));
             return #err(#NotAuthorized);
         };
+        Debug.print("Adding authorized canister: " # Principal.toText(id));
         authorizedCanisterIds := Array.append(authorizedCanisterIds, [id]);
         #ok()
     };
 
     public shared({ caller }) func removeAuthorizedCanister(id: Principal): async Result.Result<(), SharedTypes.Error> {
-        if (Principal.toText(caller) != "s6r66-wyaaa-aaaaj-az4sq-cai") {
+        // Allow both the admin canister and the user's principal to remove authorized canisters
+        if (Principal.toText(caller) != "444wf-gyaaa-aaaaj-az5sq-cai" and 
+            Principal.toText(caller) != "t52au-jmmys-xpd7e-f2cc7-xgsya-2ajbl-22leo-e7hep-kclwp-kqzoq-jae") {
+            Debug.print("Unauthorized caller trying to remove canister: " # Principal.toText(caller));
             return #err(#NotAuthorized);
         };
+        Debug.print("Removing authorized canister: " # Principal.toText(id));
         authorizedCanisterIds := Array.filter(authorizedCanisterIds, func(p: Principal): Bool { not Principal.equal(p, id) });
         #ok()
     };

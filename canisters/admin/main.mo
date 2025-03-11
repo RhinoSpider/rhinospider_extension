@@ -148,13 +148,22 @@ actor Admin {
     // Authorization check
     private func _isAuthorized(caller: Principal) : Bool {
         let callerStr = Principal.toText(caller);
+        Debug.print("Authorization check for caller: " # callerStr);
         
         // Allow consumer canister
         if (callerStr == CONSUMER_CANISTER_ID) {
+            Debug.print("Consumer canister authorized");
+            return true;
+        };
+        
+        // Explicitly allow the user's principal
+        if (callerStr == "t52au-jmmys-xpd7e-f2cc7-xgsya-2ajbl-22leo-e7hep-kclwp-kqzoq-jae") {
+            Debug.print("User principal explicitly authorized");
             return true;
         };
         
         if (Principal.isAnonymous(caller)) {
+            Debug.print("Anonymous caller rejected");
             return false; // Never allow anonymous access in production
         };
         
@@ -175,7 +184,7 @@ actor Admin {
     };
 
     // Constants
-    private let STORAGE_CANISTER_ID: Text = "smxjh-2iaaa-aaaaj-az4rq-cai";
+    private let STORAGE_CANISTER_ID: Text = "i2gk7-oyaaa-aaaao-a37cq-cai"; // Updated to the current storage canister ID
     private let CONSUMER_CANISTER_ID: Text = "tgyl5-yyaaa-aaaaj-az4wq-cai";
 
     // Canister references

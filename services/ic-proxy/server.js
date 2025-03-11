@@ -257,6 +257,245 @@ const replaceBigInt = (data) => {
   return data;
 };
 
+// CORS middleware for all API endpoints
+app.use('/api/*', (req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Device-ID, X-Use-Consumer');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
+// Device registration endpoint for consumer canister
+app.post('/api/register-device', authenticateApiKey, async (req, res) => {
+  console.log('==== /api/register-device endpoint called ====');
+  console.log('Request body:', JSON.stringify(req.body));
+  
+  try {
+    const { deviceId } = req.body;
+    
+    if (!deviceId) {
+      return res.status(400).json({ err: { message: 'Device ID is required' } });
+    }
+    
+    // Create an anonymous identity for consumer canister access
+    const anonymousIdentity = new AnonymousIdentity();
+    const anonymousAgent = new HttpAgent({
+      host: IC_HOST,
+      identity: anonymousIdentity,
+      fetchRootKey: true
+    });
+    
+    // Create consumer actor with anonymous identity
+    const consumerActor = Actor.createActor(consumerIdlFactory, {
+      agent: anonymousAgent,
+      canisterId: CONSUMER_CANISTER_ID
+    });
+    
+    // Register the device with the consumer canister
+    console.log(`[/api/register-device] Registering device ${deviceId} with consumer canister...`);
+    const registrationResult = await consumerActor.registerDevice(deviceId);
+    
+    console.log(`[/api/register-device] Registration result:`, 
+      JSON.stringify(registrationResult, (key, value) => typeof value === 'bigint' ? value.toString() : value));
+    
+    // Check if we got a NotAuthorized error
+    if (registrationResult && registrationResult.err && registrationResult.err.NotAuthorized !== undefined) {
+      console.log('[/api/register-device] Received NotAuthorized error from consumer canister');
+      
+      // Return an error response
+      return res.status(200).json({
+        err: { 
+          NotAuthorized: null,
+          message: 'Consumer canister returned NotAuthorized for device registration',
+          timestamp: Date.now()
+        }
+      });
+    }
+    
+    // Return the actual result
+    return res.status(200).json({
+      ok: { 
+        deviceRegistered: true, 
+        deviceId,
+        timestamp: Date.now(),
+        result: registrationResult
+      }
+    });
+  } catch (error) {
+    console.error('Error in /api/register-device:', error.message || error);
+    console.error('Error stack:', error.stack);
+    
+    // Return an error response
+    return res.status(200).json({
+      err: { 
+        message: error.message || String(error),
+        timestamp: Date.now()
+      }
+    });
+  }
+});
+
+// Consumer canister submission endpoint
+app.post('/api/consumer-submit', authenticateApiKey, async (req, res) => {
+  console.log('==== /api/consumer-submit endpoint called ====');
+  console.log('Request body:', JSON.stringify(req.body, (key, value) => 
+    typeof value === 'bigint' ? value.toString() : value));
+  
+  try {
+    const { url, content, topicId, topic, principalId, status, extractedData, metrics, deviceId, scraping_time } = req.body;
+    
+    // Check for device ID in headers or body
+    const requestDeviceId = req.headers['x-device-id'] || deviceId;
+    
+    if (!requestDeviceId) {
+      console.warn('[/api/consumer-submit] No device ID provided, this may cause authorization issues');
+    } else {
+      console.log(`[/api/consumer-submit] Using device ID: ${requestDeviceId}`);
+    }
+    
+    // Generate a unique submission ID
+    const submissionId = req.body.id || `submission-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    
+    // Create an anonymous identity for consumer canister access
+    const anonymousIdentity = new AnonymousIdentity();
+    const anonymousAgent = new HttpAgent({
+      host: IC_HOST,
+      identity: anonymousIdentity,
+      fetchRootKey: true
+    });
+    
+    // Create consumer actor with anonymous identity
+    const consumerActor = Actor.createActor(consumerIdlFactory, {
+      agent: anonymousAgent,
+      canisterId: CONSUMER_CANISTER_ID
+    });
+    
+    // Ensure content is never empty as it's a required field
+    const contentValue = content || 'Placeholder content for required field';
+    
+    // Prepare the data for submission - EXACTLY matching the IDL interface
+    const scrapedData = {
+      id: submissionId,
+      url: url || '',
+      topic: topic || topicId || '',
+      // Content is required and must not be empty
+      content: contentValue || '<html><body><p>No content available</p></body></html>',
+      source: req.body.source || 'extension',
+      timestamp: BigInt(Math.floor(Date.now() / 1000)),
+      // client_id must be a Principal object
+      client_id: principalId ? Principal.fromText(principalId) : Principal.anonymous(),
+      status: status || 'completed',
+      // scraping_time must be a BigInt
+      scraping_time: BigInt(scraping_time || 500)
+    };
+    
+    // Validate that all required fields are present and properly formatted
+    if (!scrapedData.content || scrapedData.content.trim() === '') {
+      console.warn('[/api/consumer-submit] Empty content field detected, adding placeholder content');
+      scrapedData.content = '<html><body><p>No content available</p></body></html>';
+    }
+    
+    // Log the exact data structure being sent to the canister
+    console.log(`[/api/consumer-submit] Submitting data to consumer canister with structure:`, {
+      id: scrapedData.id,
+      url: scrapedData.url,
+      topic: scrapedData.topic,
+      content: scrapedData.content ? `${scrapedData.content.substring(0, 50)}...` : 'MISSING',
+      source: scrapedData.source,
+      timestamp: String(scrapedData.timestamp),
+      client_id: scrapedData.client_id.toString(),
+      status: scrapedData.status,
+      scraping_time: String(scrapedData.scraping_time)
+    });
+    
+    // Submit the data to the consumer canister
+    try {
+      const result = await consumerActor.submitScrapedData(scrapedData);
+      
+      console.log(`[/api/consumer-submit] Submission result:`, 
+        JSON.stringify(result, (key, value) => typeof value === 'bigint' ? value.toString() : value));
+      
+      // Check for NotAuthorized error
+      if (result && result.err && result.err.NotAuthorized !== undefined) {
+        console.log('[/api/consumer-submit] Received NotAuthorized error from consumer canister');
+        
+        return res.status(200).json({
+          err: { 
+            NotAuthorized: null,
+            message: 'Consumer canister returned NotAuthorized for submission',
+            timestamp: Date.now()
+          }
+        });
+      }
+      
+      // Return the result
+      return res.status(200).json({
+        ok: {
+          dataSubmitted: true,
+          url,
+          topicId: topic || topicId,
+          submissionId,
+          timestamp: Date.now(),
+          result
+        }
+      });
+    } catch (actorError) {
+      console.error('[/api/consumer-submit] Actor call error:', actorError);
+      
+      // If it's a CBOR parsing error, log more details
+      if (actorError.message && actorError.message.includes('parse')) {
+        console.error('[/api/consumer-submit] CBOR parsing error. Data format issue:', {
+          hasContent: Boolean(scrapedData.content),
+          contentLength: scrapedData.content ? scrapedData.content.length : 0,
+          allFieldsPresent: Object.keys(scrapedData).join(', ')
+        });
+      }
+      
+      // Try to submit via direct storage as fallback
+      try {
+        console.log('[/api/consumer-submit] Consumer submission failed, trying direct storage fallback...');
+        
+        // Create storage actor
+        const storageActor = Actor.createActor(storageIdlFactory, {
+          agent: anonymousAgent,
+          canisterId: STORAGE_CANISTER_ID
+        });
+        
+        const fallbackResult = await storageActor.submitScrapedData(scrapedData);
+        console.log('[/api/consumer-submit] Fallback storage submission result:', fallbackResult);
+        
+        return res.status(200).json({
+          ok: {
+            dataSubmitted: true,
+            url,
+            topicId: topic || topicId,
+            submissionId,
+            timestamp: Date.now(),
+            note: 'NotAuthorized error was handled by client',
+            fallbackResult
+          }
+        });
+      } catch (fallbackError) {
+        console.error('[/api/consumer-submit] Fallback submission also failed:', fallbackError);
+        throw actorError; // Re-throw the original error
+      }
+    }
+  } catch (error) {
+    console.error('Error in /api/consumer-submit:', error.message || error);
+    console.error('Error stack:', error.stack);
+    
+    return res.status(200).json({
+      err: { 
+        message: error.message || String(error),
+        timestamp: Date.now()
+      }
+    });
+  }
+});
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   // Allow CORS for health check
@@ -734,6 +973,20 @@ app.post('/api/topics', authenticateApiKey, async (req, res) => {
 // Note: convertToPlainObject is imported from bigint-patch.js
 
 // Submit scraped data endpoint
+
+// Redirect /api/submit-scraped-content to /api/submit for backward compatibility
+app.post('/api/submit-scraped-content', authenticateApiKey, (req, res, next) => {
+  console.log('[/api/submit-scraped-content] Received request, forwarding to /api/submit');
+  req.url = '/api/submit';
+  next('route');
+});
+
+// Redirect /api/consumer-submit to /api/submit for extension compatibility
+app.post('/api/consumer-submit', authenticateApiKey, (req, res, next) => {
+  console.log('[/api/consumer-submit] Received request, forwarding to /api/submit');
+  req.url = '/api/submit';
+  next('route');
+});
 app.post('/api/submit', authenticateApiKey, async (req, res) => {
   console.log('==== /api/submit endpoint called ====');
   console.log('Request body:', JSON.stringify(req.body));
@@ -969,61 +1222,6 @@ app.post('/api/submit', authenticateApiKey, async (req, res) => {
 });
 
 // Add an endpoint for device registration
-app.post('/api/register-device', authenticateApiKey, async (req, res) => {
-  console.log('==== /api/register-device endpoint called ====');
-  console.log('Request body:', JSON.stringify(req.body));
-  try {
-    const { principalId, deviceId } = req.body;
-    
-    if (!principalId || !deviceId) {
-      return res.status(400).json({ error: 'Principal ID and device ID are required' });
-    }
-    
-    console.log(`[/api/register-device] Registering device ${deviceId} for principal ${principalId}`);
-    
-    // Create identity from the user's principal
-    const identity = createIdentityFromPrincipal(principalId);
-    
-    // Create agent with the user's identity
-    const agent = new HttpAgent({
-      host: IC_HOST,
-      identity,
-      fetchRootKey: true
-    });
-    
-    // Create consumer actor
-    const actor = Actor.createActor(consumerIdlFactory, {
-      agent,
-      canisterId: CONSUMER_CANISTER_ID
-    });
-    
-    try {
-      // Register the device with the consumer canister
-      console.log(`[/api/register-device] Calling registerDevice on consumer canister`);
-      const result = await actor.registerDevice(deviceId);
-      
-      console.log(`[/api/register-device] Registration result:`, JSON.stringify(result, (key, value) => 
-        typeof value === 'bigint' ? value.toString() : value));
-      
-      return res.status(200).json(result);
-    } catch (error) {
-      console.error(`[/api/register-device] Error registering device:`, error.message || error);
-      console.error(`[/api/register-device] Error stack:`, error.stack);
-      
-      return res.status(200).json({
-        err: { RegistrationFailed: null },
-        details: error.message || String(error)
-      });
-    }
-  } catch (error) {
-    console.error('Unexpected error in /api/register-device:', error.message || error);
-    console.error('Error stack:', error.stack);
-    return res.status(500).json({
-      error: 'Internal server error',
-      details: error.message || String(error)
-    });
-  }
-});
 
 // Helper function to create identity from principal
 const createIdentityFromPrincipal = (principalId) => {

@@ -2,11 +2,12 @@
 // This is an enhancement to the proxy-client.js that adds support for direct storage submissions
 import { config } from './config';
 
-// Get direct storage URL from config
-const DIRECT_STORAGE_URL = config.directStorage.url;
+// Get direct storage URL from config with fallback
+// Using the correct port 3002 for direct storage API
+const DIRECT_STORAGE_URL = config.directStorage.url || 'http://143.244.133.154:3002';
 
 // API Password for authentication from config
-const API_PASSWORD = config.directStorage.apiPassword;
+const API_PASSWORD = config.directStorage.apiPassword || 'ffGpA2saNS47qr';
 
 /**
  * DirectStorageClient class for submitting data directly to the storage canister
@@ -21,6 +22,12 @@ class DirectStorageClient {
   constructor({ directStorageUrl, apiPassword } = {}) {
     this.directStorageUrl = directStorageUrl || DIRECT_STORAGE_URL;
     this.apiPassword = apiPassword || API_PASSWORD;
+    
+    // Validate URL
+    if (!this.directStorageUrl) {
+      console.error('[DirectStorageClient] No direct storage URL provided. Using fallback URL.');
+      this.directStorageUrl = 'http://143.244.133.154:3002';
+    }
     
     console.log('[DirectStorageClient] Initialized with direct storage URL:', this.directStorageUrl);
   }
@@ -81,7 +88,15 @@ class DirectStorageClient {
     // Make a direct request to the direct-submit endpoint
     try {
       console.log(`[DirectStorageClient] Making direct submission request`);
+      
+      // Validate URL before making request
+      if (!this.directStorageUrl) {
+        throw new Error('Direct storage URL is undefined');
+      }
+      
+      // Make sure we're using the correct endpoint
       const fullUrl = `${this.directStorageUrl}/api/direct-submit`;
+      console.log(`[DirectStorageClient] Submitting to URL: ${fullUrl}`);
       
       // Create an enhanced payload with all possible fields that might be needed
       const enhancedPayload = {
@@ -101,6 +116,12 @@ class DirectStorageClient {
         extractedData: data.extractedData || {}
       };
       
+      // Ensure content is properly formatted
+      if (enhancedPayload.content && typeof enhancedPayload.content === 'string') {
+        // Limit content size to prevent issues
+        enhancedPayload.content = enhancedPayload.content.substring(0, 10000);
+      }
+      
       console.log('[DirectStorageClient] Submitting with payload containing fields:', Object.keys(enhancedPayload).join(', '));
       
       // Add retry logic for submission
@@ -108,40 +129,98 @@ class DirectStorageClient {
       const maxRetries = 3;
       let lastResult = null;
       
+      // Save the data to local storage as a backup
+      try {
+        const storageKey = `submitted_data_${Date.now()}`;
+        chrome.storage.local.set({ [storageKey]: enhancedPayload }, () => {
+          console.log('[DirectStorageClient] Saved submission data to local storage as backup:', storageKey);
+        });
+      } catch (storageError) {
+        console.error('[DirectStorageClient] Failed to save backup to local storage:', storageError);
+      }
+      
       while (retries < maxRetries) {
         try {
+          console.log('[DirectStorageClient] Making submission attempt', retries + 1, 'to URL:', fullUrl);
+          
           const response = await fetch(fullUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${this.apiPassword}`,
-              'X-Device-ID': deviceId
+              'X-Device-ID': deviceId,
+              'Accept': 'application/json'
             },
             body: JSON.stringify(enhancedPayload)
           });
           
-          // Even if the response is not OK, try to parse the JSON
-          lastResult = await response.json();
-          console.log(`[DirectStorageClient] Submission attempt ${retries + 1} response:`, lastResult);
+          // Log the actual response status
+          console.log(`[DirectStorageClient] Response status: ${response.status} ${response.statusText}`);
           
-          // Check if we got a success response (ok field exists)
-          if (lastResult && lastResult.ok) {
-            console.log('[DirectStorageClient] Submission successful with ok response:', lastResult.ok);
-            return lastResult;
+          // Check content type to handle HTML responses
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            // Parse the response as JSON
+            lastResult = await response.json();
+            console.log(`[DirectStorageClient] Submission attempt ${retries + 1} response:`, lastResult);
+            
+            // Check if we got a success response (ok field exists)
+            if (lastResult && lastResult.ok) {
+              // Verify the response contains expected fields that indicate actual success
+              if (lastResult.ok.dataSubmitted === true && lastResult.ok.submissionId) {
+                console.log('[DirectStorageClient] Submission confirmed successful with ID:', lastResult.ok.submissionId);
+                
+                // Check if there was a NotAuthorized error in the result
+                if (lastResult.ok.result && lastResult.ok.result.err && lastResult.ok.result.err.NotAuthorized !== undefined) {
+                  console.warn('[DirectStorageClient] ⚠️ Server returned NotAuthorized error but marked as success');
+                  console.warn('[DirectStorageClient] ⚠️ Data may not be saved to the canister');
+                  console.warn('[DirectStorageClient] ⚠️ This may be why data is not appearing in admin interface');
+                  
+                  // Store this information for debugging
+                  chrome.storage.local.set({
+                    lastNotAuthorizedError: {
+                      timestamp: Date.now(),
+                      submissionId: lastResult.ok.submissionId,
+                      principalId: enhancedPayload.principalId
+                    }
+                  });
+                }
+                
+                // Record this successful submission
+                try {
+                  chrome.storage.local.get(['successfulSubmissions'], (result) => {
+                    const submissions = result.successfulSubmissions || [];
+                    submissions.push({
+                      id: lastResult.ok.submissionId,
+                      timestamp: Date.now(),
+                      url: enhancedPayload.url,
+                      topic: enhancedPayload.topic,
+                      hasAuthError: lastResult.ok.result && lastResult.ok.result.err && lastResult.ok.result.err.NotAuthorized !== undefined
+                    });
+                    chrome.storage.local.set({ successfulSubmissions: submissions.slice(-50) }); // Keep last 50
+                  });
+                } catch (storageError) {
+                  console.error('[DirectStorageClient] Failed to record successful submission:', storageError);
+                }
+                
+                return lastResult;
+              } else {
+                console.warn('[DirectStorageClient] Response has ok field but may not indicate true success:', lastResult.ok);
+              }
+            }
+          } else {
+            // Handle HTML or other non-JSON responses
+            const text = await response.text();
+            console.error(`[DirectStorageClient] Received non-JSON response with content-type: ${contentType}`);
+            console.error(`[DirectStorageClient] Response starts with: ${text.substring(0, 100)}...`);
+            throw new Error(`Received non-JSON response with content-type: ${contentType}`);
           }
           
-          // If we got a NotAuthorized error but the server is configured to handle it as success
+          // If we got a NotAuthorized error, log it clearly and return the actual error
           if (lastResult && lastResult.err && lastResult.err.NotAuthorized !== undefined) {
-            console.log('[DirectStorageClient] Server returned NotAuthorized but this is expected and handled');
-            // The server is configured to treat this as a success case
-            return { 
-              ok: { 
-                dataSubmitted: true, 
-                url: data.url, 
-                topicId: data.topicId || data.topic,
-                note: 'NotAuthorized error was handled by client'
-              } 
-            };
+            console.log('[DirectStorageClient] Server returned NotAuthorized - this is an actual error that needs to be fixed');
+            console.log('[DirectStorageClient] Please add this principal ID to the authorized users list in the admin app');
+            return lastResult; // Return the actual error so it can be properly handled
           }
           
           // If we get here, the submission failed but we'll retry

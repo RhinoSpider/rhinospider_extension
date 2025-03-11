@@ -1,12 +1,18 @@
 // Polyfill global
-const _global = typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : typeof self !== 'undefined' ? self : {};
+const _global = typeof window !== 'undefined' ? window : typeof self !== 'undefined' ? self : {};
 (window as any).global = _global;
 
 import { Actor, HttpAgent } from '@dfinity/agent';
+// Import the admin canister interface
+import type { _SERVICE } from '../declarations/admin/admin.did.d';
+// Import the idlFactory directly with a type assertion
+// @ts-ignore - Ignore TypeScript error for the direct import
 import { idlFactory } from '../declarations/admin/admin.did.js';
-import type { ScrapingTopic, AIConfig, ScrapedData, ExtensionUser, Result, CreateTopicRequest } from '../types';
+import type { ScrapingTopic, AIConfig, ScrapedData, ExtensionUser, CreateTopicRequest } from '../types';
 import { getIdentity } from './auth';
 import { Principal } from '@dfinity/principal';
+
+// We don't need to import IDL from @dfinity/candid since we're using the Actor API
 
 let actor: any = null;
 
@@ -57,7 +63,7 @@ export const clearAdminActor = () => {
 };
 
 // Helper function to handle BigInt serialization
-function replaceBigInt(key: string, value: any) {
+function replaceBigInt(_key: string, value: any) {
   if (typeof value === 'bigint') {
     return Number(value); // Convert BigInt to Number
   }
@@ -65,7 +71,7 @@ function replaceBigInt(key: string, value: any) {
 }
 
 // Helper function to fix empty contentIdentifiers
-const fixEmptyContentIdentifiers = (topic) => {
+const fixEmptyContentIdentifiers = (topic: any) => {
   // Check if contentIdentifiers exists but has empty values
   if (topic.contentIdentifiers && 
       Array.isArray(topic.contentIdentifiers.selectors) && 
@@ -294,13 +300,257 @@ export async function updateAIConfig(config: AIConfig): Promise<AIConfig> {
 }
 
 // Scraped Data
-export async function getScrapedData(topicId?: string): Promise<ScrapedData[]> {
-  const adminActor = await getAdminActor();
-  const result = await adminActor.getScrapedData(topicId ? [topicId] : []);
-  if ('err' in result) {
-    throw new Error(result.err);
+export async function getScrapedDataDirect(topicId?: string): Promise<ScrapedData[]> {
+  console.log(`[admin.ts] getScrapedDataDirect called with topicId:`, topicId);
+  
+  try {
+    // Get the storage actor directly
+    const storageActor = await getStorageActor();
+    
+    // If a specific topic ID is provided, use it directly
+    if (topicId && topicId.trim() !== '' && topicId !== 'ALL_TOPICS') {
+      console.log(`[admin.ts] Using specific topic ID for direct storage call:`, topicId);
+      const param = [topicId];
+      
+      console.log(`[admin.ts] Making direct call to storage canister with param:`, param);
+      const result = await storageActor.getScrapedData(param);
+      
+      if ('err' in result) {
+        console.error(`[admin.ts] Error from direct storage call:`, result.err);
+        throw new Error(result.err);
+      }
+      
+      console.log(`[admin.ts] Successfully retrieved ${result.ok ? result.ok.length : 0} items directly from storage`);
+      return result.ok || [];
+    } 
+    // If ALL_TOPICS is specified or no topic ID is provided, fetch all topics and query each one
+    else {
+      console.log(`[admin.ts] ALL_TOPICS specified or no topic ID provided, fetching all topics`);
+      
+      // Get all available topics
+      let topics: ScrapingTopic[] = [];
+      try {
+        topics = await getTopics();
+        console.log(`[admin.ts] Retrieved ${topics.length} topics for ALL_TOPICS query`);
+      } catch (topicError) {
+        console.error(`[admin.ts] Error fetching topics for ALL_TOPICS query:`, topicError);
+        // Continue with empty topics array if we can't fetch topics
+      }
+      
+      // If no topics are available, try the ALL_TOPICS marker as a fallback
+      if (!topics || topics.length === 0) {
+        console.log(`[admin.ts] No topics available, falling back to ALL_TOPICS marker`);
+        const param = ["ALL_TOPICS"];
+        
+        console.log(`[admin.ts] Making direct call to storage canister with fallback param:`, param);
+        const result = await storageActor.getScrapedData(param);
+        
+        if ('err' in result) {
+          console.error(`[admin.ts] Error from direct storage call with ALL_TOPICS marker:`, result.err);
+          return []; // Return empty array instead of throwing
+        }
+        
+        console.log(`[admin.ts] Successfully retrieved ${result.ok ? result.ok.length : 0} items with ALL_TOPICS marker`);
+        return result.ok || [];
+      }
+      
+      // Query each topic individually and combine the results
+      console.log(`[admin.ts] Querying each topic individually for ALL_TOPICS`);
+      const allData: ScrapedData[] = [];
+      
+      for (const topic of topics) {
+        try {
+          console.log(`[admin.ts] Querying topic: ${topic.id}`);
+          const param = [topic.id];
+          
+          const result = await storageActor.getScrapedData(param);
+          
+          if ('ok' in result && result.ok) {
+            console.log(`[admin.ts] Retrieved ${result.ok.length} items for topic ${topic.id}`);
+            allData.push(...result.ok);
+          } else if ('err' in result) {
+            console.warn(`[admin.ts] Error querying topic ${topic.id}:`, result.err);
+            // Continue with other topics even if one fails
+          }
+        } catch (topicError) {
+          console.warn(`[admin.ts] Exception querying topic ${topic.id}:`, topicError);
+          // Continue with other topics even if one fails
+        }
+      }
+      
+      console.log(`[admin.ts] Successfully retrieved ${allData.length} total items across all topics`);
+      return allData;
+    }
+  } catch (error) {
+    console.error(`[admin.ts] Exception in getScrapedDataDirect:`, error);
+    throw error;
   }
-  return result.ok || [];
+}
+
+// Original function that goes through the admin canister
+export async function getScrapedData(topicId?: string): Promise<ScrapedData[]> {
+  console.log(`[admin.ts] getScrapedData called with topicId:`, topicId);
+  
+  // Try direct storage access first
+  try {
+    console.log(`[admin.ts] Attempting direct storage access first`);
+    return await getScrapedDataDirect(topicId);
+  } catch (directError) {
+    console.error(`[admin.ts] Direct storage access failed, falling back to admin canister:`, directError);
+  }
+  
+  try {
+    // Get the admin actor
+    const adminActor = await getAdminActor();
+    
+    // Create a properly formatted parameter for the canister call
+    // According to Candid specifications, empty vectors need proper type information
+    // We need to ensure we're passing a non-empty array to avoid IDL serialization errors
+    let param: string[];
+    
+    if (topicId && topicId.trim() !== '') {
+      // If a specific topic is requested, create a vector with that topic ID
+      param = [topicId];
+      console.log(`[admin.ts] Using specific topic ID:`, topicId);
+    } else {
+      // For "all topics" case, we need to use a special approach to avoid empty array serialization issues
+      // Based on Internet Computer Candid documentation, we'll use a special marker that the backend understands
+      param = ["ALL_TOPICS"];
+      console.log(`[admin.ts] Using special marker for all topics: ALL_TOPICS`);
+    }
+    
+    console.log(`[admin.ts] Final parameter:`, param);
+    
+    // Make the call to the canister
+    const result = await adminActor.getScrapedData(param);
+    
+    if ('err' in result) {
+      console.error(`[admin.ts] Error returned from canister:`, result.err);
+      
+      // If we get an error with our special marker, try with the first available topic ID
+      if (param[0] === "ALL_TOPICS") {
+        console.log(`[admin.ts] Special marker failed, trying with a real topic ID`);
+        
+        // Get all available topics
+        const topicsResult = await adminActor.getTopics();
+        
+        if ('err' in topicsResult) {
+          console.error(`[admin.ts] Error getting topics:`, topicsResult.err);
+          throw new Error(topicsResult.err);
+        }
+        
+        const topics = topicsResult.ok || [];
+        console.log(`[admin.ts] Found ${topics.length} topics`);
+        
+        if (topics.length > 0) {
+          // Use the first topic ID as a parameter
+          const firstTopicId = topics[0].id;
+          param = [firstTopicId];
+          console.log(`[admin.ts] Using first topic ID as parameter: ${firstTopicId}`);
+          
+          // Try again with the first topic ID
+          const retryResult = await adminActor.getScrapedData(param);
+          
+          if ('err' in retryResult) {
+            console.error(`[admin.ts] Error in retry with first topic:`, retryResult.err);
+            throw new Error(retryResult.err);
+          }
+          
+          console.log(`[admin.ts] Retry successful, retrieved ${retryResult.ok ? retryResult.ok.length : 0} items`);
+          return retryResult.ok || [];
+        } else {
+          // If no topics found, we can't proceed
+          console.error(`[admin.ts] No topics available to use as parameters`);
+          throw new Error("No topics available");
+        }
+      } else {
+        // If the error wasn't related to our special marker, just throw it
+        throw new Error(result.err);
+      }
+    }
+    
+    console.log(`[admin.ts] Successfully retrieved ${result.ok ? result.ok.length : 0} items`);
+    return result.ok || [];
+  } catch (error) {
+    console.error(`[admin.ts] Exception in getScrapedData:`, error);
+    
+    // Try a completely different approach if all previous attempts failed
+    try {
+      console.log(`[admin.ts] Trying alternative approach with direct actor creation`);
+      
+      // Get identity
+      const identity = await getIdentity();
+      if (!identity) {
+        throw new Error('No identity found');
+      }
+      
+      // Create a new agent and actor for this specific call
+      const agent = new HttpAgent({ 
+        identity,
+        host: import.meta.env.VITE_IC_HOST || 'https://icp0.io'
+      });
+      
+      // Make sure the agent is initialized
+      if (import.meta.env.DEV) {
+        await agent.fetchRootKey();
+      }
+      
+      const canisterId = import.meta.env.VITE_ADMIN_CANISTER_ID || '444wf-gyaaa-aaaaj-az5sq-cai';
+      
+      // Create a fresh actor instance
+      const freshActor = Actor.createActor<_SERVICE>(idlFactory, {
+        agent,
+        canisterId,
+      });
+      
+      // Use a different approach with the fresh actor
+      let param: string[];
+      
+      if (topicId && topicId.trim() !== '') {
+        param = [topicId];
+      } else {
+        // Try to get the first available topic ID
+        try {
+          const topicsResult = await freshActor.getTopics();
+          
+          if ('err' in topicsResult) {
+            throw new Error(topicsResult.err);
+          }
+          
+          const topics = topicsResult.ok || [];
+          
+          if (topics.length > 0) {
+            param = [topics[0].id];
+            console.log(`[admin.ts] Using first topic ID with fresh actor: ${param[0]}`);
+          } else {
+            // Last resort - use a dummy topic ID that will likely return empty results but avoid serialization errors
+            param = ["dummy_topic_id"];
+            console.log(`[admin.ts] No topics found, using dummy ID with fresh actor`);
+          }
+        } catch (topicError) {
+          console.error(`[admin.ts] Error getting topics with fresh actor:`, topicError);
+          // Last resort - use a dummy topic ID
+          param = ["dummy_topic_id"];
+          console.log(`[admin.ts] Error getting topics, using dummy ID with fresh actor`);
+        }
+      }
+      
+      console.log(`[admin.ts] Retrying with fresh actor, param:`, param);
+      
+      const result = await freshActor.getScrapedData(param);
+      
+      if ('err' in result) {
+        console.error(`[admin.ts] Error in retry with fresh actor:`, result.err);
+        throw new Error(result.err);
+      }
+      
+      console.log(`[admin.ts] Retry with fresh actor successful, retrieved ${result.ok ? result.ok.length : 0} items`);
+      return result.ok || [];
+    } catch (retryError) {
+      console.error(`[admin.ts] All attempts failed:`, retryError);
+      throw retryError;
+    }
+  }
 }
 
 // User Management
@@ -322,4 +572,122 @@ export async function updateUser(principalId: string, userData: ExtensionUser): 
     throw new Error(result.err);
   }
   return userData;
+}
+
+// Storage Canister Management
+// Import the storage canister interface and factory
+import type { _SERVICE as STORAGE_SERVICE } from '../declarations/storage/storage.did.d';
+// @ts-ignore - Ignore TypeScript error for the direct import
+import { idlFactory as storageIdlFactory } from '../declarations/storage/storage.did.js';
+
+// Function to get the storage canister actor
+export async function getStorageActor() {
+  try {
+    // Get identity
+    const identity = await getIdentity();
+    if (!identity) {
+      console.error('[admin.ts] No identity found');
+      throw new Error('No identity found');
+    }
+
+    const principalId = identity.getPrincipal().toString();
+    console.log('[admin.ts] Got identity for storage canister:', principalId);
+
+    // Use production canister ID as fallback
+    const canisterId = import.meta.env.VITE_STORAGE_CANISTER_ID || 'i2gk7-oyaaa-aaaao-a37cq-cai';
+    if (!canisterId) {
+      throw new Error('Storage canister ID not found in environment variables');
+    }
+    console.log('[admin.ts] Using storage canister ID:', canisterId);
+
+    const host = import.meta.env.VITE_IC_HOST || 'https://icp0.io';
+    console.log('[admin.ts] Using IC host:', host);
+
+    const agent = new HttpAgent({ 
+      identity,
+      host
+    });
+
+    // Fetch root key in development
+    if (import.meta.env.DEV) {
+      console.log('[admin.ts] Fetching root key in development mode');
+      await agent.fetchRootKey();
+    }
+
+    console.log('[admin.ts] Creating storage actor with canister ID:', canisterId);
+    const storageActor = Actor.createActor<STORAGE_SERVICE>(storageIdlFactory, {
+      agent,
+      canisterId,
+    });
+
+    console.log('[admin.ts] Storage actor created successfully');
+    return storageActor;
+  } catch (error) {
+    console.error('[admin.ts] Error getting storage actor:', error);
+    throw error;
+  }
+}
+
+// Add a principal as an authorized user to the storage canister
+export async function addAuthorizedPrincipalToStorage(principalId: string): Promise<void> {
+  try {
+    console.log(`[admin.ts] Adding principal ${principalId} as authorized user to storage canister`);
+    const storageActor = await getStorageActor();
+    
+    // Convert the principal string to a Principal object
+    const principal = Principal.fromText(principalId);
+    console.log(`[admin.ts] Principal object created: ${principal.toString()}`);
+    
+    // Log available methods on the storage actor
+    const methods = Object.getOwnPropertyNames(Object.getPrototypeOf(storageActor))
+      .filter(name => name !== 'constructor' && typeof storageActor[name as keyof typeof storageActor] === 'function');
+    console.log(`[admin.ts] Storage actor methods: ${methods.join(', ')}`);
+    
+    // Call the addAuthorizedCanister method
+    console.log(`[admin.ts] Calling addAuthorizedCanister with principal: ${principal.toString()}`);
+    const result = await storageActor.addAuthorizedCanister(principal);
+    console.log(`[admin.ts] Result from addAuthorizedCanister:`, result);
+    
+    if ('err' in result) {
+      console.error(`[admin.ts] Error adding authorized principal:`, result.err);
+      throw new Error(JSON.stringify(result.err));
+    }
+    
+    console.log(`[admin.ts] Successfully added principal ${principalId} to storage canister`);
+  } catch (error) {
+    console.error(`[admin.ts] Failed to add authorized principal to storage:`, error);
+    throw error;
+  }
+}
+
+// Remove a principal from the authorized users of the storage canister
+export async function removeAuthorizedPrincipalFromStorage(principalId: string): Promise<void> {
+  try {
+    console.log(`[admin.ts] Removing principal ${principalId} from storage canister authorized users`);
+    const storageActor = await getStorageActor();
+    
+    // Convert the principal string to a Principal object
+    const principal = Principal.fromText(principalId);
+    console.log(`[admin.ts] Principal object created for removal: ${principal.toString()}`);
+    
+    // Log available methods on the storage actor
+    const methods = Object.getOwnPropertyNames(Object.getPrototypeOf(storageActor))
+      .filter(name => name !== 'constructor' && typeof storageActor[name as keyof typeof storageActor] === 'function');
+    console.log(`[admin.ts] Storage actor methods for removal: ${methods.join(', ')}`);
+    
+    // Call the removeAuthorizedCanister method
+    console.log(`[admin.ts] Calling removeAuthorizedCanister with principal: ${principal.toString()}`);
+    const result = await storageActor.removeAuthorizedCanister(principal);
+    console.log(`[admin.ts] Result from removeAuthorizedCanister:`, result);
+    
+    if ('err' in result) {
+      console.error(`[admin.ts] Error removing authorized principal:`, result.err);
+      throw new Error(JSON.stringify(result.err));
+    }
+    
+    console.log(`[admin.ts] Successfully removed principal ${principalId} from storage canister`);
+  } catch (error) {
+    console.error(`[admin.ts] Failed to remove authorized principal from storage:`, error);
+    throw error;
+  }
 }

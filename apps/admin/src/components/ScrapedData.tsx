@@ -1,11 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { getAdminActor } from '../lib/admin';
-import { _SERVICE as AdminService } from '../../../declarations/admin/admin.did';
-import type { ScrapingTopic } from '../../../declarations/admin/admin.did';
+import { getAdminActor, getScrapedData } from '../lib/admin';
+import { Principal } from '@dfinity/principal';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement } from 'chart.js';
-import { Pie, Bar } from 'react-chartjs-2';
+import { Pie } from 'react-chartjs-2';
 
 ChartJS.register(ArcElement, CategoryScale, LinearScale, BarElement, Tooltip, Legend);
+
+type ScrapingTopic = {
+  id: string;
+  name: string;
+  description: string;
+  urlPatterns: string[];
+  active: boolean;
+};
 
 type ScrapedData = {
   id: string;
@@ -41,10 +48,18 @@ export const ScrapedData: React.FC = () => {
   const [viewMode, setViewMode] = useState<'list' | 'analytics'>('list');
   const [selectedItem, setSelectedItem] = useState<ScrapedData | null>(null);
 
+  // Load topics when component mounts
   useEffect(() => {
     loadTopics();
-    loadData();
-  }, [selectedTopic, currentPage]);
+  }, []);
+  
+  // Load data when topics are loaded, selectedTopic changes, or page changes
+  useEffect(() => {
+    if (topics.length > 0) {
+      console.log('[ScrapedData] Topics loaded or selection changed, loading data...');
+      loadData();
+    }
+  }, [topics, selectedTopic, currentPage]);
 
   const loadTopics = async () => {
     try {
@@ -58,33 +73,61 @@ export const ScrapedData: React.FC = () => {
     }
   };
 
+  // Add error state
+  const [error, setError] = useState<string | null>(null);
+  
   const loadData = async () => {
     try {
       setLoading(true);
-      const actor = await getAdminActor();
-      const result = await actor.getScrapedData(selectedTopic ? [selectedTopic] : []);
+      setError(null); // Clear any previous errors
       
-      if ('ok' in result) {
-        // Sort by timestamp descending
-        const sortedData = result.ok.sort((a, b) => 
-          Number(b.timestamp - a.timestamp)
-        );
-        setTotalItems(sortedData.length);
-        
-        // Calculate topic statistics
-        const stats: Record<string, TopicStats> = {};
-        sortedData.forEach(item => {
-          const topic = topics.find(t => t.id === item.topic);
-          if (!stats[item.topic]) {
-            stats[item.topic] = {
-              name: topic?.name || 'Unknown Topic',
-              count: 0,
-              totalBytes: 0,
-              clients: new Set(),
-              avgScrapingTime: 0,
-              successRate: 0
-            };
-          }
+      let allData: ScrapedData[] = [];
+      
+      console.log(`[ScrapedData] Starting data fetch, selectedTopic: ${selectedTopic || 'none'}`);
+      
+      try {
+        if (selectedTopic) {
+          // Get data for the selected topic using the admin library function
+          console.log(`[ScrapedData] Fetching data for topic: ${selectedTopic}`);
+          // Pass the topic ID as a string - the library will handle creating the array
+          allData = await getScrapedData(selectedTopic);
+          console.log(`[ScrapedData] Received ${allData.length} items for topic ${selectedTopic}`);
+        } else {
+          // If no topic is selected, let the admin.ts library handle it
+          // It will automatically fetch topics and use the first available topic ID
+          console.log('[ScrapedData] No topic selected, letting admin.ts handle topic selection');
+          allData = await getScrapedData();
+          console.log(`[ScrapedData] Received ${allData.length} items`);
+        }
+      } catch (error: any) { // Type assertion for error
+        console.error(`[ScrapedData] Failed to load data:`, error);
+        // Set error message for UI
+        setError(`Error loading data: ${error.message || 'Unknown error'}`);
+        setLoading(false);
+        return; // Exit early if there's an error
+      }
+      
+      // Sort by timestamp descending
+      const sortedData = allData.sort((a: ScrapedData, b: ScrapedData) => 
+        Number(b.timestamp - a.timestamp)
+      );
+      
+      setTotalItems(sortedData.length);
+      
+      // Calculate topic statistics
+      const stats: Record<string, TopicStats> = {};
+      sortedData.forEach((item: ScrapedData) => {
+        const topic = topics.find(t => t.id === item.topic);
+        if (!stats[item.topic]) {
+          stats[item.topic] = {
+            name: topic?.name || 'Unknown Topic',
+            count: 0,
+            totalBytes: 0,
+            clients: new Set<string>(),
+            avgScrapingTime: 0,
+            successRate: 0
+          };
+        }
           stats[item.topic].count++;
           stats[item.topic].totalBytes += item.content.length;
           stats[item.topic].clients.add(item.client_id.toText());
@@ -105,9 +148,6 @@ export const ScrapedData: React.FC = () => {
         const start = (currentPage - 1) * ITEMS_PER_PAGE;
         const paginatedData = sortedData.slice(start, start + ITEMS_PER_PAGE);
         setData(paginatedData);
-      } else {
-        console.error('Failed to load data:', result.err);
-      }
     } catch (error) {
       console.error('Failed to load data:', error);
     } finally {
@@ -204,6 +244,14 @@ export const ScrapedData: React.FC = () => {
         </div>
       </div>
 
+      {/* Display error message if there is one */}
+      {error && (
+        <div className="bg-red-900 border border-red-700 text-white px-4 py-3 rounded-lg mb-4">
+          <strong className="font-bold">Error: </strong>
+          <span className="block sm:inline">{error}</span>
+        </div>
+      )}
+      
       {loading ? (
         <div className="text-center py-8">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#B692F6] mx-auto"></div>

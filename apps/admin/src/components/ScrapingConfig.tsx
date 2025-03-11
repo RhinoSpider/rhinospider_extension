@@ -1,12 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { Actor } from '@dfinity/agent';
-import type { ScrapingTopic, AIConfig, CreateTopicRequest } from '../types';
+import type { ScrapingTopic, AIConfig, ScrapedData } from '../types';
 import { TopicModal } from './TopicModal';
 import { AIConfigModal } from './AIConfigModal';
-import { getAdminActor } from '../lib/admin';
-import { initAuthClient } from '../lib/auth';
-import { getStorageActor } from '../lib/storage';
+import { getAdminActor, getScrapedDataDirect } from '../lib/admin';
+import StorageAuthorization from './StorageAuthorization';
 
 export const ScrapingConfig: React.FC = () => {
   const { isAuthenticated } = useAuth();
@@ -18,12 +16,19 @@ export const ScrapingConfig: React.FC = () => {
   const [aiConfigLoading, setAIConfigLoading] = useState(true);
   const [isTopicModalOpen, setIsTopicModalOpen] = useState(false);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
-  const [selectedTopic, setSelectedTopic] = useState<ScrapingTopic | null>();
-  const [loading, setLoading] = useState(true);
-  const [updating, setUpdating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [togglingTopics, setTogglingTopics] = useState<{ [key: string]: boolean }>({});
-  const [deletingTopics, setDeletingTopics] = useState<{ [key: string]: boolean }>({});
+  const [selectedTopic, setSelectedTopic] = useState<ScrapingTopic | null>(null);
+  // We need setUpdating for the handleSaveTopic function
+  const [, setUpdating] = useState(false);
+  // Keep error state as it's used in the loadAIConfig function
+  const [, setError] = useState<string | null>(null);
+  const [togglingTopics, setTogglingTopics] = useState<Record<string, boolean>>({});
+  const [deletingTopics, setDeletingTopics] = useState<Record<string, boolean>>({});
+  
+  // New state for direct storage access
+  const [scrapedData, setScrapedData] = useState<ScrapedData[]>([]);
+  const [fetchingData, setFetchingData] = useState(false);
+  const [fetchDataError, setFetchDataError] = useState<string | null>(null);
+  const [fetchDataStatus, setFetchDataStatus] = useState<string | null>(null);
 
   // Fetch topics on mount
   useEffect(() => {
@@ -49,7 +54,7 @@ export const ScrapingConfig: React.FC = () => {
         } catch (e) {
           console.error('Error loading saved sampleArticleUrls from local storage:', e);
         }
-        const processedTopics = result.ok.map(topic => {
+        const processedTopics = result.ok.map((topic: any) => {
           console.log(`Processing topic ${topic.id}, contentIdentifiers:`, topic.contentIdentifiers);
           
           // Ensure contentIdentifiers is properly extracted if it exists
@@ -80,8 +85,8 @@ export const ScrapingConfig: React.FC = () => {
           if (topic.sampleArticleUrls && topic.sampleArticleUrls.length > 0) {
             sampleArticleUrls = topic.sampleArticleUrls[0];
             console.log('Extracted sampleArticleUrls from backend:', JSON.stringify(sampleArticleUrls, null, 2));
-          } else if (savedSampleArticleUrls[topic.id]) {
-            sampleArticleUrls = savedSampleArticleUrls[topic.id];
+          } else if (topic.id && savedSampleArticleUrls && typeof savedSampleArticleUrls === 'object' && savedSampleArticleUrls[topic.id as keyof typeof savedSampleArticleUrls]) {
+            sampleArticleUrls = savedSampleArticleUrls[topic.id as keyof typeof savedSampleArticleUrls];
             console.log('Using sampleArticleUrls from local storage for topic', topic.id, ':', sampleArticleUrls);
           }
           
@@ -89,7 +94,7 @@ export const ScrapingConfig: React.FC = () => {
             ...topic,
             extractionRules: {
               ...topic.extractionRules,
-              fields: topic.extractionRules.fields.map(f => ({
+              fields: topic.extractionRules.fields.map((f: any) => ({
                 ...f,
                 description: f.description || '',
                 type: f.type || f.fieldType || 'text'
@@ -135,7 +140,9 @@ export const ScrapingConfig: React.FC = () => {
             maxDailyCost: Number(config.costLimits.maxDailyCost) || 0,
             maxMonthlyCost: Number(config.costLimits.maxMonthlyCost) || 0,
             maxConcurrent: Number(config.costLimits.maxConcurrent) || 0
-          }
+          },
+          temperature: config.temperature || 0.7,
+          maxTokens: config.maxTokens || 2000
         });
       } catch (error) {
         console.error('Failed to load AI config:', error);
@@ -149,6 +156,42 @@ export const ScrapingConfig: React.FC = () => {
       loadAIConfig();
     }
   }, [isAuthenticated, isAIModalOpen]); // Reload when modal closes or auth state changes
+
+  // Function to fetch data directly from the storage canister
+  const fetchDataFromStorage = async (topicId?: string) => {
+    try {
+      setFetchingData(true);
+      setFetchDataError(null);
+      setFetchDataStatus('Fetching data from storage canister...');
+      
+      // Call the direct storage access function
+      const data = await getScrapedDataDirect(topicId);
+      setScrapedData(data);
+      
+      setFetchDataStatus(`Successfully fetched ${data.length} items from storage canister`);
+      console.log('Fetched data from storage canister:', data);
+      
+      // Display the data in a more readable format
+      if (data.length > 0) {
+        console.table(data.map(item => ({
+          id: item.id,
+          topic: item.topic,
+          url: item.url,
+          timestamp: new Date(Number(item.timestamp) / 1000000).toLocaleString(),
+          status: item.status
+        })));
+      }
+      
+      return data;
+    } catch (error) {
+      console.error('Error fetching data from storage canister:', error);
+      setFetchDataError('Error fetching data: ' + (error as Error).message);
+      setFetchDataStatus('Failed to fetch data from storage canister');
+      return [];
+    } finally {
+      setFetchingData(false);
+    }
+  };
 
   const handleSaveTopic = async (topic: ScrapingTopic) => {
     try {
@@ -490,7 +533,7 @@ export const ScrapingConfig: React.FC = () => {
       )}
 
       {/* AI Configuration Box */}
-      <div className="p-6 bg-gray-800 rounded-lg">
+      <div className="p-6 bg-gray-800 rounded-lg mb-6">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-lg font-semibold text-white">AI Configuration</h2>
           <button
@@ -530,17 +573,26 @@ export const ScrapingConfig: React.FC = () => {
         )}
       </div>
 
+      {/* Storage Canister Authorization */}
+      <div className="p-6 bg-gray-800 rounded-lg mb-6">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-lg font-semibold text-white">Storage Canister Authorization</h2>
+        </div>
+        <div className="bg-[#1C1B23] rounded-lg p-6">
+          <StorageAuthorization />
+        </div>
+      </div>
+
       {/* Topic Modal */}
       {isTopicModalOpen && (
         <TopicModal
           isOpen={isTopicModalOpen}
-          topic={selectedTopic}
+          topic={selectedTopic || undefined}
           onSave={handleSaveTopic}
           onClose={() => {
             setIsTopicModalOpen(false);
             setSelectedTopic(null);
           }}
-          saving={updating}
         />
       )}
 

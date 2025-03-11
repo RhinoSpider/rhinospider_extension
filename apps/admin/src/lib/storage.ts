@@ -4,6 +4,7 @@ const _global = typeof window !== 'undefined' ? window : typeof global !== 'unde
 
 import { Actor, HttpAgent, AnonymousIdentity } from '@dfinity/agent';
 import { idlFactory } from '@declarations/storage/storage.did.js';
+import { initAuthClient, isAuthenticated, getIdentity } from './auth';
 
 // Environment configuration
 export const IS_LOCAL = process.env.NODE_ENV !== 'production';
@@ -32,16 +33,21 @@ export const getStorageActor = async () => {
     }
 
     // For production, use Internet Identity
-    const authClient = getAuthClient();
-    const state = authClient.getState();
+    const authClient = await initAuthClient();
+    const isAuth = await isAuthenticated();
     
-    if (!state.isAuthenticated || !state.identity) {
-      await authClient.login();
+    if (!isAuth) {
+      console.log('User not authenticated');
       return null;
     }
 
     if (!actor) {
-      const identity = state.identity;
+      const identity = await getIdentity();
+      if (!identity) {
+        console.log('No identity available');
+        return null;
+      }
+      
       const agent = new HttpAgent({ 
         identity,
         host: HOST

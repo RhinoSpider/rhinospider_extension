@@ -1,0 +1,41 @@
+type ScrapingTopic = record {
+    id: text;
+    status: text;
+    name: text;
+    description: text;
+    scrapingInterval: nat;
+    maxRetries: nat;
+    activeHours: record {
+        start: nat;
+        end: nat;
+    };
+    createdAt: int;
+    updatedAt: int;
+    articleUrlPatterns: vec text;
+    excludePatterns: vec text;
+    contentIdentifiers: vec text;
+    urlGenerationStrategy: text;
+    siteTypeClassification: text;
+    paginationPatterns: vec text;
+    extractionRules: record {
+        fields: vec record {
+            name: text;
+            fieldType: text;
+            required: bool;
+            aiPrompt: opt text;
+        };
+        customPrompt: opt text;
+    };
+};
+
+type Error = variant {
+    NotFound;
+    AlreadyExists;
+    NotAuthorized;
+    InvalidInput: text;
+    SystemError: text;
+};
+
+service : {
+    "getTopics": () -> (variant { ok: vec ScrapingTopic; err: Error });
+}

@@ -1,0 +1,93 @@
+type Storage = 
+ service {
+   addAuthorizedCanister: (principal) -> (Result);
+   getAIConfig: () -> (Result_3) query;
+   getScrapedData: (vec text) -> (Result_2) query;
+   getTopics: () -> (Result_1) query;
+   removeAuthorizedCanister: (principal) -> (Result);
+   submitScrapedData: (ScrapedData) -> (Result);
+   updateAIConfig: (AIConfig) -> (Result);
+   updateTopic: (ScrapingTopic) -> (Result);
+ };
+type ScrapingTopic = 
+ record {
+   activeHours: record {
+                  end: nat;
+                  start: nat;
+                };
+   aiConfig: AIConfig;
+   createdAt: int;
+   description: text;
+   extractionRules: ExtractionRules;
+   id: text;
+   maxRetries: nat;
+   name: text;
+   scrapingInterval: nat;
+   status: text;
+   urlPatterns: vec text;
+ };
+type ScrapingField = 
+ record {
+   aiPrompt: opt text;
+   fieldType: text;
+   name: text;
+   required: bool;
+ };
+type ScrapedData = 
+ record {
+   client_id: principal;
+   content: text;
+   id: text;
+   scraping_time: int;
+   source: text;
+   status: text;
+   timestamp: int;
+   topic: text;
+   url: text;
+ };
+type Result_3 = 
+ variant {
+   err: Error;
+   ok: AIConfig;
+ };
+type Result_2 = 
+ variant {
+   err: Error;
+   ok: vec ScrapedData;
+ };
+type Result_1 = 
+ variant {
+   err: Error;
+   ok: vec ScrapingTopic;
+ };
+type Result = 
+ variant {
+   err: Error;
+   ok;
+ };
+type ExtractionRules = 
+ record {
+   customPrompt: opt text;
+   fields: vec ScrapingField;
+ };
+type Error = 
+ variant {
+   AlreadyExists;
+   InvalidInput: text;
+   NotAuthorized;
+   NotFound;
+   SystemError: text;
+ };
+type CostLimits = 
+ record {
+   maxConcurrent: nat;
+   maxDailyCost: float64;
+   maxMonthlyCost: float64;
+ };
+type AIConfig = 
+ record {
+   apiKey: text;
+   costLimits: CostLimits;
+   model: text;
+ };
+service : () -> Storage

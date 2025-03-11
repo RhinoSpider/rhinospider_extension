@@ -1,77 +1,127 @@
 // submission-helper.js - Helper for submitting scraped data
-// This module provides a unified interface for submitting data through both
-// the regular proxy client and the direct storage client
+// This module provides a unified interface for submitting data through the consumer canister
 
 import proxyClient from './proxy-client';
-import directStorageClient from './direct-storage-client';
 
 /**
  * SubmissionHelper class for handling data submissions
- * This class tries multiple submission methods to ensure data is saved
+ * This class follows the RhinoSpider architecture pattern where all data flows through the consumer canister
  */
 class SubmissionHelper {
   /**
-   * Submit scraped data using all available methods
+   * Submit scraped data using the proxy client to follow proper architecture
    * @param {Object} data - The scraped data to submit
    * @returns {Promise<Object>} - The submission result
    */
   async submitScrapedData(data) {
-    console.log('[SubmissionHelper] Submitting scraped data with multiple methods:', data);
+    console.log('[SubmissionHelper] Submitting scraped data via consumer canister');
     
-    // First try the direct storage client
+    // Save a copy of the data to local storage as a backup
     try {
-      console.log('[SubmissionHelper] Trying direct storage submission first...');
-      const directResult = await directStorageClient.submitScrapedData(data);
-      
-      console.log('[SubmissionHelper] Direct storage submission result:', directResult);
-      
-      // Check if the submission was successful
-      if (directResult && directResult.ok && !directResult.ok.fallback) {
-        console.log('[SubmissionHelper] Direct storage submission successful!');
-        return directResult;
-      }
-      
-      console.log('[SubmissionHelper] Direct storage submission failed or returned fallback, trying proxy client...');
-    } catch (directError) {
-      console.log('[SubmissionHelper] Error with direct storage submission:', directError);
-      console.log('[SubmissionHelper] Falling back to proxy client...');
+      const backupKey = `backup_data_${Date.now()}`;
+      chrome.storage.local.set({ [backupKey]: data }, () => {
+        console.log('[SubmissionHelper] Saved backup of data to local storage:', backupKey);
+      });
+    } catch (backupError) {
+      console.error('[SubmissionHelper] Failed to save backup:', backupError);
     }
     
-    // If direct storage failed, try the regular proxy client
+    // Ensure the data has content field
+    if (!data.content || data.content.trim() === '') {
+      console.log('[SubmissionHelper] Adding placeholder content to data');
+      data.content = 'Placeholder content for required field';
+    }
+    
+    // Use the proxy client with consumer canister priority
     try {
-      console.log('[SubmissionHelper] Trying proxy client submission...');
-      const proxyResult = await proxyClient.submitScrapedData(data);
+      console.log('[SubmissionHelper] Submitting via proxy client to consumer canister...');
+      const proxyResult = await proxyClient.submitScrapedData(data, true); // true = prioritize consumer canister
       
       console.log('[SubmissionHelper] Proxy client submission result:', proxyResult);
-      return proxyResult;
-    } catch (proxyError) {
-      console.log('[SubmissionHelper] Error with proxy client submission:', proxyError);
       
-      // If both methods failed, return a failure result
-      return {
-        err: {
-          SubmissionFailed: 'All submission methods failed',
-          directError: directError?.message,
-          proxyError: proxyError?.message
+      if (proxyResult && (proxyResult.ok || proxyResult.success)) {
+        console.log('[SubmissionHelper] Proxy client submission SUCCESSFUL!');
+        
+        // Record this successful submission
+        try {
+          const submissionRecord = {
+            method: 'proxy_client_consumer',
+            id: `proxy_${Date.now()}`,
+            timestamp: Date.now(),
+            url: data.url,
+            topic: data.topic || data.topicId,
+            hasAuthError: false
+          };
+          
+          chrome.storage.local.get(['submissionRecords'], (result) => {
+            const records = result.submissionRecords || [];
+            records.push(submissionRecord);
+            chrome.storage.local.set({ submissionRecords: records.slice(-100) }); // Keep last 100
+          });
+        } catch (recordError) {
+          console.error('[SubmissionHelper] Failed to record submission:', recordError);
         }
-      };
+        
+        return proxyResult;
+      }
+    } catch (proxyError) {
+      console.error('[SubmissionHelper] Error with proxy client submission:', proxyError);
     }
+    
+    // If proxy client failed, retry with backoff
+    try {
+      console.log('[SubmissionHelper] Retrying proxy client submission with backoff...');
+      
+      // Wait 2 seconds before retry
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      const retryResult = await proxyClient.submitScrapedData(data, true);
+      console.log('[SubmissionHelper] Proxy client retry result:', retryResult);
+      
+      if (retryResult && (retryResult.ok || retryResult.success)) {
+        console.log('[SubmissionHelper] Proxy client retry SUCCESSFUL!');
+        
+        // Record this successful submission
+        try {
+          const submissionRecord = {
+            method: 'proxy_client_retry',
+            id: `proxy_retry_${Date.now()}`,
+            timestamp: Date.now(),
+            url: data.url,
+            topic: data.topic || data.topicId,
+            hasAuthError: false
+          };
+          
+          chrome.storage.local.get(['submissionRecords'], (result) => {
+            const records = result.submissionRecords || [];
+            records.push(submissionRecord);
+            chrome.storage.local.set({ submissionRecords: records.slice(-100) }); // Keep last 100
+          });
+        } catch (recordError) {
+          console.error('[SubmissionHelper] Failed to record submission:', recordError);
+        }
+        
+        return retryResult;
+      }
+    } catch (retryError) {
+      console.error('[SubmissionHelper] Error with proxy client retry:', retryError);
+    }
+    
+    // If all attempts failed, return a failure result
+    return {
+      err: {
+        SubmissionFailed: 'All submission attempts failed',
+        details: 'Could not submit data through consumer canister'
+      }
+    };
   }
   
   /**
-   * Check if any submission method is available
-   * @returns {Promise<boolean>} - True if at least one method is available
+   * Check if submission service is available
+   * @returns {Promise<boolean>} - True if the proxy client is available
    */
   async isAnyMethodAvailable() {
     try {
-      // Check if direct storage client is available
-      const directAvailable = await directStorageClient.isAvailable();
-      
-      if (directAvailable) {
-        console.log('[SubmissionHelper] Direct storage client is available');
-        return true;
-      }
-      
       // Check if proxy client is available
       const proxyAvailable = await proxyClient.isAvailable();
       
@@ -80,12 +130,40 @@ class SubmissionHelper {
         return true;
       }
       
-      console.log('[SubmissionHelper] No submission methods are available');
+      console.log('[SubmissionHelper] Proxy client is not available');
       return false;
     } catch (error) {
       console.log('[SubmissionHelper] Error checking availability:', error);
       return false;
     }
+  }
+  
+  /**
+   * Check if submission service is available
+   * @returns {Promise<Object>} - Object with availability status
+   */
+  async checkAvailability() {
+    console.log('[SubmissionHelper] Checking availability of submission service');
+    
+    const result = {
+      proxy: false,
+      anyAvailable: false
+    };
+    
+    try {
+      // Check proxy client
+      const proxyAvailable = await proxyClient.isAvailable();
+      result.proxy = proxyAvailable;
+      
+      // Set anyAvailable flag
+      result.anyAvailable = result.proxy;
+      
+      console.log('[SubmissionHelper] Availability check results:', result);
+    } catch (error) {
+      console.error('[SubmissionHelper] Error checking availability:', error);
+    }
+    
+    return result;
   }
 }
 
