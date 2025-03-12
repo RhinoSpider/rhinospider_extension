@@ -12,14 +12,22 @@ rhinospider/
 │   ├── backend/           # Backend services
 │   ├── scraper-service/   # Scraper service
 │   └── viewer/            # Content viewer
-├── packages/              # Shared packages
+├── packages/
+│   ├── scraping-core/     # Core scraping functionality
+│   ├── ui/                # Shared UI components
+│   └── web3-client/       # Web3 client utilities
 ├── canisters/             # ICP canisters
 │   ├── admin/             # Admin canister
+│   ├── analytics/         # Analytics canister
+│   ├── auth/              # Authentication canister
 │   ├── consumer/          # Consumer canister
-│   └── storage/           # Storage canister
+│   ├── storage/           # Storage canister
+│   └── user_profile/      # User profile canister
 ├── services/              # Backend services
 │   ├── ic-proxy/          # IC Proxy service
-│   └── scraper/           # Scraper service
+│   ├── scraper/           # Scraper service
+│   ├── google-search-service/ # Google search service
+│   └── search-proxy/      # Search proxy service
 └── docs-consolidated/     # Consolidated documentation
 ```
 
@@ -31,6 +39,7 @@ rhinospider/
 - 💾 **Decentralized Storage**: Content stored on Internet Computer
 - 🤖 **AI-Powered Processing**: Field-specific extraction with custom prompts
 - 📊 **Admin Dashboard**: Topic management and content monitoring
+- 🔍 **Search Integration**: Google search integration for topic discovery
 
 ## Architecture
 
@@ -45,6 +54,7 @@ Key principles:
 - All data flows through consumer canister
 - All requests are properly authenticated with Internet Identity
 - Extension operates in read-only mode for admin data
+- Extension submits scraped content through consumer canister only
 
 ## Development
 
@@ -57,11 +67,11 @@ pnpm build
 
 # Run extension in development mode
 cd apps/extension
-npm run dev
+pnpm run dev
 
 # Run admin dashboard in development mode
 cd apps/admin
-npm run dev
+pnpm run dev
 
 # Deploy canisters to local network
 cd canisters
@@ -85,6 +95,18 @@ RhinoSpider adheres to strict privacy and security guidelines:
 - ONLY works as a background process based on server-provided topics
 - NEVER opens new tabs or pages
 - NEVER tracks what the user is browsing
+- All data is properly authenticated and encrypted
+
+## Recent Changes
+
+### Version 3.2.2 (2025-03-11)
+- Consolidated documentation in `docs-consolidated` directory
+- Comprehensive architecture documentation
+- Detailed deployment guides for all services
+- Extension documentation with privacy and security focus
+- Chrome Web Store submission preparation
+
+For a complete list of changes, see the [CHANGELOG](CHANGELOG.md).
 
 ## License
 
