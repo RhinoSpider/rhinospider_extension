@@ -188,26 +188,27 @@ const Popup = () => {
         principalId: identity.getPrincipal().toText()
       });
 
-      // Store auth state and notify background
-      const principal = identity.getPrincipal().toText();
-      
-      // Create delegation chain with principal
-      const delegationChainWithPrincipal = {
-        ...delegationChain,
-        principal  // Add principal as string
-      };
-
       // Store delegation chain in Chrome's local storage for background script
       await chrome.storage.local.set({
-        delegationChain: delegationChainWithPrincipal,
-        principalId: principal
+        delegationChain: {
+          ...delegationChain,
+          principal: identity.getPrincipal().toText()
+        },
+        principalId: identity.getPrincipal().toText(),
+        identityInfo: {
+          principal: identity.getPrincipal().toText(),
+          timestamp: Date.now()
+        },
+        // Enable the extension by default after successful authentication
+        enabled: true,
+        isScrapingActive: true
       });
 
       // Store auth state
       await chrome.storage.local.set({
         authState: JSON.stringify({
           isAuthenticated: true,
-          principal,
+          principal: identity.getPrincipal().toText(),
           isInitialized: true,
           error: null
         })
@@ -215,7 +216,7 @@ const Popup = () => {
 
       // Update UI state
       setIsAuthenticated(true);
-      setPrincipal(principal);
+      setPrincipal(identity.getPrincipal().toText());
       setError(null);
       setIsLoading(false);
     } catch (error) {

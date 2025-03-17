@@ -24,14 +24,14 @@ export const config = {
     // Proxy server configuration
     proxy: {
         // Use the search proxy URL for search operations
-        url: import.meta.env.VITE_PROXY_URL || 'http://143.244.133.154:3003',
+        url: import.meta.env.VITE_PROXY_URL || 'https://search-proxy.rhinospider.com',
         apiPassword: import.meta.env.VITE_API_PASSWORD || 'ffGpA2saNS47qr',
     },
     
     // Direct storage server configuration
     directStorage: {
         // Use a specific URL for direct storage API
-        url: import.meta.env.VITE_DIRECT_STORAGE_URL || 'http://143.244.133.154:3002',
+        url: import.meta.env.VITE_DIRECT_STORAGE_URL || 'https://storage.rhinospider.com',
         apiPassword: import.meta.env.VITE_API_PASSWORD || 'ffGpA2saNS47qr',
     },
     
@@ -39,5 +39,8 @@ export const config = {
     dfx_network: import.meta.env.VITE_DFX_NETWORK || 'local',
     
     // Scraper service
-    scraper_url: import.meta.env.VITE_SCRAPER_URL
+    scraper_url: import.meta.env.VITE_SCRAPER_URL,
+    
+    // IC Proxy service
+    ic_proxy_url: import.meta.env.VITE_IC_PROXY_URL || 'https://ic-proxy.rhinospider.com'
 };

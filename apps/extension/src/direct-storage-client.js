@@ -4,7 +4,7 @@ import { config } from './config';
 
 // Get direct storage URL from config with fallback
 // Using the correct port 3002 for direct storage API
-const DIRECT_STORAGE_URL = config.directStorage.url || 'http://143.244.133.154:3002';
+const DIRECT_STORAGE_URL = config.directStorage.url || 'https://storage.rhinospider.com';
 
 // API Password for authentication from config
 const API_PASSWORD = config.directStorage.apiPassword || 'ffGpA2saNS47qr';
@@ -26,7 +26,7 @@ class DirectStorageClient {
     // Validate URL
     if (!this.directStorageUrl) {
       console.error('[DirectStorageClient] No direct storage URL provided. Using fallback URL.');
-      this.directStorageUrl = 'http://143.244.133.154:3002';
+      this.directStorageUrl = 'https://storage.rhinospider.com';
     }
     
     console.log('[DirectStorageClient] Initialized with direct storage URL:', this.directStorageUrl);

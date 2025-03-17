@@ -7,7 +7,7 @@ import { DelegationIdentity, DelegationChain } from '@dfinity/identity';
 // Constants from environment
 const IC_HOST = import.meta.env.VITE_IC_HOST || 'https://icp0.io';
 const CONSUMER_CANISTER_ID = import.meta.env.VITE_CONSUMER_CANISTER_ID;
-const SCRAPER_URL = import.meta.env.VITE_SCRAPER_URL || 'http://143.244.133.154:3000';
+const SCRAPER_URL = import.meta.env.VITE_SCRAPER_URL || 'https://scraper.rhinospider.com';
 
 // Initialize IC connection
 let agent = null;
@@ -309,7 +309,9 @@ function startScraping() {
     } else {
         logger.error('Alarms API not available, using fallback interval');
         // Fallback to setInterval if alarms API is not available
-        window.scrapeInterval = setInterval(performScrape, 5 * 60 * 1000);
+        // Note: In service workers, we should rely on the alarms API
+        // This is just a fallback that shouldn't be needed in production
+        globalThis.scrapeInterval = setInterval(performScrape, 5 * 60 * 1000);
     }
     
     // Start initial scrape
@@ -324,9 +326,9 @@ function stopScraping() {
     // Clear the alarm
     if (chrome.alarms) {
         chrome.alarms.clear('scrapeAlarm');
-    } else if (window.scrapeInterval) {
-        clearInterval(window.scrapeInterval);
-        window.scrapeInterval = null;
+    } else if (globalThis.scrapeInterval) {
+        clearInterval(globalThis.scrapeInterval);
+        globalThis.scrapeInterval = null;
     }
     
     // Cancel any ongoing scrape job

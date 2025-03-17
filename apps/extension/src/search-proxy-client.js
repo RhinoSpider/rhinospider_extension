@@ -18,8 +18,8 @@ const logger = {
 
 // Configuration
 // const PROXY_SERVICE_URL = 'http://localhost:3003/api/search'; // Local development
-// const PROXY_SERVICE_URL = 'https://search-proxy.rhinospider.io/api/search'; // Production
-const PROXY_SERVICE_URL = 'http://143.244.133.154:3003/api/search'; // Deployed server
+const PROXY_SERVICE_BASE_URL = 'https://search-proxy.rhinospider.com/api/search'; // Production
+// const PROXY_SERVICE_URL = 'https://143.244.133.154:3003/api/search'; // Deployed server
 
 // Get or generate a unique extension ID
 async function getExtensionId() {
@@ -72,7 +72,7 @@ async function getUrlsForTopics(topics, batchSize = 15, reset = false) {
         };
         
         // Make request to the search proxy service
-        const response = await fetch(`${PROXY_SERVICE_URL}/urls`, {
+        const response = await fetch(`${PROXY_SERVICE_BASE_URL}/urls`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -116,7 +116,7 @@ async function resetUrlPool() {
         const extensionId = await getExtensionId();
         
         // Make request to reset URL pool
-        const response = await fetch(`${PROXY_SERVICE_URL}/reset`, {
+        const response = await fetch(`${PROXY_SERVICE_BASE_URL}/reset`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'

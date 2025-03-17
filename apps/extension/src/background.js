@@ -8,6 +8,8 @@ import submissionHelper from './submission-helper';
 // Note: These will be used gradually as we migrate functionality
 import * as scraperPatch from './scraper-patch.js';
 import { initialize as initializeUrlSelector, selectTopicAndUrl, trackSuccessfulUrl } from './simplified-url-selector.js';
+import './expose-background-functions.js'; // Import function exposer
+import './storage-listener.js'; // Import storage change listener
 
 // Logger utility
 const logger = {
@@ -203,10 +205,14 @@ async function initializeExtension() {
         logger.log('Initializing extension');
         
         // Get authentication state and scraping state
-        const { principalId, enabled, isScrapingActive, extensionEnabled } = await chrome.storage.local.get(['principalId', 'enabled', 'isScrapingActive', 'extensionEnabled']);
+        const { principalId, identityInfo, enabled, isScrapingActive, extensionEnabled } = await chrome.storage.local.get(['principalId', 'identityInfo', 'enabled', 'isScrapingActive', 'extensionEnabled']);
         
-        // Handle legacy storage key if it exists
-        const isEnabled = enabled !== false || extensionEnabled === true;
+        // Set authentication state
+        isAuthenticated = !!(principalId || identityInfo);
+        logger.log(`[AUTH] Status: ${isAuthenticated ? 'Authenticated' : 'Not authenticated'}`);
+        
+        // Only consider the extension enabled if explicitly enabled AND authenticated
+        const isEnabled = (enabled === true || extensionEnabled === true) && isAuthenticated;
         
         // Update badge to reflect current state
         chrome.action.setBadgeText({ text: isEnabled ? 'ON' : 'OFF' });
@@ -219,10 +225,6 @@ async function initializeExtension() {
             enabled: isEnabled,
             isScrapingActive: isEnabled // Default to matching enabled state
         });
-        
-        // Set authentication state
-        isAuthenticated = !!principalId;
-        logger.log(`[AUTH] Status: ${isAuthenticated ? 'Authenticated' : 'Not authenticated'}`);
         
         // Set up action listeners
         setupActionListeners();
@@ -299,7 +301,7 @@ async function initializeScrapingFunctionality() {
         logger.log('[INIT] Starting scraping functionality');
         
         // Check authentication
-        const { principalId, enabled } = await chrome.storage.local.get(['principalId', 'enabled']);
+        const { principalId } = await chrome.storage.local.get(['principalId']);
         if (!principalId) {
             logger.log('[INIT] Authentication required');
             return { success: false, error: 'Not authenticated' };
@@ -1375,8 +1377,16 @@ async function startScraping() {
                     if (isScrapingActive) {
                         logger.log('Executing scheduled scrape via interval');
                         await performScrape();
+                        
+                        // Persist the scraping state to ensure it continues after browser restarts
+                        await chrome.storage.local.set({ 
+                            isScrapingActive: true,
+                            enabled: true,
+                            lastScrapeTime: Date.now(),
+                            scrapingMethod: 'interval'
+                        });
                     } else {
-                        logger.log('Skipping interval scrape (scraping inactive)');
+                        logger.log('Scraping is not active, skipping interval scrape');
                     }
                 } catch (error) {
                     logger.error('Error in interval scrape:', error);
@@ -1511,9 +1521,6 @@ function setupFallbackTimer() {
         }
     }, secondaryIntervalMs);
     
-    // Store the secondary timer ID
-    globalThis.rhinoSpiderTimers.push(secondaryTimerId);
-    
     // HEALTH CHECK TIMER: Ensures the other timers are running and restarts scraping if needed
     const healthCheckTimerId = setInterval(async () => {
         try {
@@ -1573,9 +1580,6 @@ function setupFallbackTimer() {
             }
         }
     }, healthCheckIntervalMs);
-    
-    // Store the health check timer ID
-    globalThis.rhinoSpiderTimers.push(healthCheckTimerId);
     
     // SUBMISSION RETRY TIMER: Periodically retry any pending submissions that failed with authorization errors
     const submissionRetryTimerId = setInterval(async () => {
@@ -1935,7 +1939,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     return;
                 }
                 
-                // Check if topics are loaded, if not, load them
+                // Check if topics are loaded
                 if (!topics || topics.length === 0) {
                     // Load topics
                     getTopics().then(loadedTopics => {
@@ -2021,15 +2025,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     chrome.storage.local.set({ enabled: true, isScrapingActive: true }, async () => {
                         logger.log('Extension is enabled by default after login, loading topics');
                         
+                        // Update badge to reflect the enabled state
+                        chrome.action.setBadgeText({ text: 'ON' });
+                        chrome.action.setBadgeBackgroundColor({ color: '#4CAF50' });
+                        
                         // Load topics if they're not already loaded
                         if (!topics || topics.length === 0) {
-                            try {
-                                // Try to get topics from the proxy (using cache if available)
-                                let loadedTopics = await getTopics(false);
-                                
-                                // If no topics were loaded, use mock topics as fallback
-                                if (!loadedTopics || loadedTopics.length === 0) {
-                                    logger.log('No topics loaded from proxy, using fallback mock topics');                                
+                            // Load topics
+                            getTopics().then(loadedTopics => {
+                                // If no topics were loaded from proxy, use fallback mock topics
+                                if (!loadedTopics || loadedTopics.length === 0) {            
                                     topics = loadedTopics;
                                     
                                     // Cache the fallback topics
@@ -2038,7 +2043,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                                         topicsTimestamp: Date.now()
                                     });
                                     
-                                    logger.log(`Fallback topics loaded (${topics.length} topics)`);
+                                } else {
                                 }
                                 
                                 // Schedule scraping to start after a short delay
@@ -2046,8 +2051,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                                     // Start the actual scraping process, not just a single scrape
                                     await startScraping();
                                 }, 5000); // 5 second delay
-                            } catch (error) {
-                                logger.error('Error loading topics after login:', error);
+                            }).catch(error => {
+                                logger.error('Error loading topics:', error);
                                 
                                 // Use mock topics as fallback in case of error
                                 logger.log('Error loading topics, using fallback mock topics');                                
@@ -2065,7 +2070,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                                     // Start the actual scraping process, not just a single scrape
                                     await startScraping();
                                 }, 5000); // 5 second delay
-                            }
+                            });
                         } else {
                             logger.log(`Topics already loaded (${topics.length} topics)`);
                             // Schedule scraping to start after a short delay
@@ -2141,7 +2146,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 const principalId = result.principalId;
                 
                 if (!principalId) {
-                    logger.log('Cannot test scrape: User is not authenticated');
                     sendResponse({ success: false, error: 'User is not authenticated' });
                     return;
                 }
@@ -2323,7 +2327,7 @@ async function initializeOnInstall(details) {
         // Set initial state if not already set
         if (result.enabled === undefined) {
             await chrome.storage.local.set({
-                enabled: true
+                enabled: false
             });
         }
         
@@ -2485,7 +2489,7 @@ async function fetchWithFallbacks(url, options = {}) {
     
     // Use our direct storage server for fetching content
     // This avoids CORS issues by using our own server as a proxy
-    const directStorageUrl = config.directStorage.url || 'http://143.244.133.154:3002';
+    const directStorageUrl = config.directStorage.url || 'https://storage.rhinospider.com';
     const apiPassword = config.directStorage.apiPassword || 'ffGpA2saNS47qr';
     
     // Single proxy method using our direct storage server
@@ -3784,4 +3788,15 @@ async function saveUrlPoolForTopic(topicId, urlPool) {
         logger.error('Error saving URL pool for topic:', error);
         return false;
     }
+}
+
+// Expose key functions to the global scope (service worker context)
+// Note: Don't use window object in service workers
+if (typeof self.exposeBackgroundFunctions === 'function') {
+    self.exposeBackgroundFunctions({
+        logger,
+        isAuthenticated,
+        startScraping,
+        stopScraping
+    });
 }
