@@ -17,9 +17,12 @@ const logger = {
 };
 
 // Configuration
-// const PROXY_SERVICE_URL = 'http://localhost:3003/api/search'; // Local development
-// const PROXY_SERVICE_URL = 'https://search-proxy.rhinospider.io/api/search'; // Production
-const PROXY_SERVICE_URL = 'http://143.244.133.154:3003/api/search'; // Deployed server
+// const PROXY_SERVICE_URL = 'http://localhost:3002/api/search'; // Local development
+// Get URL from environment variable or use default
+const PROXY_SERVICE_URL = (import.meta.env.VITE_SEARCH_PROXY_URL || 'https://search-proxy.rhinospider.com') + '/api/search'; // Production
+
+// Get API password from environment variable
+const API_PASSWORD = import.meta.env.VITE_API_PASSWORD || 'ffGpA2saNS47qr';
 
 // Get or generate a unique extension ID
 async function getExtensionId() {
@@ -68,14 +71,16 @@ async function getUrlsForTopics(topics, batchSize = 15, reset = false) {
                 keywords: topic.keywords || []
             })),
             batchSize,
-            reset
+            reset,
+            query: topics.map(topic => topic.name).join(' OR ') // Add a search query based on topic names
         };
         
         // Make request to the search proxy service
-        const response = await fetch(`${PROXY_SERVICE_URL}/urls`, {
+        const response = await fetch(`${PROXY_SERVICE_URL}`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${API_PASSWORD}`
             },
             body: JSON.stringify(requestData)
         });
@@ -86,17 +91,21 @@ async function getUrlsForTopics(topics, batchSize = 15, reset = false) {
         
         const data = await response.json();
         
-        if (!data.urls || !Array.isArray(data.urls)) {
+        // The search proxy returns results directly, not in a urls property
+        if (!Array.isArray(data)) {
             logger.warn('Search proxy service returned invalid data');
             return [];
         }
         
-        logger.log(`Received ${data.urls.length} URLs from search proxy service`);
+        logger.log(`Received ${data.length} URLs from search proxy service`);
         
-        // Add cache busters to URLs
-        const urlsWithCacheBusters = data.urls.map(urlInfo => ({
-            ...urlInfo,
-            url: addCacheBusterToUrl(urlInfo.url)
+        // Transform the search results to match expected format and add cache busters
+        const urlsWithCacheBusters = data.map(result => ({
+            url: addCacheBusterToUrl(result.url),
+            title: result.title,
+            snippet: result.snippet,
+            topicId: topics[0]?.id, // Assign to first topic
+            topicName: topics[0]?.name
         }));
         
         return urlsWithCacheBusters;
@@ -115,13 +124,19 @@ async function resetUrlPool() {
         // Get extension ID
         const extensionId = await getExtensionId();
         
-        // Make request to reset URL pool
-        const response = await fetch(`${PROXY_SERVICE_URL}/reset`, {
+        // Make request to search endpoint with reset flag
+        const response = await fetch(`${PROXY_SERVICE_URL}`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${API_PASSWORD}`
             },
-            body: JSON.stringify({ extensionId })
+            body: JSON.stringify({
+                extensionId,
+                reset: true,
+                query: 'reset',
+                limit: 1
+            })
         });
         
         if (!response.ok) {
@@ -200,12 +215,17 @@ async function prefetchUrlsForAllTopics(topics, urlsPerTopic = 15) {
         // Organize URLs by topic ID
         const urlsByTopic = {};
         
+        // Initialize urlsByTopic with empty arrays for all active topics
+        activeTopics.forEach(topic => {
+            urlsByTopic[topic.id] = [];
+        });
+        
+        // Add URLs to their respective topics
         urlsWithInfo.forEach(urlInfo => {
-            if (!urlsByTopic[urlInfo.topicId]) {
-                urlsByTopic[urlInfo.topicId] = [];
+            const topicId = urlInfo.topicId || activeTopics[0]?.id;
+            if (topicId && urlsByTopic[topicId]) {
+                urlsByTopic[topicId].push(urlInfo.url);
             }
-            
-            urlsByTopic[urlInfo.topicId].push(urlInfo.url);
         });
         
         // Log the number of URLs fetched for each topic

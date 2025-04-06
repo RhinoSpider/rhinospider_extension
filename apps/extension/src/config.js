@@ -23,8 +23,8 @@ export const config = {
     
     // Proxy server configuration
     proxy: {
-        // Use the search proxy URL for search operations
-        url: import.meta.env.VITE_PROXY_URL || 'http://143.244.133.154:3003',
+        // Use the IC proxy URL for operations
+        url: import.meta.env.VITE_PROXY_URL || 'https://ic-proxy.rhinospider.com',
         apiPassword: import.meta.env.VITE_API_PASSWORD || 'ffGpA2saNS47qr',
     },
     
