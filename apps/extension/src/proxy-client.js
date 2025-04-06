@@ -578,12 +578,15 @@ class ProxyClient {
       const fullUrl = `${this.proxyUrl}/api/register-device`;
       console.log(`[ProxyClient] Registering device at ${fullUrl}`);
       
-      const response = await fetch(fullUrl, {
+      // Include the deviceId in the URL as a query parameter instead of a header to avoid CORS issues
+      const registrationUrl = `${fullUrl}?deviceId=${encodeURIComponent(deviceId)}`;
+      
+      const response = await fetch(registrationUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiPassword}`,
-          'X-Device-ID': deviceId
+          'Authorization': `Bearer ${this.apiPassword}`
+          // Removed X-Device-ID header to avoid CORS issues
         },
         body: JSON.stringify({ deviceId })
       });
@@ -764,12 +767,15 @@ class ProxyClient {
       try {
         console.log(`[ProxyClient] Making consumer canister submission attempt ${retries + 1} to ${fullUrl}`);
         
-        const response = await fetch(fullUrl, {
+        // Include the deviceId in the URL as a query parameter instead of a header to avoid CORS issues
+        const submitUrl = `${fullUrl}?deviceId=${encodeURIComponent(deviceId)}`;
+        
+        const response = await fetch(submitUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${this.apiPassword}`,
-            'X-Device-ID': deviceId,
+            // Removed X-Device-ID header to avoid CORS issues
             'X-Use-Consumer': 'true'
           },
           body: JSON.stringify(enhancedPayload)
