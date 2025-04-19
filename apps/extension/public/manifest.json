@@ -46,7 +46,9 @@
         "ii-content.js",
         "ic-agent.js",
         "ic-deps.js",
-        "certificate-patch.js"
+        "certificate-patch.js",
+        "direct-test.html",
+        "test-url-fetching.html"
       ],
       "matches": [
         "<all_urls>"

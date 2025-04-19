@@ -1,24 +1,152 @@
 // Background script for RhinoSpider extension
-import { rhinoSpiderIC } from './ic-agent';
-import { ProxyClient } from './proxy-client.js';
-import proxyClient from './proxy-client';
 import submissionHelper from './submission-helper';
+import { getUrlsForTopics, prefetchUrlsForAllTopics, checkProxyHealth, getUrlForTopic } from './search-proxy-client.js';
+import { config } from './config.js';
+import proxyClient from './proxy-client.js';
 
-// Import our new modules
-// Note: These will be used gradually as we migrate functionality
-import * as scraperPatch from './scraper-patch.js';
-import { initialize as initializeUrlSelector, selectTopicAndUrl, trackSuccessfulUrl } from './simplified-url-selector.js';
+// Advanced logger utility with log levels and extreme throttling
+// Global settings
+const LOG_LEVEL = {
+    NONE: 0,    // No logging at all
+    ERROR: 1,   // Only errors
+    WARN: 2,    // Errors and warnings
+    CRITICAL: 3, // Errors, warnings, and critical info
+    INFO: 4,    // Regular informational logs
+    DEBUG: 5,   // Verbose debug information
+    TRACE: 6    // Extremely verbose logging
+};
 
-// Logger utility
+// Set the current log level - adjust this to control verbosity
+const CURRENT_LOG_LEVEL = LOG_LEVEL.INFO; // Show info logs for better debugging
+
+// Tracking for throttled logs - use a Map for better performance with large numbers of logs
+const recentLogs = new Map();
+
+// Throttle times for different log levels (in milliseconds)
+const logThrottleTimes = {
+    ERROR: 60000,     // 1 minute for errors
+    WARN: 600000,     // 10 minutes for warnings
+    CRITICAL: 300000, // 5 minutes for critical logs
+    INFO: 1800000,    // 30 minutes for info logs
+    DEBUG: 3600000,   // 1 hour for debug logs
+    TRACE: 7200000    // 2 hours for trace logs
+};
+
+// Helper function to create a more effective key for throttling
+// This helps prevent log spam from similar but slightly different messages
+function createLogKey(prefix, msg) {
+    // Extract first few words for better grouping of similar messages
+    if (typeof msg !== 'string') {
+        return prefix + ':' + String(msg).substring(0, 40);
+    }
+    
+    // Take first 5 words or first 50 chars, whichever is shorter
+    const words = msg.split(' ').slice(0, 5).join(' ');
+    return prefix + ':' + words.substring(0, 50);
+}
+
 const logger = {
-    log: (msg, data) => {
-        console.log(` [Background] ${msg}`, data || '');
+    // Regular logs - only shown at INFO level or higher
+    log: function(msg, data) {
+        if (CURRENT_LOG_LEVEL < LOG_LEVEL.INFO) return;
+        
+        // Create a key from the message for more effective throttling
+        const logKey = createLogKey('INFO', msg);
+        const now = Date.now();
+        const lastTime = recentLogs.get(logKey) || 0;
+        
+        // Extreme throttling - only log once per throttle time
+        if (now - lastTime > logThrottleTimes.INFO) {
+            console.log(`[RhinoSpider] ${msg}`, data || '');
+            recentLogs.set(logKey, now);
+        }
     },
-    error: (msg, error) => {
-        console.error(` [Background] ${msg}`, error);
+    
+    // Debug logs - only shown at DEBUG level
+    debug: function(msg, data) {
+        if (CURRENT_LOG_LEVEL < LOG_LEVEL.DEBUG) return;
+        
+        const logKey = createLogKey('DEBUG', msg);
+        const now = Date.now();
+        const lastTime = recentLogs.get(logKey) || 0;
+        
+        if (now - lastTime > logThrottleTimes.DEBUG) {
+            console.log(`[RhinoSpider-DEBUG] ${msg}`, data || '');
+            recentLogs.set(logKey, now);
+        }
     },
-    warn: (msg, data) => {
-        console.warn(` [Background] ${msg}`, data || '');
+    
+    // Trace logs - only shown at TRACE level with throttling
+    trace: function(msg, data) {
+        if (CURRENT_LOG_LEVEL < LOG_LEVEL.TRACE) return;
+        
+        const logKey = createLogKey('TRACE', msg);
+        const now = Date.now();
+        const lastTime = recentLogs.get(logKey) || 0;
+        
+        if (now - lastTime > logThrottleTimes.TRACE) {
+            console.log(`[RhinoSpider-TRACE] ${msg}`, data || '');
+            recentLogs.set(logKey, now);
+        }
+    },
+    
+    // Warnings - only shown at WARN level or higher
+    warn: function(msg, data) {
+        if (CURRENT_LOG_LEVEL < LOG_LEVEL.WARN) return;
+        
+        // Less throttling for warnings
+        const logKey = createLogKey('WARN', msg);
+        const now = Date.now();
+        const lastTime = recentLogs.get(logKey) || 0;
+        
+        if (now - lastTime > logThrottleTimes.WARN) {
+            console.warn(`[RhinoSpider] ⚠️ ${msg}`, data || '');
+            recentLogs.set(logKey, now);
+        }
+    },
+    
+    // Errors - always shown unless logging is completely disabled
+    error: function(msg, error) {
+        if (CURRENT_LOG_LEVEL < LOG_LEVEL.ERROR) return;
+        
+        // Minimal throttling for errors - they're important but still can spam
+        const logKey = createLogKey('ERROR', msg);
+        const now = Date.now();
+        const lastTime = recentLogs.get(logKey) || 0;
+        
+        if (now - lastTime > logThrottleTimes.ERROR) {
+            console.error(`[RhinoSpider] ❌ ${msg}`, error || '');
+            recentLogs.set(logKey, now);
+        }
+    },
+    
+    // Critical logs - important information that should be shown at CRITICAL level or higher
+    critical: function(msg, data) {
+        if (CURRENT_LOG_LEVEL < LOG_LEVEL.CRITICAL) return;
+        
+        // Minimal throttling for critical logs
+        const logKey = createLogKey('CRITICAL', msg);
+        const now = Date.now();
+        const lastTime = recentLogs.get(logKey) || 0;
+        
+        if (now - lastTime > logThrottleTimes.CRITICAL) {
+            console.log(`[RhinoSpider] 🚨 ${msg}`, data || '');
+            recentLogs.set(logKey, now);
+        }
+    },
+    
+    // Method to change log level at runtime
+    setLogLevel: function(level) {
+        if (LOG_LEVEL[level] !== undefined) {
+            console.log(`[RhinoSpider] Setting log level to ${level}`);
+            CURRENT_LOG_LEVEL = LOG_LEVEL[level];
+        } else if (typeof level === 'number' && level >= 0 && level <= 6) {
+            const levelName = Object.keys(LOG_LEVEL).find(key => LOG_LEVEL[key] === level);
+            console.log(`[RhinoSpider] Setting log level to ${levelName} (${level})`);
+            CURRENT_LOG_LEVEL = level;
+        } else {
+            console.error(`[RhinoSpider] Invalid log level: ${level}`);
+        }
     }
 };
 
@@ -276,70 +404,6 @@ function setupActionListeners() {
     } else if (chrome.browserAction) {
         chrome.browserAction.onClicked.addListener(handleBrowserActionClick);
     }
-    
-    // DISABLED: We should not monitor user's browsing activity
-    // This functionality has been disabled for privacy reasons
-    // chrome.tabs.onUpdated.addListener(handleTabUpdated);
-}
-
-// Initialize basic functionality that doesn't depend on authentication
-function initializeBasicFunctionality() {
-    // Set up message listeners
-    chrome.runtime.onMessage.addListener(handleMessages);
-    
-    // Set up alarm listener
-    if (typeof chrome.alarms !== 'undefined') {
-        chrome.alarms.onAlarm.addListener(handleAlarm);
-    }
-}
-
-// Initialize scraping-related functionality
-async function initializeScrapingFunctionality() {
-    try {
-        logger.log('[INIT] Starting scraping functionality');
-        
-        // Check authentication
-        const { principalId, enabled } = await chrome.storage.local.get(['principalId', 'enabled']);
-        if (!principalId) {
-            logger.log('[INIT] Authentication required');
-            return { success: false, error: 'Not authenticated' };
-        }
-        
-        // Check if extension is enabled
-        if (enabled === false) {
-            logger.log('[INIT] Extension disabled');
-            return { success: false, error: 'Extension disabled' };
-        }
-        
-        // Check if topics are loaded
-        if (!topics || topics.length === 0) {
-            logger.log('[INIT] Loading topics...');
-            
-            try {
-                // Load topics (using cache if available)
-                await getTopics(false);
-                
-                // Check if topics were loaded successfully
-                if (!topics || topics.length === 0) {
-                    return { success: false, error: 'Failed to load topics' };
-                }
-
-            } catch (error) {
-                return { success: false, error: 'Error loading topics' };
-            }
-        }
-        
-        // Initialize scraper modules
-        await scraperPatch.initialize();
-        await initializeSimplifiedUrlSelector();
-        
-        // Start scraping
-        const result = await startScraping();
-        
-        return result;
-    } catch (error) {
-        return { success: false, error: error.message };
-    }
 }
 
 // Initialize topics and configuration
@@ -463,6 +527,14 @@ async function getTopics(forceRefresh = false) {
                             // Update last fetch time
                             lastTopicsFetchTime = Date.now();
                             
+                            // Log sample URLs for debugging
+                            topics.forEach((topic, index) => {
+                                logger.log(`[TOPICS] Topic ${index + 1}: ${topic.name} (${topic.id}) has ${topic.sampleArticleUrls ? topic.sampleArticleUrls.length : 0} sample URLs`);
+                                if (topic.sampleArticleUrls && topic.sampleArticleUrls.length > 0) {
+                                    logger.log(`[TOPICS] Sample URLs for ${topic.name}:`, JSON.stringify(topic.sampleArticleUrls));
+                                }
+                            });
+                            
                             logger.log(`[TOPICS] Loaded ${topics.length} topics via proxy client`);
                             return topics;
                         } else if (topicsResult && topicsResult.ok && Array.isArray(topicsResult.ok)) {
@@ -472,6 +544,14 @@ async function getTopics(forceRefresh = false) {
                             
                             // Update last fetch time
                             lastTopicsFetchTime = Date.now();
+                            
+                            // Log sample URLs for debugging
+                            topics.forEach((topic, index) => {
+                                logger.log(`[TOPICS] Topic ${index + 1}: ${topic.name} (${topic.id}) has ${topic.sampleArticleUrls ? topic.sampleArticleUrls.length : 0} sample URLs`);
+                                if (topic.sampleArticleUrls && topic.sampleArticleUrls.length > 0) {
+                                    logger.log(`[TOPICS] Sample URLs for ${topic.name}:`, JSON.stringify(topic.sampleArticleUrls));
+                                }
+                            });
                             
                             logger.log(`[TOPICS] Loaded ${topics.length} topics via proxy client (ok format)`);
                             return topics;
@@ -637,70 +717,69 @@ async function performScrape() {
             return;
         }
         
-        // Prefetch URLs for all active topics in the background
-        logger.log(`Prefetching URLs for ${activeTopics.length} active topics`);
-        scraperPatch.prefetchUrlsForTopics(activeTopics).catch(error => {
-            logger.error('Error prefetching URLs for topics:', error);
+        // Check if we already have prefetched URLs in storage
+        const prefetchResult = await chrome.storage.local.get(['prefetchedUrls', 'remainingUrls', 'allSampleUrlsScraped']);
+        const allScraped = prefetchResult.allSampleUrlsScraped || false;
+        const prefetchedUrls = prefetchResult.prefetchedUrls || {};
+        const remainingUrls = prefetchResult.remainingUrls || {};
+        
+        // Check if we need to prefetch more URLs
+        const needsPrefetch = activeTopics.some(topic => {
+            const hasPrefetched = prefetchedUrls[topic.id] && prefetchedUrls[topic.id].length > 0;
+            const hasRemaining = remainingUrls[topic.id] && remainingUrls[topic.id].length > 0;
+            return !hasPrefetched && !hasRemaining;
         });
         
-        // Use simplified URL selector to select a topic and URL
-        const selectedData = await scraperPatch.selectTopicAndUrl(activeTopics);
+        // Always log the URL counts for debugging
+        logger.log(`URL counts for ${activeTopics.length} active topics:`);
+        activeTopics.forEach(topic => {
+            const prefetchCount = prefetchedUrls[topic.id] ? prefetchedUrls[topic.id].length : 0;
+            const remainingCount = remainingUrls[topic.id] ? remainingUrls[topic.id].length : 0;
+            logger.log(`- Topic ${topic.name} (${topic.id}): ${prefetchCount} prefetched, ${remainingCount} remaining`);
+        });
         
-        // Check if all sample URLs have been scraped
-        // First check if the selectedData already indicates all URLs are scraped
-        let allScraped = selectedData.allScraped || false;
-        
-        // If not already determined, make an explicit check
-        if (!allScraped) {
-            logger.log('Performing explicit check to see if all sample URLs have been scraped');
-            allScraped = await scraperPatch.areAllSampleUrlsScraped();
-        }
-        
-        if (allScraped) {
-            logger.log('🎉 All sample URLs have been scraped, continuing with URLs from search proxy service');
+        // Only prefetch if needed or if we're using search proxy
+        if (needsPrefetch || allScraped) {
+            // Only log this once per session to reduce noise
+            if (!performScrape.lastPrefetchLog || (Date.now() - performScrape.lastPrefetchLog > 300000)) { // 5 minutes
+                logger.log(`Prefetching URLs for ${activeTopics.length} active topics`);
+                performScrape.lastPrefetchLog = Date.now();
+            }
             
-            // Double-check to make absolutely sure
-            const confirmCheck = await scraperPatch.areAllSampleUrlsScraped();
-            if (!confirmCheck) {
-                logger.warn('⚠️ Confirmation check failed - some URLs may not be scraped. Continuing process.');
-                // Continue with scraping since confirmation failed
-            } else {
-                // Update badge to indicate we're now using search proxy URLs
-                chrome.action.setBadgeText({ text: 'PROXY' });
-                chrome.action.setBadgeBackgroundColor({ color: '#2196F3' });
-                
-                // Store the state persistently but keep scraping active
-                await chrome.storage.local.set({ 
-                    allSampleUrlsScraped: true, // Store this state persistently
-                    isScrapingActive: true // Keep scraping active
-                });
-                
-                logger.log('🔄 Continuing scraping process with URLs from search proxy service');
-                // We don't return here, we continue with the scraping process
+            // Use the imported prefetchUrlsForAllTopics function directly
+            try {
+                await prefetchUrlsForAllTopics(activeTopics);
+            } catch (error) {
+                logger.error('Error prefetching URLs for topics:', error);
             }
         }
         
-        // Check if we have a valid topic and URL
-        if (!selectedData.topic || !selectedData.url) {
-            return;
-        }
-        
-        const selectedTopic = selectedData.topic;
-        const selectedUrl = selectedData.url;
-        
-        // Update the recently scraped URLs list for tracking
-        logger.log(`🔄 Tracking URL for topic ${selectedTopic.id}: ${selectedUrl}`);
-        const trackingResult = await scraperPatch.trackScrapedUrl(selectedTopic.id, selectedUrl);
-        
-        if (!trackingResult) {
-            logger.warn(`⚠️ Failed to track URL for topic ${selectedTopic.id}. This may affect scraping completion detection.`);
-        } else {
-            logger.log(`✅ Successfully tracked URL for topic ${selectedTopic.id}`);
-            
-            // Check if this URL tracking has completed all sample URLs
-            const allScrapedAfterTracking = await scraperPatch.areAllSampleUrlsScraped();
-            if (allScrapedAfterTracking) {
-                logger.log('🎉 After tracking this URL, all sample URLs are now scraped!');
+        // Check if all sample URLs are scraped
+        let allScrapedStatus = allScraped;
+        if (!allScrapedStatus) {
+            // Simple check to determine if all sample URLs are scraped
+            // We'll consider all URLs scraped if we've scraped at least 5 URLs for each topic
+            try {
+                const result = await chrome.storage.local.get(['scrapedUrls']);
+                const scrapedUrls = result.scrapedUrls || {};
+                
+                let allScrapedCheck = true;
+                // Check if each active topic has at least 5 scraped URLs
+                for (const topic of activeTopics) {
+                    const topicScrapedUrls = scrapedUrls[topic.id] || [];
+                    if (topicScrapedUrls.length < 5) {
+                        allScrapedCheck = false;
+                        break;
+                    }
+                }
+                
+                if (allScrapedCheck && !allScraped) {
+                    logger.log('All sample URLs are now scraped, switching to search proxy service');
+                    await chrome.storage.local.set({ allSampleUrlsScraped: true });
+                    allScrapedStatus = true;
+                }
+            } catch (error) {
+                logger.error('Error checking if all sample URLs are scraped:', error);
             }
         }
         
@@ -709,6 +788,61 @@ async function performScrape() {
             getIPAddress(),
             measureInternetSpeed()
         ]);
+        
+        // Select a random active topic
+        const randomIndex = Math.floor(Math.random() * activeTopics.length);
+        const selectedTopic = activeTopics[randomIndex];
+        
+        // Get a URL for the selected topic using the imported function
+        const urlResult = await getUrlForTopic(selectedTopic);
+        
+        // Check if we have a valid URL
+        if (!urlResult || !urlResult.url) {
+            logger.error(`Failed to get URL for topic ${selectedTopic.name}`);
+            
+            // Try to get a URL from the remaining URLs
+            const remainingResult = await chrome.storage.local.get(['remainingUrls']);
+            const remainingUrls = remainingResult.remainingUrls || {};
+            
+            if (remainingUrls[selectedTopic.id] && remainingUrls[selectedTopic.id].length > 0) {
+                // Get a random URL from the remaining URLs
+                const randomIndex = Math.floor(Math.random() * remainingUrls[selectedTopic.id].length);
+                const randomUrl = remainingUrls[selectedTopic.id][randomIndex];
+                
+                logger.log(`Using fallback URL from remaining URLs for topic ${selectedTopic.name}: ${randomUrl.url}`);
+                
+                // Remove the URL from remaining URLs
+                remainingUrls[selectedTopic.id].splice(randomIndex, 1);
+                await chrome.storage.local.set({ remainingUrls });
+                
+                // Use this URL instead
+                urlResult = randomUrl;
+            } else {
+                // No URLs available, try again later
+                return;
+            }
+        }
+        
+        const selectedUrl = urlResult.url;
+        
+        // Track the scraped URL
+        try {
+            const result = await chrome.storage.local.get(['scrapedUrls']);
+            const scrapedUrls = result.scrapedUrls || {};
+            
+            // Initialize array for this topic if it doesn't exist
+            if (!scrapedUrls[selectedTopic.id]) {
+                scrapedUrls[selectedTopic.id] = [];
+            }
+            
+            // Add URL if it's not already in the list
+            if (!scrapedUrls[selectedTopic.id].includes(selectedUrl)) {
+                scrapedUrls[selectedTopic.id].push(selectedUrl);
+                await chrome.storage.local.set({ scrapedUrls });
+            }
+        } catch (error) {
+            logger.error('Error tracking scraped URL:', error);
+        }
         
         // Fetch the content
         let fetchResult;
@@ -805,7 +939,41 @@ async function performScrape() {
                 extractedData.metadata.proxySource = fetchResult?.source || null;
             }
             
-            await submitScrapedData(selectedUrl, content, selectedTopic.id, 'completed', extractedData, metricsData);
+            // Add logging to track the submission process
+            logger.log(`Submitting scraped data for URL: ${selectedUrl}`);
+            logger.log(`Topic: ${selectedTopic.name} (${selectedTopic.id})`);
+            logger.log(`Content length: ${content ? content.length : 0} characters`);
+            logger.log(`Extracted data fields: ${extractedData ? Object.keys(extractedData).join(', ') : 'none'}`);
+            
+            // Make sure we have a principalId for submission
+            const principalResult = await chrome.storage.local.get(['principalId']);
+            if (!principalResult.principalId) {
+                logger.error('No principalId found for submission. Data will not be submitted.');
+                return;
+            }
+            
+            // Add principalId to the metrics data
+            metricsData.principalId = principalResult.principalId;
+            
+            // Submit the data with retry logic
+            let submissionResult;
+            try {
+                submissionResult = await submitScrapedData(selectedUrl, content, selectedTopic.id, 'completed', extractedData, metricsData);
+                logger.log(`Submission result:`, submissionResult);
+            } catch (submissionError) {
+                logger.error(`Error in first submission attempt:`, submissionError);
+                
+                // Wait and retry
+                await new Promise(resolve => setTimeout(resolve, 3000));
+                logger.log(`Retrying submission...`);
+                
+                try {
+                    submissionResult = await submitScrapedData(selectedUrl, content, selectedTopic.id, 'completed', extractedData, metricsData);
+                    logger.log(`Retry submission result:`, submissionResult);
+                } catch (retryError) {
+                    logger.error(`Error in retry submission:`, retryError);
+                }
+            }
             
             // Mark this URL as successfully processed in our tracking systems
             // This helps ensure we don't reuse the same URLs repeatedly
@@ -823,8 +991,6 @@ async function performScrape() {
                     // Remove trailing slashes
                     cleanSelectedUrl = cleanSelectedUrl.replace(/\/$/, '');
                     
-                    logger.log(`Looking for URL match in pool: ${cleanSelectedUrl}`);
-                    
                     // Find the URL in the pool using case-insensitive comparison
                     const urlIndex = urlPool.urls.findIndex(item => {
                         return item.url.toLowerCase() === cleanSelectedUrl.toLowerCase();
@@ -836,24 +1002,15 @@ async function performScrape() {
                         urlPool.urls[urlIndex].lastUsed = Date.now();
                         urlPool.urls[urlIndex].successful = true;
                         await saveUrlPoolForTopic(selectedTopic.id, urlPool);
-                        logger.log(`✅ Updated URL status in URL pool for topic ${selectedTopic.id}`);
-                        
-                        // Also update the URL in the simplified-url-selector tracking system
-                        // This ensures both tracking systems are in sync
-                        await scraperPatch.trackScrapedUrl(selectedTopic.id, cleanSelectedUrl);
-                        logger.log(`✅ Also updated URL in simplified-url-selector tracking system`);
                     } else {
-                        logger.warn(`⚠️ URL not found in the URL pool for topic ${selectedTopic.id}`);
-                        logger.log(`🔍 Available URLs in pool:`);
-                        urlPool.urls.forEach((item, index) => {
-                            logger.log(`  ${index + 1}. ${item.url}`);
-                        });
+                        // Only log a count of available URLs instead of listing them all
+                        logger.log(`${urlPool.urls.length} URLs available in pool for topic ${selectedTopic.id}`);
                     }
                 } else {
-                    logger.warn(`⚠️ No URL pool available for topic ${selectedTopic.id}`);
+                    logger.warn(`No URL pool available for topic ${selectedTopic.id}`);
                 }
             } catch (error) {
-                logger.error('❌ Error updating URL pool:', error);
+                logger.error('Error updating URL pool:', error);
             }
         } catch (submitError) {
             // Still update last scrape time even if submission fails
@@ -957,290 +1114,6 @@ function processContent(content, topic, currentUrl) {
 }
 
 // Submit scraped data to the proxy server
-async function submitScrapedData(url, content, topicId, status = 'completed', extractedData = null, metrics = null) {
-    try {
-        // Get principal ID from storage
-        const { principalId } = await new Promise(resolve => {
-            chrome.storage.local.get(['principalId'], result => resolve(result));
-        });
-        
-        if (!principalId) {
-            return { success: false, error: 'No principal ID found' };
-        }
-        
-        // Prepare the data payload with extracted data and metrics
-        const dataPayload = {
-            url: url,
-            topicId: topicId,
-            status: status,
-            content: content.substring(0, 10000), // Limit content size
-            timestamp: new Date().toISOString(),
-            metrics: metrics || {}
-        };
-        
-        // Add extracted data if available
-        if (extractedData) {
-            dataPayload.extractedData = extractedData;
-        }
-        
-        // Convert principal ID to string if it's an object
-        let principalIdValue;
-        if (typeof principalId === 'object') {
-            if (principalId.__principal__) {
-                principalIdValue = principalId.__principal__;
-            } else {
-                try {
-                    principalIdValue = String(principalId);
-                } catch (e) {
-                    principalIdValue = JSON.stringify(principalId);
-                }
-            }
-        } else {
-            principalIdValue = String(principalId);
-        }
-        
-        // Create scraped data object
-        const scrapedData = {
-            id: `scrape_${Date.now()}`,
-            url: dataPayload.url,
-            content: dataPayload.content ? dataPayload.content.substring(0, 10000) : '', // Send full content up to limit
-            topic: dataPayload.topicId,
-            timestamp: Date.now(),
-            status: dataPayload.status,
-            principalId: principalIdValue,
-            source: 'extension',
-            scraping_time: dataPayload.metrics?.duration || 500,
-            client_id: null
-        };
-        
-        // Add extracted data if available
-        if (dataPayload.extractedData) {
-            scrapedData.extractedData = dataPayload.extractedData;
-        }
-        
-        // Add metrics if available
-        if (dataPayload.metrics) {
-            scrapedData.metrics = dataPayload.metrics;
-        }
-        
-        // Log the complete data that would be sent to the canister
-        logger.log('=== COMPLETE DATA READY FOR CANISTER SUBMISSION ===');
-        // Create a copy for logging to avoid modifying the original
-        const logScrapedData = {...scrapedData};
-        // Truncate content for logging purposes
-        if (logScrapedData.content) {
-            logScrapedData.content = logScrapedData.content.substring(0, 500) + '... (truncated for logging)';
-        }
-        if (logScrapedData.extractedData && logScrapedData.extractedData.content) {
-            logScrapedData.extractedData.content = logScrapedData.extractedData.content.substring(0, 500) + '... (truncated for logging)';
-        }
-        // Log the data using both console.log and logger.log for maximum visibility
-        console.log(JSON.stringify(logScrapedData, null, 2));
-        logger.log('SCRAPED DATA: ' + JSON.stringify(logScrapedData, null, 2));
-        logger.log('=== END COMPLETE DATA ===');
-        
-        logger.log('Created scraped data with URL:', dataPayload.url);
-        
-        // Initialize proxy client
-        const proxyClient = new ProxyClient();
-        
-        // For now, just log that we would submit the data but don't actually send it
-        logger.log('READY TO SUBMIT: Data prepared for submission to canister');
-        logger.log('Would submit data with ID: ' + scrapedData.id);
-        console.log('Would submit data with ID:', scrapedData.id);
-        
-        // Ensure the user's principal ID is properly set for authorization
-        // The consumer canister checks for this to verify the user has a profile
-        if (!principalIdValue) {
-            logger.warn('No principal ID available for submission, authorization may fail');
-            // Try to get it from storage as a fallback
-            try {
-                const result = await new Promise(resolve => {
-                    chrome.storage.local.get(['principalId'], resolve);
-                });
-                
-                if (result.principalId) {
-                    principalIdValue = result.principalId;
-                    logger.log('Retrieved principal ID from storage:', principalIdValue);
-                }
-            } catch (storageError) {
-                logger.error('Error retrieving principal ID from storage:', storageError);
-            }
-        }
-        
-        // Ensure the scrapedData object has all the required fields in the correct format
-        // Make sure principalId is set correctly
-        scrapedData.principalId = principalIdValue;
-        
-        // Set client_id to null - the proxy server will convert this to a Principal
-        // This is critical for authorization to work correctly
-        scrapedData.client_id = null;
-        
-        // Make sure topic and topicId are both set (the server might expect either one)
-        if (scrapedData.topic && !scrapedData.topicId) {
-            scrapedData.topicId = scrapedData.topic;
-        } else if (scrapedData.topicId && !scrapedData.topic) {
-            scrapedData.topic = scrapedData.topicId;
-        }
-        
-        // Make sure status is set to a valid value
-        scrapedData.status = 'completed';
-        
-        // Ensure scraping_time is a number
-        if (!scrapedData.scraping_time || typeof scrapedData.scraping_time !== 'number') {
-            scrapedData.scraping_time = 500; // Default value
-        }
-        
-        // Set timestamp if not already set
-        if (!scrapedData.timestamp) {
-            scrapedData.timestamp = Math.floor(Date.now() / 1000);
-        }
-        
-        // Set source if not already set
-        if (!scrapedData.source) {
-            scrapedData.source = 'extension';
-        }
-        
-        // Create a simplified submission payload with only the necessary fields
-        // This helps avoid any issues with field format mismatches
-        const submissionPayload = {
-            // User identification - critical for authorization
-            principalId: principalIdValue,
-            // Do NOT set client_id to null - the proxy server needs to create a Principal object
-            // from the principalId. If we include client_id: null, it will override the server's conversion.
-            
-            // Core data fields
-            id: scrapedData.id,
-            url: scrapedData.url,
-            content: scrapedData.content,
-            topic: scrapedData.topic,
-            topicId: scrapedData.topicId || scrapedData.topic,
-            
-            // Status and metadata
-            status: 'completed',
-            timestamp: Math.floor(Date.now() / 1000),
-            scraping_time: typeof scrapedData.scraping_time === 'number' ? scrapedData.scraping_time : 500,
-            source: 'extension',
-            
-            // Include extracted data if available
-            extractedData: scrapedData.extractedData || {}
-        };
-        
-        // Log the exact data being sent to the proxy server
-        logger.log('EXACT DATA BEING SENT TO PROXY:', JSON.stringify({
-            principalId: submissionPayload.principalId,
-            url: submissionPayload.url,
-            content: 'Content length: ' + (submissionPayload.content ? submissionPayload.content.length : 0),
-            topic: submissionPayload.topic,
-            topicId: submissionPayload.topicId,
-            status: submissionPayload.status,
-            scraping_time: submissionPayload.scraping_time
-        }));
-        
-        // Submit the data to the proxy client using the submitScrapedData function
-        // which has built-in fallback mechanisms and proper error handling
-        try {
-            // Log the principal ID being used for authorization
-            logger.log('Using principal ID for authorization:', principalIdValue);
-            
-            // Store the data in local storage for later submission attempts
-            // This ensures we don't lose the data if submission fails
-            try {
-                const pendingSubmissions = await chrome.storage.local.get('pendingSubmissions') || { pendingSubmissions: [] };
-                const submissions = pendingSubmissions.pendingSubmissions || [];
-                
-                // Check if this URL is already in pending submissions
-                const isDuplicate = submissions.some(item => item.url === submissionPayload.url);
-                
-                if (!isDuplicate) {
-                    submissions.push({
-                        payload: submissionPayload,
-                        timestamp: Date.now(),
-                        attempts: 0
-                    });
-                    await chrome.storage.local.set({ pendingSubmissions: submissions });
-                    logger.log('Stored submission in pending queue. Queue size:', submissions.length);
-                }
-            } catch (storageError) {
-                logger.error('Error storing submission in local storage:', storageError);
-            }
-            
-            // Try with the simplified payload
-            const result = await submissionHelper.submitScrapedData(submissionPayload);
-            
-            // Log detailed result information
-            logger.log('Submission result: ' + JSON.stringify(result));
-            console.log('Submission result:', result);
-            
-            // Check if the submission was actually successful
-            let isReallySuccessful = false;
-            
-            // First check if the response has an 'ok' property with dataSubmitted=true
-            if (result.ok && result.ok.dataSubmitted === true) {
-                // Then check if there's no actual error in the result
-                if (!result.ok.result || !result.ok.result.err) {
-                    isReallySuccessful = true;
-                    logger.log('Submission was genuinely successful');
-                } else {
-                    // If there's an error but it's just NotAuthorized, we'll still consider it successful
-                    // This is part of the temporary workaround
-                    if (result.ok.result.err.NotAuthorized !== undefined) {
-                        isReallySuccessful = true;
-                        logger.log('Submission had NotAuthorized error but still considering it successful');
-                    } else {
-                        logger.log('Submission had an error:', result.ok.result.err);
-                    }
-                }
-            } else if (result.err) {
-                logger.log('Submission failed with error:', result.err);
-            }
-            
-            // TEMPORARY WORKAROUND: Accept any response as success for pending submissions
-            // This is to accommodate the current server response format
-            // The server is temporarily configured to always return a 200 response
-            // regardless of the actual result
-            logger.log('TEMPORARY WORKAROUND: Accepting any response as success for pending submissions');
-            
-            // Always remove this item from pending submissions if it exists
-            try {
-                const pendingSubmissions = await chrome.storage.local.get('pendingSubmissions') || { pendingSubmissions: [] };
-                const submissions = pendingSubmissions.pendingSubmissions || [];
-                const filteredSubmissions = submissions.filter(item => item.url !== submissionPayload.url);
-                await chrome.storage.local.set({ pendingSubmissions: filteredSubmissions });
-                logger.log('Removed submitted URL from pending submissions');
-                
-                // Only track this URL as successfully scraped if it was really successful
-                if (isReallySuccessful) {
-                    await trackSuccessfulUrl(topicId, url);
-                    logger.log('Marked URL as successfully scraped:', url);
-                } else {
-                    logger.log('URL not marked as successfully scraped due to submission issues:', url);
-                }
-            } catch (storageError) {
-                logger.error('Error updating pending submissions after submission:', storageError);
-            }
-            
-            // Log original behavior for reference
-            if (result.err) {
-                if (result.err.NotAuthorized !== undefined) {
-                    logger.log('NotAuthorized error received but ignoring due to temporary workaround');
-                }
-            }
-            
-            // TEMPORARY WORKAROUND: Always return success
-            return { success: true, result };
-        } catch (error) {
-            logger.error('Error submitting scraped data:', error);
-            return { success: false, error: error.message };
-        }
-        
-    } catch (error) {
-        logger.error('Error preparing scraped data for submission:', error);
-        return { success: false, error: error.message };
-    }
-}
-
-// Force a scrape operation for testing
 async function forceScrape() {
     logger.log('Forcing a scrape operation for testing');
     
@@ -1812,13 +1685,6 @@ function handleBrowserActionClick() {
     openOrFocusDashboard();
 }
 
-// Handle tab updates
-function handleTabUpdated(tabId, changeInfo, tab) {
-    // DISABLED: We should not monitor user's browsing activity
-    // This functionality has been disabled for privacy reasons
-    // We will not process URL changes from user's browsing activity
-}
-
 // Handle extension installation or update
 function handleInstalled(details) {
     logger.log(`Extension installed/updated: ${details.reason}`);
@@ -1883,48 +1749,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             });
             return true;
             
-        case 'TEST_SAMPLE_URLS':
-            // Make sure topics are loaded
-            if (!topics || topics.length === 0) {
-                getTopics().then(async () => {
-                    // Run the test
-                    const testResults = await scraperPatch.testSampleUrlSelection(topics);
-                    
-                    // Send the results back
-                    sendResponse({
-                        success: true,
-                        message: 'Sample URL test completed',
-                        results: testResults
-                    });
-                    
-                    logger.log(`Sample URL test: ${testResults.success ? 'Success' : 'Failed'} (${testResults.message})`);
-                }).catch(error => {
-                    logger.error('Error testing sample URLs:', error);
-                    sendResponse({
-                        success: false,
-                        message: 'Test failed: ' + error.message
-                    });
-                });
-            } else {
-                // Topics already loaded, run the test
-                scraperPatch.testSampleUrlSelection(topics).then(testResults => {
-                    sendResponse({
-                        success: true,
-                        message: 'Sample URL test completed',
-                        results: testResults
-                    });
-                    
-                    logger.log('Sample URL test completed:', testResults);
-                }).catch(error => {
-                    logger.error('Error testing sample URLs:', error);
-                    sendResponse({
-                        success: false,
-                        message: 'Test failed: ' + error.message
-                    });
-                });
-            }
-            return true; // Keep the message channel open for the async response
-            
         case 'START_SCRAPING':
             // Check if user is authenticated
             chrome.storage.local.get(['principalId']).then(result => {
@@ -1949,7 +1773,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                                 topicsTimestamp: Date.now()
                             });
                             
-                        } else {
+                            logger.log(`Fallback topics loaded (${topics.length} topics)`);
                         }
                         
                         // Start scraping
@@ -1968,6 +1792,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                             topics: topics,
                             topicsTimestamp: Date.now()
                         });
+                        
+                        logger.log(`Fallback topics loaded (${topics.length} topics)`);
                         
                         // Start scraping
                         startScraping().then(() => {
@@ -2007,6 +1833,160 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         case 'PERFORM_SCRAPE':
             performScrape();
             sendResponse({ success: true });
+            return true;
+            
+        case 'TEST_URL_FETCHING':
+            // Direct test of URL fetching from search proxy
+            logger.log('Running direct URL fetching test');
+            testUrlFetching().then(result => {
+                sendResponse(result);
+            }).catch(error => {
+                logger.error('Error in URL fetching test:', error);
+                sendResponse({ success: false, error: error.message });
+            });
+            return true;
+            
+        case 'EXECUTE_FUNCTION':
+            // Execute a function in the background script
+            if (!message.function) {
+                sendResponse({ success: false, error: 'No function specified' });
+                return true;
+            }
+            
+            logger.log(`Executing function: ${message.function}`);
+            
+            try {
+                // Handle specific functions
+                switch (message.function) {
+                    case 'checkProxyHealth':
+                        // Use the already imported checkProxyHealth function
+                        (async () => {
+                            try {
+                                // Call the checkProxyHealth function directly
+                                const isHealthy = await checkProxyHealth();
+                                sendResponse(isHealthy);
+                            } catch (error) {
+                                logger.error(`Error executing ${message.function}:`, error);
+                                sendResponse(false);
+                            }
+                        })();
+                        break;
+                    
+                    default:
+                        sendResponse({ success: false, error: `Unknown function: ${message.function}` });
+                }
+            } catch (error) {
+                logger.error(`Error executing function ${message.function}:`, error);
+                sendResponse({ success: false, error: error.message });
+            }
+            
+            return true;
+            
+        case 'FETCH_TOPICS':
+            // Fetch topics from the server
+            logger.log('Fetching topics from server');
+            
+            // Check if we have a principalId
+            if (!message.principalId) {
+                logger.error('No principalId provided for fetching topics');
+                sendResponse({ success: false, error: 'No principalId provided' });
+                return true;
+            }
+            
+            logger.log(`Fetching topics for principalId: ${message.principalId}`);
+            
+            // Use a direct approach with proper error handling
+            (async () => {
+                try {
+                    // Use the imported proxyClient to fetch topics
+                    logger.log(`Using proxyClient to fetch topics for principalId: ${message.principalId}`);
+                    const topics = await proxyClient.getTopics(message.principalId);
+                    
+                    // Log success
+                    logger.log(`ProxyClient successfully fetched topics`);
+                    
+                    if (topics && topics.length > 0) {
+                        logger.log(`Successfully fetched ${topics.length} topics from server`);
+                        
+                        // Log the first topic for debugging
+                        if (topics[0]) {
+                            logger.log(`First topic: ${topics[0].name} (${topics[0].id})`);
+                        }
+                        
+                        // Make sure each topic has a status field
+                        const processedTopics = topics.map(topic => ({
+                            ...topic,
+                            status: topic.status || 'active' // Default to active if not specified
+                        }));
+                        
+                        // Store the topics in Chrome's storage
+                        await chrome.storage.local.set({ topics: processedTopics });
+                        logger.log('Topics stored in Chrome storage');
+                        
+                        // Prefetch URLs for active topics
+                        const activeTopics = processedTopics.filter(t => t.status === 'active');
+                        if (activeTopics.length > 0) {
+                            logger.log(`Prefetching URLs for ${activeTopics.length} active topics`);
+                            
+                            // First check if the search proxy is healthy
+                            checkProxyHealth().then(isHealthy => {
+                                logger.log(`Search proxy health check: ${isHealthy ? 'HEALTHY' : 'UNHEALTHY'}`);
+                                
+                                if (!isHealthy) {
+                                    logger.error('Search proxy is not healthy, cannot fetch URLs');
+                                    return;
+                                }
+                                
+                                // Directly fetch URLs for each active topic and log them
+                                activeTopics.forEach(topic => {
+                                    logger.log(`Directly fetching URLs for topic: ${topic.name} (${topic.id})`);
+                                    
+                                    // Get a single URL for this topic to test
+                                    getUrlForTopic(topic).then(url => {
+                                        if (url) {
+                                            logger.log(`Successfully fetched URL for ${topic.name}: ${url.url}`);
+                                        } else {
+                                            logger.error(`Failed to fetch URL for topic ${topic.name}`);
+                                        }
+                                    }).catch(error => {
+                                        logger.error(`Error fetching URL for topic ${topic.name}:`, error);
+                                    });
+                                    
+                                    // Also fetch a batch of URLs
+                                    getUrlsForTopics([topic], 5, true).then(urlsMap => {
+                                        const topicUrls = urlsMap[topic.id] || [];
+                                        logger.log(`Fetched ${topicUrls.length} URLs for topic ${topic.name}:`);
+                                        topicUrls.forEach((url, index) => {
+                                            logger.log(`URL ${index + 1}: ${url.url}`);
+                                        });
+                                    }).catch(error => {
+                                        logger.error(`Error fetching URLs for topic ${topic.name}:`, error);
+                                    });
+                                });
+                                
+                                // Also prefetch URLs for all topics at once
+                                prefetchUrlsForAllTopics(activeTopics, 10).then(result => {
+                                    logger.log('Prefetched URLs for all topics:', result);
+                                }).catch(err => {
+                                    logger.error('Error prefetching URLs:', err);
+                                });
+                            }).catch(error => {
+                                logger.error('Error checking search proxy health:', error);
+                            });
+                        }
+                        
+                        // Send success response with the topics
+                        sendResponse({ success: true, topics: processedTopics });
+                    } else {
+                        logger.error('No topics returned from server');
+                        sendResponse({ success: false, error: 'No topics returned from server' });
+                    }
+                } catch (error) {
+                    logger.error('Error fetching topics from server:', error);
+                    sendResponse({ success: false, error: error.message });
+                }
+            })();
+            
             return true;
             
         case 'LOGIN_COMPLETE':
@@ -2240,49 +2220,197 @@ function debugLog(message, data) {
     });
 }
 
+/**
+ * Clean up the storage canister and reset all tracking data
+ * This is useful for testing to ensure we're starting with a clean slate
+ * @returns {Promise<Object>} - Result of the cleanup operation
+ */
+async function cleanStorageCanister() {
+    logger.critical('Cleaning storage canister and resetting all tracking data');
+    
+    try {
+        // Reset all storage data related to URL tracking
+        await chrome.storage.local.set({
+            // URL tracking data
+            prefetchedUrls: {},
+            remainingUrls: {},
+            successfullyScrapedUrls: {},
+            allSampleUrlsScraped: false,
+            
+            // Scraping state
+            lastScrapedUrls: [],
+            lastScrapeTime: null,
+            lastSuccessfulScrape: null,
+            
+            // URL quality tracking
+            urlQualityTracking: {}
+        });
+        
+        // Reset the URL pools for all topics
+        const result = await chrome.storage.local.get(['topics']);
+        if (result.topics && result.topics.length > 0) {
+            for (const topic of result.topics) {
+                await saveUrlPoolForTopic(topic.id, { urls: [] });
+            }
+        }
+        
+        // Reset the module state in simplified-url-selector
+        await chrome.runtime.sendMessage({ type: 'RESET_URL_SELECTOR' });
+        
+        logger.critical('Storage canister cleaned successfully');
+        return { success: true, message: 'Storage canister cleaned successfully' };
+    } catch (error) {
+        logger.error('Error cleaning storage canister:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Direct test function for URL fetching
+ * This will immediately test the search proxy by fetching URLs for all active topics
+ */
+async function testUrlFetching() {
+    logger.log('DIRECT TEST: Testing URL fetching from search proxy');
+    
+    try {
+        // Get the principalId from storage
+        const { principalId } = await chrome.storage.local.get(['principalId']);
+        
+        if (!principalId) {
+            logger.error('DIRECT TEST: No principalId found in storage');
+            return { success: false, error: 'No principalId found in storage. Please login first.' };
+        }
+        
+        logger.log(`DIRECT TEST: Using principalId: ${principalId}`);
+        
+        // Use the imported functions directly instead of dynamic import
+        // This avoids potential window reference issues in service worker context
+        
+        // Fetch real topics from the server using the proxy client
+        logger.log('DIRECT TEST: Fetching real topics from server...');
+        // Get topics from storage if available
+        const { topics: storedTopics } = await chrome.storage.local.get(['topics']);
+        
+        // Use stored topics or fetch new ones if needed
+        let topics = storedTopics || [];
+        
+        if (!topics || topics.length === 0) {
+            logger.error('DIRECT TEST: No topics available. Please fetch topics first.');
+            return { success: false, error: 'No topics available. Please fetch topics first.' };
+        }
+        
+        // Process the topics to ensure they have a status field
+        const processedTopics = topics.map(topic => ({
+            ...topic,
+            status: topic.status || 'active' // Default to active if not specified
+        }));
+        
+        // Store the topics in Chrome's storage
+        await chrome.storage.local.set({ topics: processedTopics });
+        logger.log(`DIRECT TEST: Successfully fetched and stored ${processedTopics.length} topics`);
+        
+        // Filter active topics
+        const activeTopics = processedTopics.filter(topic => topic.status === 'active');
+        
+        if (activeTopics.length === 0) {
+            logger.error('DIRECT TEST: No active topics found');
+            return { success: false, error: 'No active topics found' };
+        }
+        
+        logger.log(`DIRECT TEST: Found ${processedTopics.length} total topics, ${activeTopics.length} active topics`);
+        
+        logger.log(`DIRECT TEST: Found ${activeTopics.length} active topics`);
+        
+        // Check if the search proxy is healthy directly using the imported function
+        const isHealthy = await checkProxyHealth();
+        
+        logger.log(`DIRECT TEST: Search proxy health check: ${isHealthy ? 'HEALTHY' : 'UNHEALTHY'}`);
+        
+        if (!isHealthy) {
+            logger.error('DIRECT TEST: Search proxy is not healthy');
+            return { success: false, error: 'Search proxy is not healthy' };
+        }
+        
+        // Test URL fetching for each active topic
+        const results = {};
+        let successCount = 0;
+        
+        for (const topic of activeTopics) {
+            logger.log(`DIRECT TEST: Fetching URL for topic ${topic.name} (${topic.id})`);
+            
+            try {
+                // Get a URL for this topic using the imported function
+                const urlResult = await getUrlForTopic(topic);
+                
+                if (urlResult && urlResult.url) {
+                    logger.log(`DIRECT TEST: Successfully fetched URL for topic ${topic.name}: ${urlResult.url}`);
+                    results[topic.id] = { success: true, url: urlResult.url };
+                    successCount++;
+                } else {
+                    logger.error(`DIRECT TEST: Failed to fetch URL for topic ${topic.name}`);
+                    results[topic.id] = { success: false, error: 'No URL returned' };
+                }
+            } catch (error) {
+                logger.error(`DIRECT TEST: Error fetching URL for topic ${topic.name}:`, error);
+                results[topic.id] = { success: false, error: error.message };
+            }
+        }
+        
+        // Also test batch URL fetching for all topics
+        logger.log('DIRECT TEST: Testing batch URL fetching for all topics');
+        
+        try {
+            const batchResults = await getUrlsForTopics(activeTopics, 2);
+            
+            if (batchResults && Object.keys(batchResults).length > 0) {
+                logger.log(`DIRECT TEST: Successfully fetched URLs for ${Object.keys(batchResults).length} topics in batch mode`);
+                
+                // Log the first result for debugging
+                const firstTopicId = Object.keys(batchResults)[0];
+                if (firstTopicId && batchResults[firstTopicId] && batchResults[firstTopicId].length > 0) {
+                    logger.log(`DIRECT TEST: First batch result: ${JSON.stringify(batchResults[firstTopicId][0])}`);
+                }
+                
+                results.batchFetch = { success: true, topicCount: Object.keys(batchResults).length };
+            } else {
+                logger.error('DIRECT TEST: Batch URL fetching returned no results');
+                results.batchFetch = { success: false, error: 'No results returned' };
+            }
+        } catch (error) {
+            logger.error('DIRECT TEST: Error in batch URL fetching:', error);
+            results.batchFetch = { success: false, error: error.message };
+        }
+        
+        logger.log('DIRECT TEST: URL fetching test completed', results);
+        return { success: true, results };
+    } catch (error) {
+        logger.error('DIRECT TEST: Error testing URL fetching:', error);
+        return { success: false, error: error.message };
+    }
+}
+
 // Expose debug functions to the global scope (service worker context)
 // Note: Don't use window object in service workers
 const rhinoSpiderDebug = {
-    getTopics: async (forceRefresh = false) => {
-        const loadedTopics = await getTopics(forceRefresh);
-        logger.log('Topics loaded via debug function:', loadedTopics);
-        return loadedTopics;
+    getTopics: (forceRefresh = false) => getTopics(forceRefresh),
+    startScraping: () => startScraping(),
+    stopScraping: () => stopScraping(),
+    forceRefreshTopics: () => forceRefreshTopics(),
+    cleanStorageCanister: () => cleanStorageCanister(),
+    testUrlFetching: () => testUrlFetching(),
+    testScrapeUrl: (url) => {
+        // Test a specific URL for scraping
+        return fetchPageContent(url).then(content => {
+            return { success: true, contentLength: content.length };
+        }).catch(error => {
+            return { success: false, error: error.message };
+        });
     },
-    startScraping: async () => {
-        const result = await startScraping();
-        logger.log('Scraping started via debug function:', result);
-        return result;
+    getExtractedData: () => {
+        return chrome.storage.local.get(['extractedData']).then(result => result.extractedData || []);
     },
-    stopScraping: async () => {
-        const result = await stopScraping();
-        logger.log('Scraping stopped via debug function:', result);
-        return result;
-    },
-    forceRefreshTopics: async () => {
-        const result = await forceRefreshTopics();
-        logger.log('Force refresh topics executed via debug function:', result);
-        return result;
-    },
-    testScrapeUrl: async (url) => {
-        if (!url) {
-            logger.error('URL is required for test scraping');
-            return { success: false, error: 'URL is required' };
-        }
-        
-        const result = await testScrapeUrl(url);
-        logger.log('Test scrape executed via debug function:', result);
-        return result;
-    },
-    getExtractedData: async () => {
-        const result = await chrome.storage.local.get(['extractedData']);
-        const extractedData = result.extractedData || [];
-        logger.log(`Retrieved ${extractedData.length} extracted data items`);
-        return extractedData;
-    },
-    clearExtractedData: async () => {
-        await chrome.storage.local.set({ extractedData: [] });
-        logger.log('Cleared all extracted data');
-        return { success: true };
+    clearExtractedData: () => {
+        return chrome.storage.local.set({extractedData: []});
     }
 };
 
@@ -2301,10 +2429,6 @@ if (chrome.action) {
 } else if (chrome.browserAction) {
     chrome.browserAction.onClicked.addListener(handleBrowserActionClick);
 }
-
-// DISABLED: We should not monitor user's browsing activity
-// chrome.tabs.onUpdated.addListener(handleTabUpdated);
-chrome.runtime.onInstalled.addListener(handleInstalled);
 
 // Handle extension install/update
 async function initializeOnInstall(details) {
@@ -2349,7 +2473,6 @@ async function initializeOnInstall(details) {
 }
 
 // Initialize the extension on startup
-// Removed duplicate listener since we already added it above
 initializeExtension();
 
 // Fetch page content for testing
@@ -2369,6 +2492,9 @@ async function fetchPageContent(url) {
             };
         }
         
+        // Get the direct storage URL from config
+        const directStorageUrl = config.directStorage.url || 'http://143.244.133.154:3002';
+
         // Use our direct storage server to fetch content
         const proxyUrls = [
             `${directStorageUrl}/api/fetch-data?url=${encodeURIComponent(url)}`

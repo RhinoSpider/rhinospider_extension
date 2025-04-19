@@ -1375,42 +1375,7 @@ function updateUIForError(error) {
     }
 }
 
-// Mock data for fallback
-function getMockProfile() {
-    logger.debug('[Profile] Returning mock profile data');
-    return {
-        ok: {
-            id: 'mock-id',
-            name: 'Mock User',
-            email: 'mock@example.com',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-        }
-    };
-}
-
-// Mock data for fallback
-function getMockTopics() {
-    logger.debug('[Topics] Returning mock topics data');
-    return {
-        ok: [
-            {
-                id: 'mock-topic-1',
-                title: 'Mock Topic 1',
-                description: 'This is a mock topic for testing',
-                url_patterns: ['example.com/topic1'],
-                created_at: new Date().toISOString()
-            },
-            {
-                id: 'mock-topic-2',
-                title: 'Mock Topic 2',
-                description: 'This is another mock topic for testing',
-                url_patterns: ['example.com/topic2'],
-                created_at: new Date().toISOString()
-            }
-        ]
-    };
-}
+// Mock functions removed
 
 // Load the certificate patch script
 async function loadCertificatePatch() {

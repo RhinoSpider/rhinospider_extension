@@ -2,7 +2,7 @@
 
 /**
  * Add a cache buster to a URL to make it unique
- * @param {string} url - The URL to add a cache buster to
+ * @param {string|Object} url - The URL to add a cache buster to
  * @param {string|number} cacheBuster - The cache buster value or timestamp
  * @returns {string} - The URL with a cache buster added
  */
@@ -14,20 +14,29 @@ function addCacheBusterToUrl(url, cacheBuster) {
         cacheBuster : 
         (cacheBuster || Date.now()).toString();
     
+    // Handle URL objects from the search proxy
+    if (url && typeof url === 'object' && url.url) {
+        // If we have a URL object with a url property, use that
+        url = url.url;
+    }
+    
+    // Ensure we have a string URL
+    if (!url || typeof url !== 'string') {
+        logger.error('Invalid URL provided to addCacheBusterToUrl:', url);
+        return null;
+    }
+    
     try {
         const urlObj = new URL(url);
         
-        // Add a more structured cache buster parameter
-        // This makes it easier to identify and track unique URLs
-        // Format: _cb=<cacheBusterValue>-<randomValue>
+        // Add a cache buster parameter
         const randomValue = Math.floor(Math.random() * 1000000);
         urlObj.searchParams.append('_cb', `${cacheBusterValue}-${randomValue}`);
         
         return urlObj.toString();
     } catch (error) {
-        // If URL parsing fails, add the cache buster directly to the URL
-        const separator = url.includes('?') ? '&' : '?';
-        return `${url}${separator}_cb=${cacheBusterValue}-${Math.floor(Math.random() * 1000000)}`;
+        logger.error('Failed to parse URL in addCacheBusterToUrl:', error);
+        return null;
     }
 }
 

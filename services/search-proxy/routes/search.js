@@ -3,7 +3,9 @@ const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
 const NodeCache = require('node-cache');
 const { searchForUrls } = require('../services/searchHandler');
-const { getCachedUrls } = require('../services/initializeCache');
+const { getUserQuota, checkUserQuota, updateUserQuota, getUserAnalytics, getAllUserIds, fetchUserDataFromCanister } = require('../services/userQuotaManager');
+const { getScrapedUrlsStats } = require('../services/scrapedUrlsTracker');
+const { reportScrapingToCanister, isConsumerCanisterAvailable } = require('../services/consumerCanisterService');
 
 // Cache to store extension-specific URL pools
 // TTL: 24 hours (in seconds)
@@ -41,6 +43,15 @@ router.post('/urls', async (req, res, next) => {
     
     if (!topics || !Array.isArray(topics) || topics.length === 0) {
       return res.status(400).json({ error: 'Missing or invalid topics array' });
+    }
+    
+    // Check user quota first
+    const quotaCheck = checkUserQuota(extensionId, Math.ceil(batchSize / topics.length));
+    if (quotaCheck.quotaExceeded) {
+      return res.status(429).json({
+        error: 'Daily quota exceeded',
+        quotaInfo: quotaCheck
+      });
     }
     
     const cacheKey = getCacheKey(extensionId);
@@ -86,24 +97,13 @@ router.post('/urls', async (req, res, next) => {
         }
         const currentPage = paginationState[topic.id].page;
         
-        // Try to get URLs from cache first
-        let newUrls = [];
-        
-        // Check if we have cached URLs for this topic
-        const cachedUrls = getCachedUrls(topic.id);
-        if (cachedUrls && cachedUrls.length > 0 && currentPage === 0) {
-          // Use cached URLs for the first page
-          console.log(`Using ${cachedUrls.length} cached URLs for topic: ${topic.name}`);
-          newUrls = [...cachedUrls];
-        } else {
-          // Fetch new URLs for this topic using our search handler
-          console.log(`Fetching new URLs for topic: ${topic.name} (page ${currentPage})`);
-          newUrls = await searchForUrls(topic.name, topic.keywords, currentPage);
-        }
+        // Fetch new URLs for this topic using our search handler with quota management
+        console.log(`Fetching new URLs for topic: ${topic.name} (page ${currentPage})`);
+        const searchResult = await searchForUrls(topic.name, topic.keywords, currentPage, extensionId, topic.id);
         
         // Add new unique URLs to the pool
         const existingUrls = new Set(urlPool[topic.id]);
-        newUrls.forEach(url => {
+        searchResult.urls.forEach(url => {
           if (!existingUrls.has(url)) {
             urlPool[topic.id].push(url);
             existingUrls.add(url);
@@ -151,12 +151,15 @@ router.post('/urls', async (req, res, next) => {
       const topicUrls = urlPool[topic.id].splice(0, urlsPerTopic);
       console.log(`Taking ${topicUrls.length} URLs for topic: ${topic.name}`);
       
-      // Add topic info to each URL
+      // Simplify the URL structure to be directly compatible with the extension
       const topicUrlsWithInfo = topicUrls.map(url => ({
-        url,
+        url: url, // This should be a string, not an object
         topicId: topic.id,
         topicName: topic.name
       }));
+      
+      // Log the URL structure to verify it's correct
+      console.log(`URL structure example: ${JSON.stringify(topicUrlsWithInfo[0] || {})}`); 
       
       responseBatch = responseBatch.concat(topicUrlsWithInfo);
     });
@@ -170,15 +173,234 @@ router.post('/urls', async (req, res, next) => {
     // Update URL pool after removing the returned URLs
     urlPoolCache.set(cacheKey, urlPool);
     
-    // Return the batch
-    res.status(200).json({
-      urls: responseBatch,
-      totalUrls: responseBatch.length,
-      timestamp: new Date().toISOString()
-    });
+    // Update user quota for the URLs we're returning
+    const urlsReturned = responseBatch.length;
+    if (urlsReturned > 0) {
+      const updatedQuota = updateUserQuota(extensionId, urlsReturned);
+      
+      // Organize URLs by topic ID for the extension
+      const urlsByTopic = {};
+      
+      // Initialize empty arrays for each topic
+      topics.forEach(topic => {
+        urlsByTopic[topic.id] = [];
+      });
+      
+      // Populate the arrays with URLs - ensure we're using simple string URLs
+      responseBatch.forEach(urlObj => {
+        if (urlsByTopic[urlObj.topicId]) {
+          // Extract the URL string from the nested object structure if needed
+          let urlString = urlObj.url;
+          if (typeof urlObj.url === 'object' && urlObj.url.url) {
+            urlString = urlObj.url.url;
+          }
+          
+          // Create a new object with a simple string URL
+          const simplifiedUrlObj = {
+            url: urlString,
+            topicId: urlObj.topicId,
+            topicName: urlObj.topicName
+          };
+          
+          urlsByTopic[urlObj.topicId].push(simplifiedUrlObj);
+        }
+      });
+      
+      // Log an example URL structure
+      const exampleTopic = Object.keys(urlsByTopic)[0];
+      if (exampleTopic && urlsByTopic[exampleTopic].length > 0) {
+        console.log(`Example URL structure: ${JSON.stringify(urlsByTopic[exampleTopic][0])}`);
+      }
+      
+      // Return the batch with quota information
+      res.status(200).json({
+        urls: urlsByTopic,
+        totalUrls: responseBatch.length,
+        timestamp: new Date().toISOString(),
+        quotaInfo: updatedQuota
+      });
+    } else {
+      // Create an empty object with topic IDs as keys
+      const emptyUrlsByTopic = {};
+      
+      // Initialize empty arrays for each topic
+      topics.forEach(topic => {
+        emptyUrlsByTopic[topic.id] = [];
+      });
+      
+      res.status(200).json({
+        urls: emptyUrlsByTopic,
+        totalUrls: 0,
+        timestamp: new Date().toISOString(),
+        quotaInfo: checkUserQuota(extensionId, 0)
+      });
+    }
     
   } catch (error) {
+    console.error('Error in /urls endpoint:', error);
     next(error);
+  }
+});
+
+/**
+ * Get user quota information
+ * GET /api/search/quota?extensionId=<extensionId>
+ */
+router.get('/quota', (req, res) => {
+  try {
+    const { extensionId } = req.query;
+    
+    if (!extensionId) {
+      return res.status(400).json({ error: 'Missing extensionId parameter' });
+    }
+    
+    const userQuota = getUserQuota(extensionId);
+    res.json(userQuota);
+  } catch (error) {
+    console.error('Error in /quota endpoint:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * Get detailed user analytics
+ * GET /api/search/analytics?extensionId=<extensionId>
+ */
+router.get('/analytics', (req, res) => {
+  try {
+    const { extensionId } = req.query;
+    
+    if (!extensionId) {
+      return res.status(400).json({ error: 'Missing extensionId parameter' });
+    }
+    
+    const userAnalytics = getUserAnalytics(extensionId);
+    res.json(userAnalytics);
+  } catch (error) {
+    console.error('Error in /analytics endpoint:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * Report URLs scraped by the extension
+ * POST /api/search/report-scrape
+ * Request body: {
+ *   extensionId: string,
+ *   urlsScraped: number,
+ *   topicId: string (optional),
+ *   topicName: string (optional),
+ *   bandwidthUsed: number (optional)
+ * }
+ */
+router.post('/report-scrape', async (req, res) => {
+  try {
+    const { extensionId, urlsScraped, topicId, topicName, bandwidthUsed } = req.body;
+    
+    if (!extensionId) {
+      return res.status(400).json({ error: 'Missing extensionId' });
+    }
+    
+    if (!urlsScraped || typeof urlsScraped !== 'number' || urlsScraped <= 0) {
+      return res.status(400).json({ error: 'Invalid urlsScraped value' });
+    }
+    
+    // Update local user quota
+    const quotaInfo = await updateUserQuota(
+      extensionId, 
+      urlsScraped, 
+      topicId || '', 
+      topicName || '', 
+      bandwidthUsed || 0
+    );
+    
+    // Also report to consumer canister in background
+    if (extensionId !== 'anonymous') {
+      reportScrapingToCanister(extensionId, urlsScraped, quotaInfo.pointsEarned)
+        .then(result => {
+          if (result.success) {
+            console.log(`Successfully reported scraping to consumer canister for user ${extensionId}`);
+          } else {
+            console.warn(`Failed to report scraping to consumer canister: ${result.reason}`);
+          }
+        })
+        .catch(error => {
+          console.error('Error reporting to consumer canister:', error.message);
+        });
+    }
+    
+    res.json(quotaInfo);
+  } catch (error) {
+    console.error('Error in /report-scrape endpoint:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * Get system stats about scraped URLs
+ * GET /api/search/system-stats
+ */
+router.get('/system-stats', (req, res) => {
+  try {
+    const scrapedUrlsStats = getScrapedUrlsStats();
+    const userCount = getAllUserIds().length;
+    
+    res.json({
+      scrapedUrlsStats,
+      userCount,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error in /system-stats endpoint:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * Fetch user data from consumer canister
+ * GET /api/search/canister-data?extensionId=<extensionId>
+ */
+router.get('/canister-data', async (req, res) => {
+  try {
+    const { extensionId } = req.query;
+    
+    if (!extensionId) {
+      return res.status(400).json({ error: 'Missing extensionId parameter' });
+    }
+    
+    // Check if consumer canister is available
+    const canisterAvailable = await isConsumerCanisterAvailable();
+    
+    if (!canisterAvailable) {
+      return res.status(503).json({ 
+        error: 'Consumer canister unavailable',
+        localData: getUserQuota(extensionId)
+      });
+    }
+    
+    // Fetch data from consumer canister
+    const canisterData = await fetchUserDataFromCanister(extensionId);
+    
+    if (canisterData) {
+      res.json({
+        source: 'canister',
+        userData: canisterData,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      // Fall back to local data
+      res.json({
+        source: 'local',
+        userData: getUserQuota(extensionId),
+        timestamp: new Date().toISOString()
+      });
+    }
+  } catch (error) {
+    console.error('Error in /canister-data endpoint:', error);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      localData: getUserQuota(req.query.extensionId || 'anonymous')
+    });
   }
 });
 
@@ -204,6 +426,50 @@ router.post('/reset', (req, res) => {
     message: 'URL pool reset successfully',
     extensionId
   });
+});
+
+/**
+ * Get user quota information
+ * GET /api/search/quota?extensionId=<extensionId>
+ */
+router.get('/quota', (req, res) => {
+  const { extensionId } = req.query;
+  
+  if (!extensionId) {
+    return res.status(400).json({ error: 'Missing extensionId' });
+  }
+  
+  const quotaInfo = getUserQuota(extensionId);
+  res.json(quotaInfo);
+});
+
+/**
+ * Report successful URL scraping to earn points
+ * POST /api/search/report-scrape
+ * Request body: { extensionId: string, urlsScraped: number, topicId: string }
+ */
+router.post('/report-scrape', (req, res) => {
+  const { extensionId, urlsScraped = 1, topicId } = req.body;
+  
+  if (!extensionId) {
+    return res.status(400).json({ error: 'Missing extensionId' });
+  }
+  
+  // Validate urlsScraped is a reasonable number
+  const validUrlCount = Math.min(Math.max(1, parseInt(urlsScraped) || 1), 20);
+  
+  // Update user quota and return updated information
+  const updatedQuota = updateUserQuota(extensionId, validUrlCount);
+  
+  // If tier was upgraded, send special notification
+  if (updatedQuota.tierUpgraded) {
+    return res.json({
+      ...updatedQuota,
+      message: `Congratulations! You've been upgraded to ${updatedQuota.tier.toUpperCase()} tier!`
+    });
+  }
+  
+  res.json(updatedQuota);
 });
 
 module.exports = router;

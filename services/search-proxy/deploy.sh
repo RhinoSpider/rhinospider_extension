@@ -1,30 +1,103 @@
 #!/bin/bash
 
 # Deployment script for RhinoSpider Search Proxy Service
-# This script builds and deploys the search proxy service to a server
+# This script deploys the updated search proxy service to Digital Ocean
 
 echo "=== RhinoSpider Search Proxy Deployment ==="
 
-# Build Docker image
-echo "Building Docker image..."
-docker build -t rhinospider-search-proxy:latest .
+# Configuration
+DIGITAL_OCEAN_IP="143.244.133.154"
+SSH_USER="root"
+SERVICE_NAME="search-proxy"
+SERVICE_PORT=3002
 
-# Prompt for registry information
-read -p "Enter your container registry (e.g., docker.io/username): " REGISTRY
+# Ask for Digital Ocean IP if not set
+if [ "$DIGITAL_OCEAN_IP" == "your-digital-ocean-ip" ]; then
+  read -p "Enter your Digital Ocean server IP: " DIGITAL_OCEAN_IP
+fi
 
-# Tag the image for your registry
-echo "Tagging image..."
-docker tag rhinospider-search-proxy:latest $REGISTRY/rhinospider-search-proxy:latest
+# Ask for SSH user if needed
+read -p "Enter SSH user (default: root): " INPUT_SSH_USER
+if [ ! -z "$INPUT_SSH_USER" ]; then
+  SSH_USER=$INPUT_SSH_USER
+fi
 
-# Push to registry
-echo "Pushing to registry..."
-docker push $REGISTRY/rhinospider-search-proxy:latest
+# Create a deployment package
+echo "Creating deployment package..."
+DEPLOY_DIR="deploy_package"
+rm -rf $DEPLOY_DIR
+mkdir -p $DEPLOY_DIR
+
+# Copy necessary files
+cp -r services $DEPLOY_DIR/
+cp -r routes $DEPLOY_DIR/
+cp server.js $DEPLOY_DIR/
+cp package.json $DEPLOY_DIR/
+cp package-lock.json $DEPLOY_DIR/
+cp .env $DEPLOY_DIR/ 2>/dev/null || echo "No .env file found, skipping..."
+
+# Create tar archive
+TAR_NAME="search-proxy-deploy.tar.gz"
+tar -czf $TAR_NAME $DEPLOY_DIR
+
+# Set password for SSH (this is not secure for production, but works for this demo)
+SSH_PASS="ffGpA2saNS47qr"
+
+# Check if sshpass is installed
+if ! command -v sshpass &> /dev/null; then
+  echo "sshpass is not installed. Please install it first with: brew install hudochenkov/sshpass/sshpass"
+  exit 1
+fi
+
+# Upload to server using sshpass
+echo "Uploading to $DIGITAL_OCEAN_IP..."
+sshpass -p "$SSH_PASS" scp $TAR_NAME $SSH_USER@$DIGITAL_OCEAN_IP:/tmp/
+
+# Execute deployment commands on the server using sshpass
+echo "Deploying on the server..."
+sshpass -p "$SSH_PASS" ssh $SSH_USER@$DIGITAL_OCEAN_IP << EOF
+  # Stop the existing service
+  echo "Stopping existing service..."
+  pm2 stop $SERVICE_NAME || true
+  
+  # Extract the new files
+  echo "Extracting new files..."
+  mkdir -p /opt/rhinospider/$SERVICE_NAME-new
+  tar -xzf /tmp/$TAR_NAME -C /opt/rhinospider/$SERVICE_NAME-new
+  mv /opt/rhinospider/$SERVICE_NAME-new/$DEPLOY_DIR/* /opt/rhinospider/$SERVICE_NAME-new/
+  rmdir /opt/rhinospider/$SERVICE_NAME-new/$DEPLOY_DIR
+  
+  # Backup the old version
+  echo "Backing up old version..."
+  if [ -d "/opt/rhinospider/$SERVICE_NAME" ]; then
+    mv /opt/rhinospider/$SERVICE_NAME /opt/rhinospider/$SERVICE_NAME-backup-\$(date +%Y%m%d%H%M%S)
+  fi
+  
+  # Move the new version into place
+  mv /opt/rhinospider/$SERVICE_NAME-new /opt/rhinospider/$SERVICE_NAME
+  
+  # Install dependencies
+  echo "Installing dependencies..."
+  cd /opt/rhinospider/$SERVICE_NAME
+  npm ci --production
+  
+  # Start the service
+  echo "Starting service..."
+  # Set environment variables for the service
+  PORT=$SERVICE_PORT API_PASSWORD="ffGpA2saNS47qr" pm2 start server.js --name $SERVICE_NAME
+  
+  # Save PM2 configuration
+  pm2 save
+  
+  # Cleanup
+  rm /tmp/$TAR_NAME
+EOF
+
+# Clean up local files
+rm -rf $DEPLOY_DIR
+rm $TAR_NAME
 
 echo "=== Deployment completed ==="
-echo "The search proxy service has been built and pushed to the registry."
-echo "To deploy to your server, run the appropriate commands on your server."
-echo "Example:"
-echo "  docker pull $REGISTRY/rhinospider-search-proxy:latest"
-echo "  docker stop rhinospider-search-proxy || true"
-echo "  docker rm rhinospider-search-proxy || true"
-echo "  docker run -d --name rhinospider-search-proxy -p 3003:3003 --restart always $REGISTRY/rhinospider-search-proxy:latest"
+echo "The search proxy service has been deployed to $DIGITAL_OCEAN_IP:$SERVICE_PORT"
+echo "Verify the deployment by checking:"
+echo "  curl http://$DIGITAL_OCEAN_IP:$SERVICE_PORT/api/health"

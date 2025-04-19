@@ -3,6 +3,7 @@
 
 import { addCacheBusterToUrl } from './url-utils.js';
 import { getUrlForTopic, prefetchUrlsForAllTopics } from './search-proxy-client.js';
+import { directSearchProxyCall } from './service-worker-adapter.js';
 
 // Cache for prefetched URLs
 let prefetchedUrlsByTopic = {};
@@ -26,6 +27,29 @@ let successfullyScrapedUrls = {};
 // Flag to track if all sample URLs have been scraped
 let allSampleUrlsScraped = false;
 
+/**
+ * Reset the module state
+ * This is used for testing to ensure we're starting with a clean slate
+ */
+async function resetState() {
+    logger.log('Resetting URL selector state');
+    
+    // Reset in-memory state
+    successfullyScrapedUrls = {};
+    prefetchedUrlsByTopic = {};
+    allSampleUrlsScraped = false;
+    
+    // Reset storage state
+    await chrome.storage.local.set({
+        successfullyScrapedUrls: {},
+        prefetchedUrls: {},
+        allSampleUrlsScraped: false
+    });
+    
+    logger.log('URL selector state reset complete');
+    return { success: true };
+}
+
 // Load successfully scraped URLs from storage
 async function loadSuccessfullyScrapedUrls() {
     try {
@@ -46,6 +70,53 @@ async function saveSuccessfullyScrapedUrls() {
         logger.log('Saved successfully scraped URLs to storage');
     } catch (error) {
         logger.error('Error saving successfully scraped URLs:', error);
+    }
+}
+
+// Track a URL as successfully scraped
+async function trackScrapedUrl(topicId, url) {
+    if (!topicId || !url) {
+        logger.error('Invalid topic ID or URL for tracking');
+        return false;
+    }
+    
+    try {
+        // Get existing successfully scraped URLs
+        const result = await chrome.storage.local.get(['successfullyScrapedUrls']);
+        const storedSuccessfullyScrapedUrls = result.successfullyScrapedUrls || {};
+        
+        // Initialize topic entry if it doesn't exist
+        if (!storedSuccessfullyScrapedUrls[topicId]) {
+            storedSuccessfullyScrapedUrls[topicId] = [];
+        }
+        
+        // Check if URL is already tracked
+        if (storedSuccessfullyScrapedUrls[topicId].includes(url)) {
+            // Don't log this to reduce noise
+            return true;
+        }
+        
+        // Add URL to list
+        storedSuccessfullyScrapedUrls[topicId].push(url);
+        
+        // Limit the array size to prevent excessive storage
+        if (storedSuccessfullyScrapedUrls[topicId].length > 100) {
+            // Keep only the most recent 100 URLs
+            storedSuccessfullyScrapedUrls[topicId] = storedSuccessfullyScrapedUrls[topicId].slice(-100);
+        }
+        
+        // Save updated list
+        await chrome.storage.local.set({ successfullyScrapedUrls: storedSuccessfullyScrapedUrls });
+        
+        // Log only once per session when we reach certain milestones
+        if (storedSuccessfullyScrapedUrls[topicId].length % 10 === 0) {
+            logger.log(`Tracked ${storedSuccessfullyScrapedUrls[topicId].length} URLs for topic ${topicId}`);
+        }
+        
+        return true;
+    } catch (error) {
+        logger.error('Error tracking URL as scraped:', error);
+        return false;
     }
 }
 
@@ -73,6 +144,10 @@ function checkAllSampleUrlsScraped(topics) {
     
     // For each topic, check if all sample URLs have been scraped
     for (const topic of activeTopics) {
+        // Log the topic's sample URLs for debugging
+        logger.log(`Topic ${topic.name} (${topic.id}) sample URLs:`, 
+            topic.sampleArticleUrls ? JSON.stringify(topic.sampleArticleUrls) : 'undefined');
+        
         // Skip topics without sample URLs
         if (!topic.sampleArticleUrls || topic.sampleArticleUrls.length === 0) {
             logger.log(`⚠️ Topic ${topic.name} (${topic.id}) has no sample URLs`);
@@ -188,12 +263,18 @@ async function selectTopicAndUrl(topics) {
         return { topic: null, url: null };
     }
     
-    // Check if all sample URLs have been scraped
-    if (checkAllSampleUrlsScraped(topics)) {
+    // Check if all sample URLs have been scraped - only do this check once per session
+    // to avoid excessive logging
+    if (!allSampleUrlsScraped && checkAllSampleUrlsScraped(topics)) {
         // Set the flag to true to indicate all sample URLs have been scraped
         allSampleUrlsScraped = true;
         logger.log('All sample URLs have been scraped, switching to search proxy service');
-        // Continue with the process, we'll use search proxy service as fallback
+        // Store this information in storage to avoid rechecking
+        try {
+            await chrome.storage.local.set({ allSampleUrlsScraped: true });
+        } catch (error) {
+            logger.error('Error storing allSampleUrlsScraped flag:', error);
+        }
     }
     
     // Filter active topics
@@ -239,150 +320,116 @@ async function selectTopicAndUrl(topics) {
         successfullyScrapedUrls[selectedTopic.id] = [];
     }
     
-    // Use sample URLs from the topic
+    // Always use the search proxy service for URLs
     let url = null;
+    logger.log('Bypassing sampleArticleUrls: always using search proxy URLs.');
     
-    // Try using a sample URL from the topic if available
-    if (selectedTopic.sampleArticleUrls && selectedTopic.sampleArticleUrls.length > 0) {
-        logger.log(`Topic has ${selectedTopic.sampleArticleUrls.length} sample URLs available`);
-        
-        // Log all available sample URLs for debugging
-        selectedTopic.sampleArticleUrls.forEach((sampleUrl, index) => {
-            logger.log(`Sample URL ${index + 1}: ${sampleUrl}`);
-        });
-        
-        // Filter out successfully scraped URLs using the same URL normalization
-        const availableSampleUrls = selectedTopic.sampleArticleUrls.filter(sampleUrl => {
-            // Apply the same URL normalization logic as in trackSuccessfulUrl
-            let cleanUrl = sampleUrl;
+    try {
+        // First try the standard approach
+        try {
+            const isHealthy = await import('./search-proxy-client.js').then(module => module.checkProxyHealth());
+            logger.log(`[URLSelector] Search proxy health check before URL fetch: ${isHealthy ? 'HEALTHY' : 'UNHEALTHY'}`);
+            logger.log(`[URLSelector] Calling getUrlForTopic for topic ${selectedTopic.id} (${selectedTopic.name})`);
+            url = await getUrlForTopic(selectedTopic);
+            logger.log(`[URLSelector] Result from getUrlForTopic:`, url);
+        } catch (importError) {
+            // If the standard approach fails, try direct API call
+            logger.error('Error using standard getUrlForTopic:', importError);
+            console.error('[URL Selector] Error using standard getUrlForTopic, trying direct API call');
             
-            // Remove any URL parameters
-            if (cleanUrl.includes('?')) {
-                cleanUrl = cleanUrl.split('?')[0];
-            }
-            
-            // Remove trailing slashes
-            cleanUrl = cleanUrl.replace(/\/$/, '');
-            
-            // Case-insensitive comparison with tracked URLs
-            return !successfullyScrapedUrls[selectedTopic.id].some(trackedUrl => 
-                trackedUrl.toLowerCase() === cleanUrl.toLowerCase()
-            );
-        });
-        
-        const availabilitySymbol = availableSampleUrls.length > 0 ? '✅' : '❌';
-        logger.log(`${availabilitySymbol} Available unused sample URLs: ${availableSampleUrls.length}`);
-        
-        if (availableSampleUrls.length > 0) {
-            // Select a random URL from available ones
-            const randomUrlIndex = Math.floor(Math.random() * availableSampleUrls.length);
-            url = availableSampleUrls[randomUrlIndex];
-            logger.log(`🔄 Using new sample URL: ${url}`);
-        } else {
-            // If all sample URLs for this topic have been scraped, try using prefetched URLs or search proxy service
-            logger.log('✅ All sample URLs for this topic have been scraped, checking for prefetched URLs');
-            
-            // Check if we have prefetched URLs for this topic
-            if (prefetchedUrlsByTopic[selectedTopic.id] && prefetchedUrlsByTopic[selectedTopic.id].length > 0) {
-                // Get a URL from the prefetched URLs
-                const prefetchedUrl = prefetchedUrlsByTopic[selectedTopic.id].shift();
-                url = prefetchedUrl;
-                logger.log(`🔍 Using prefetched URL: ${url}`);
-                
-                // If we've used all prefetched URLs for this topic, prefetch more in the background
-                if (prefetchedUrlsByTopic[selectedTopic.id].length === 0) {
-                    logger.log(`Prefetched URLs for topic ${selectedTopic.name} depleted, will prefetch more in the background`);
-                    // Prefetch more URLs for this topic in the background
-                    getUrlForTopic(selectedTopic).catch(error => {
-                        logger.error('Error prefetching more URLs in background:', error);
-                    });
-                }
-            } else {
-                // No prefetched URLs available, get from search proxy service directly
-                logger.log('No prefetched URLs available, getting from search proxy service');
-                try {
-                    // Get a URL for this topic from the search proxy service
-                    url = await getUrlForTopic(selectedTopic);
-                    
-                    if (url) {
-                        logger.log(`🔍 Using URL from search proxy service: ${url}`);
-                    } else {
-                        logger.log('❌ No URLs could be generated for this topic, will try another topic next time');
-                        return { topic: null, url: null };
-                    }
-                } catch (error) {
-                    logger.error('Error getting URL from search proxy service:', error);
-                    return { topic: null, url: null };
-                }
-            }
+            // Fall back to direct API call
+            url = await directSearchProxyCall(selectedTopic);
+            logger.log(`[URLSelector] Direct API call returned: ${url ? url : 'null'}`);
         }
-    } else {
-        // No sample URLs available, check for prefetched URLs or use search proxy service
-        logger.log('❌ No sample URLs available for topic, checking for prefetched URLs');
         
-        // Check if we have prefetched URLs for this topic
-        if (prefetchedUrlsByTopic[selectedTopic.id] && prefetchedUrlsByTopic[selectedTopic.id].length > 0) {
-            // Get a URL from the prefetched URLs
-            const prefetchedUrl = prefetchedUrlsByTopic[selectedTopic.id].shift();
-            url = prefetchedUrl;
-            logger.log(`🔍 Using prefetched URL: ${url}`);
-            
-            // If we've used all prefetched URLs for this topic, prefetch more in the background
-            if (prefetchedUrlsByTopic[selectedTopic.id].length === 0) {
-                logger.log(`Prefetched URLs for topic ${selectedTopic.name} depleted, will prefetch more in the background`);
-                // Prefetch more URLs for this topic in the background
-                getUrlForTopic(selectedTopic).catch(error => {
-                    logger.error('Error prefetching more URLs in background:', error);
-                });
-            }
-        } else {
-            // No prefetched URLs available, get from search proxy service directly
-            logger.log('No prefetched URLs available, getting from search proxy service');
-            try {
-                // Get a URL for this topic from the search proxy service
-                url = await getUrlForTopic(selectedTopic);
-                
-                if (url) {
-                    logger.log(`🔍 Using URL from search proxy service: ${url}`);
-                } else {
-                    logger.log('❌ No URLs could be generated for this topic, will try another topic next time');
-                    return { topic: null, url: null };
-                }
-            } catch (error) {
-                logger.error('Error getting URL from search proxy service:', error);
-                return { topic: null, url: null };
-            }
+        // Check if we got a URL from either approach
+        if (!url) {
+            logger.warn(`No URLs could be generated for topic ${selectedTopic.id}`);
+            return { topic: null, url: null };
         }
+    } catch (error) {
+        // Handle any errors in the URL fetching process
+        logger.error('Error getting URL from search proxy service:', error);
+        console.error('[URL Selector] Error getting URL:', error);
+        return { topic: null, url: null };
     }
     
     // If we have a valid URL, add a cache buster
-    if (url) {
-        // Add a cache buster to the URL to make it unique
-        url = addCacheBusterToUrl(url);
-        logger.log(`🎯 Selected: Topic "${selectedTopic.name}" | URL: ${url}`);
-    } else {
-        logger.log('❌ Failed to find a valid URL for topic:', selectedTopic.name);
+    try {
+        // Extract the URL string if we have a URL object
+        let urlString = url;
+        if (typeof url === 'object' && url.url) {
+            urlString = url.url;
+        }
+        
+        // Validate the URL
+        new URL(urlString);
+        
+        // Add cache buster
+        const urlWithCacheBuster = addCacheBusterToUrl(urlString);
+        logger.log(`[URLSelector] Added cache buster to URL: ${urlWithCacheBuster}`);
+        console.log(`[URL Selector] URL with cache buster: ${urlWithCacheBuster}`);
+        
+        // Log selection (but not too frequently)
+        const currentTime = Date.now();
+        if (!selectTopicAndUrl.lastUrlSelectionLog || (currentTime - selectTopicAndUrl.lastUrlSelectionLog > 600000)) {
+            logger.log(`Selected topic "${selectedTopic.name}" with URL`);
+            selectTopicAndUrl.lastUrlSelectionLog = currentTime;
+        }
+        
+        return { topic: selectedTopic, url: urlWithCacheBuster };
+    } catch (error) {
+        logger.error(`Invalid URL for topic ${selectedTopic.name}: ${url}`, error);
+        console.error(`[URL Selector] Invalid URL for topic ${selectedTopic.name}: ${url}`, error);
         return { topic: selectedTopic, url: null };
     }
-    
-    return {
-        topic: selectedTopic,
-        url: url
-    };
 }
 
-// Prefetch URLs for all topics
+// Function to prefetch URLs for topics
 async function prefetchUrlsForTopics(topics) {
-    if (!topics || topics.length === 0) {
-        logger.log('No topics to prefetch URLs for');
-        return {};
-    }
-    
-    logger.log(`Starting URL prefetch for ${topics.length} topics`);
-    
     try {
-        // Prefetch URLs for all topics at once
-        prefetchedUrlsByTopic = await prefetchUrlsForAllTopics(topics);
+        // Check if we already have prefetched URLs in storage
+        const result = await new Promise(resolve => {
+            chrome.storage.local.get(['prefetchedUrls'], resolve);
+        });
+        
+        const storedPrefetchedUrls = result.prefetchedUrls || {};
+        
+        // Check if we have enough URLs for each topic
+        const topicsNeedingUrls = topics.filter(topic => {
+            return !storedPrefetchedUrls[topic.id] || storedPrefetchedUrls[topic.id].length < 5;
+        });
+        
+        if (topicsNeedingUrls.length === 0) {
+            logger.log('All topics have sufficient prefetched URLs in storage');
+            prefetchedUrlsByTopic = storedPrefetchedUrls;
+            return storedPrefetchedUrls;
+        }
+        
+        logger.log(`Prefetching URLs for ${topicsNeedingUrls.length} topics that need more URLs`);
+        
+        // Prefetch URLs for topics that need more
+        const newUrlsByTopic = await prefetchUrlsForAllTopics(topicsNeedingUrls);
+        
+        // Merge with existing URLs
+        prefetchedUrlsByTopic = { ...storedPrefetchedUrls };
+        
+        for (const topicId in newUrlsByTopic) {
+            if (newUrlsByTopic.hasOwnProperty(topicId)) {
+                if (!prefetchedUrlsByTopic[topicId]) {
+                    prefetchedUrlsByTopic[topicId] = [];
+                }
+                prefetchedUrlsByTopic[topicId] = [
+                    ...prefetchedUrlsByTopic[topicId],
+                    ...newUrlsByTopic[topicId]
+                ];
+            }
+        }
+        
+        // Store the updated prefetched URLs
+        await new Promise(resolve => {
+            chrome.storage.local.set({ prefetchedUrls: prefetchedUrlsByTopic }, resolve);
+        });
         
         const totalPrefetchedUrls = Object.values(prefetchedUrlsByTopic)
             .reduce((total, urls) => total + urls.length, 0);
@@ -398,19 +445,50 @@ async function prefetchUrlsForTopics(topics) {
 // Initialize the module
 async function initialize() {
     await loadSuccessfullyScrapedUrls();
-    allSampleUrlsScraped = false;
+    
+    // Load the allSampleUrlsScraped flag from storage
+    try {
+        const result = await chrome.storage.local.get(['allSampleUrlsScraped']);
+        allSampleUrlsScraped = result.allSampleUrlsScraped || false;
+        logger.log(`Loaded allSampleUrlsScraped flag from storage: ${allSampleUrlsScraped}`);
+    } catch (error) {
+        allSampleUrlsScraped = false;
+        logger.error('Error loading allSampleUrlsScraped flag from storage:', error);
+    }
+    
     logger.log('URL selector initialized');
+    
+    // Set up message listener for reset requests
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+        if (message.type === 'RESET_URL_SELECTOR') {
+            resetState().then(result => sendResponse(result));
+            return true; // Will respond asynchronously
+        }
+    });
     
     // Try to prefetch URLs for topics if they're available
     try {
-        // Get topics from storage
-        const result = await chrome.storage.local.get(['topics']);
+        // Get topics and prefetched URLs from storage
+        const result = await chrome.storage.local.get(['topics', 'prefetchedUrls']);
+        const prefetchedUrls = result.prefetchedUrls || {};
+        
         if (result.topics && Array.isArray(result.topics) && result.topics.length > 0) {
-            logger.log(`Found ${result.topics.length} topics in storage, prefetching URLs`);
-            // Prefetch URLs for all topics in the background
-            prefetchUrlsForTopics(result.topics).catch(error => {
-                logger.error('Error prefetching URLs during initialization:', error);
+            // Check if we need to prefetch URLs
+            const needPrefetch = result.topics.some(topic => {
+                return !prefetchedUrls[topic.id] || prefetchedUrls[topic.id].length < 5;
             });
+            
+            if (needPrefetch) {
+                logger.log(`Found ${result.topics.length} topics in storage, some need URL prefetching`);
+                // Prefetch URLs for topics that need more in the background
+                prefetchUrlsForTopics(result.topics).catch(error => {
+                    logger.error('Error prefetching URLs during initialization:', error);
+                });
+            } else {
+                logger.log('All topics have sufficient prefetched URLs, skipping prefetch');
+                // Load the prefetched URLs into memory
+                prefetchedUrlsByTopic = prefetchedUrls;
+            }
         } else {
             logger.log('No topics found in storage, skipping URL prefetch');
         }
@@ -423,13 +501,8 @@ async function initialize() {
 
 // Track a successfully scraped URL for a topic
 async function trackSuccessfulUrl(topicId, url) {
-    if (!topicId) {
-        logger.error('Invalid topicId provided to trackSuccessfulUrl');
-        return false;
-    }
-    
-    if (!url) {
-        logger.error('Invalid URL provided to trackSuccessfulUrl');
+    if (!topicId || !url) {
+        logger.error('Invalid topicId or URL provided to trackSuccessfulUrl');
         return false;
     }
     
@@ -444,12 +517,9 @@ async function trackSuccessfulUrl(topicId, url) {
     // Remove trailing slashes for consistency
     cleanUrl = cleanUrl.replace(/\/$/, '');
     
-    logger.log(`Tracking successfully scraped URL for topic ${topicId}: ${cleanUrl}`);
-    
     // Initialize tracking for this topic if not exists
     if (!successfullyScrapedUrls[topicId]) {
         successfullyScrapedUrls[topicId] = [];
-        logger.log(`Initialized tracking for new topic ${topicId}`);
     }
     
     // Check if URL is already tracked (case-insensitive comparison)
@@ -462,38 +532,47 @@ async function trackSuccessfulUrl(topicId, url) {
         // Add the URL to the tracked list
         successfullyScrapedUrls[topicId].push(cleanUrl);
         
+        // Limit the array size to prevent excessive storage
+        if (successfullyScrapedUrls[topicId].length > 100) {
+            // Keep only the most recent 100 URLs
+            successfullyScrapedUrls[topicId] = successfullyScrapedUrls[topicId].slice(-100);
+        }
+        
         // Save updated URL history immediately
         await saveSuccessfullyScrapedUrls();
-        logger.log(`✅ URL tracked successfully for topic ${topicId}`);
         
-        // Log the current count of tracked URLs for this topic
-        logger.log(`📊 Topic ${topicId} now has ${successfullyScrapedUrls[topicId].length} tracked URLs`);
+        // Only log when reaching certain milestones to reduce noise
+        if (successfullyScrapedUrls[topicId].length % 10 === 0) {
+            logger.log(`Topic ${topicId} now has ${successfullyScrapedUrls[topicId].length} tracked URLs`);
+        }
         
         // After adding a new URL, check if all sample URLs have been scraped
         // We need to get the topics to check this
         try {
-            const result = await chrome.storage.local.get(['topics']);
+            const result = await chrome.storage.local.get(['topics', 'allSampleUrlsScraped']);
+            
+            // If we already know all URLs are scraped, don't check again
+            if (result.allSampleUrlsScraped) {
+                allSampleUrlsScraped = true;
+                return true;
+            }
+            
             if (result.topics && result.topics.length > 0) {
                 // Update the allSampleUrlsScraped flag
                 const wasAllScraped = allSampleUrlsScraped;
                 allSampleUrlsScraped = checkAllSampleUrlsScraped(result.topics);
                 
-                // Use different symbols based on the change in status
-                let flagSymbol = allSampleUrlsScraped ? '🏁' : '⏳';
+                // Only log if the status changed
                 if (!wasAllScraped && allSampleUrlsScraped) {
-                    flagSymbol = '🎉';
-                    logger.log('🎉 MILESTONE: All sample URLs are now scraped!');
+                    logger.log('All sample URLs are now scraped, switching to search proxy service');
+                    
+                    // Store this information in storage to avoid rechecking
+                    await chrome.storage.local.set({ allSampleUrlsScraped: true });
                 }
-                
-                logger.log(`${flagSymbol} Updated allSampleUrlsScraped flag: ${allSampleUrlsScraped}`);
-            } else {
-                logger.warn('No topics found when checking all sample URLs scraped');
             }
         } catch (err) {
             logger.error('Error checking all sample URLs scraped after tracking:', err);
         }
-    } else {
-        logger.log(`⏭️ URL already tracked for topic ${topicId}: ${cleanUrl}`);
     }
     
     return true;

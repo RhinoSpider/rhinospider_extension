@@ -67,6 +67,19 @@ export function Dashboard() {
     await authClient.logout();
     window.location.reload();
   };
+  
+  const testUrlFetching = () => {
+    console.log('Testing URL fetching process directly...');
+    chrome.runtime.sendMessage({ type: 'TEST_URL_FETCHING' }, (response) => {
+      if (response && response.success) {
+        console.log(`Successfully fetched URL for topic ${response.topic}: ${response.url}`);
+        alert(`Successfully fetched URL for topic ${response.topic}: ${response.url}`);
+      } else {
+        console.error('URL fetching test failed:', response?.error || 'Unknown error');
+        alert('URL fetching test failed. Check console for details.');
+      }
+    });
+  };
 
   return (
     <div style={{ padding: '20px' }}>
@@ -131,23 +144,36 @@ export function Dashboard() {
         </div>
       </div>
 
-      <button 
-        onClick={handleLogout}
-        style={{
-          backgroundColor: '#f44336',
-          border: 'none',
-          color: 'white',
-          padding: '10px 20px',
-          textAlign: 'center',
-          textDecoration: 'none',
-          display: 'inline-block',
-          fontSize: '14px',
-          cursor: 'pointer',
-          borderRadius: '4px'
-        }}
-      >
-        Logout
-      </button>
+      <div style={{ marginTop: '20px' }}>
+        <button 
+          onClick={handleLogout}
+          style={{
+            backgroundColor: '#f44336',
+            color: 'white',
+            padding: '8px 16px',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            marginRight: '10px'
+          }}
+        >
+          Logout
+        </button>
+        
+        <button 
+          onClick={testUrlFetching}
+          style={{
+            backgroundColor: '#FFA500',
+            color: 'white',
+            padding: '8px 16px',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer'
+          }}
+        >
+          Test URL Fetching
+        </button>
+      </div>
     </div>
   );
 }

@@ -24,6 +24,50 @@ const Home = ({ points, uptime, isPluginActive, togglePlugin, bandwidthSpeed, cu
     setTimeout(() => setShowCopyNotification(false), 2000);
   };
 
+  const testSearchProxy = () => {
+    console.log('Testing search proxy API...');
+    chrome.runtime.sendMessage({ type: 'SEARCH_PROXY_TEST' }, (response) => {
+      if (response && response.success) {
+        console.log('Search proxy test successful:', response.result);
+        alert('Search proxy test successful! Check console for details.');
+      } else {
+        console.error('Search proxy test failed:', response?.error || 'Unknown error');
+        alert('Search proxy test failed. Check console for details.');
+      }
+    });
+  };
+  
+  const checkSearchProxyHealth = () => {
+    console.log('Checking search proxy health...');
+    chrome.runtime.sendMessage({ type: 'SEARCH_PROXY_HEALTH' }, (response) => {
+      if (response && response.success) {
+        console.log('Search proxy health check:', response.isHealthy ? 'HEALTHY' : 'UNHEALTHY');
+        alert(`Search proxy is ${response.isHealthy ? 'HEALTHY' : 'UNHEALTHY'}. Check console for details.`);
+      } else {
+        console.error('Search proxy health check failed:', response?.error || 'Unknown error');
+        alert('Search proxy health check failed. Check console for details.');
+      }
+    });
+  };
+  
+  const openDirectTest = () => {
+    console.log('Opening direct test page...');
+    chrome.runtime.sendMessage({ type: 'OPEN_DIRECT_TEST' });
+  };
+  
+  const testUrlFetching = () => {
+    console.log('Testing URL fetching process directly...');
+    chrome.runtime.sendMessage({ type: 'TEST_URL_FETCHING' }, (response) => {
+      if (response && response.success) {
+        console.log(`Successfully fetched URL for topic ${response.topic}: ${response.url}`);
+        alert(`Successfully fetched URL for topic ${response.topic}: ${response.url}`);
+      } else {
+        console.error('URL fetching test failed:', response?.error || 'Unknown error');
+        alert('URL fetching test failed. Check console for details.');
+      }
+    });
+  };
+
   return (
     <main className="flex-1 p-4 flex flex-col">
       <div className="text-center mb-6">
@@ -75,6 +119,37 @@ const Home = ({ points, uptime, isPluginActive, togglePlugin, bandwidthSpeed, cu
       </div>
 
       <div className="mt-auto space-y-3 pb-4">
+        {/* Developer Tools Section */}
+        <div className="mb-4 border-t border-gray-700 pt-4">
+          <h3 className="text-sm font-medium text-gray-300 mb-2">Developer Tools</h3>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={testSearchProxy}
+              className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-3 rounded-lg text-sm transition-all active:scale-[0.98]"
+            >
+              Test Search Proxy
+            </button>
+            <button
+              onClick={checkSearchProxyHealth}
+              className="bg-green-600 hover:bg-green-700 text-white py-2 px-3 rounded-lg text-sm transition-all active:scale-[0.98]"
+            >
+              Check Proxy Health
+            </button>
+            <button
+              onClick={openDirectTest}
+              className="bg-purple-600 hover:bg-purple-700 text-white py-2 px-3 rounded-lg text-sm transition-all active:scale-[0.98]"
+            >
+              Open Advanced Test Page
+            </button>
+            <button
+              onClick={testUrlFetching}
+              className="bg-yellow-600 hover:bg-yellow-700 text-white py-2 px-3 rounded-lg text-sm transition-all active:scale-[0.98]"
+            >
+              Test URL Fetching
+            </button>
+          </div>
+        </div>
+
         <button
           onClick={handleCopyReferral}
           className="relative w-full bg-white/20 hover:bg-white/30 text-white py-3 rounded-lg transition-all active:scale-[0.98]"
