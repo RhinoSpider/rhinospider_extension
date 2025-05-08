@@ -1,0 +1,80 @@
+import { ScrapedData } from './types';
+
+// Field mapping for numeric field names
+const numericFieldMap: Record<string, string> = {
+  '3_355_830_415': 'id',
+  '842_117_339': 'url',
+  '5_843_823': 'status',
+  '3_457_862_683': 'topic',
+  '23_515': 'topicId',
+  '338_645_423': 'content',
+  '427_265_337': 'source',
+  '100_394_802': 'timestamp',
+  '2_781_795_542': 'client_id',
+  '2_464_455_013': 'scraping_time'
+};
+
+// Function to convert numeric field names to human-readable field names
+function convertNumericFields<T>(data: T[]): T[] {
+  if (!data || data.length === 0) return [];
+  
+  // Check if data is in numeric format
+  const firstItem = data[0];
+  const hasNumericFields = Object.keys(firstItem as object).some(key => key.includes('_'));
+  
+  if (!hasNumericFields) {
+    console.log('[storage-http-client] Data already in human-readable format');
+    return data;
+  }
+  
+  console.log('[storage-http-client] Converting numeric field names to human-readable field names');
+  
+  return data.map(item => {
+    const convertedItem: Record<string, any> = {};
+    
+    // Convert numeric field names to human-readable field names
+    for (const [numericKey, value] of Object.entries(item as object)) {
+      const humanReadableKey = numericFieldMap[numericKey] || numericKey;
+      convertedItem[humanReadableKey] = value;
+    }
+    
+    return convertedItem as unknown as T;
+  });
+}
+
+export async function getScrapedData(topicId?: string): Promise<ScrapedData[]> {
+  console.log('[storage-http-client] Fetching data from storage canister...');
+  
+  try {
+    const response = await fetch(`https://ic0.app/api/v2/canister/nwy3f-jyaaa-aaaao-a4htq-cai/query/getScrapedData`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        methodName: 'getScrapedData',
+        arg: topicId ? [topicId] : [],
+      }),
+    });
+    
+    const result = await response.json();
+    console.log('[storage-http-client] Raw result:', result);
+    
+    if (result.ok) {
+      const data = result.ok;
+      console.log('[storage-http-client] Raw data:', data);
+      
+      // Convert numeric field names to human-readable field names
+      const convertedData = convertNumericFields<ScrapedData>(data);
+      console.log('[storage-http-client] Converted data:', convertedData);
+      
+      return convertedData;
+    } else {
+      console.error('[storage-http-client] Error retrieving data:', result.err);
+      return [];
+    }
+  } catch (error) {
+    console.error('[storage-http-client] Error fetching data:', error);
+    return [];
+  }
+}

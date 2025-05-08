@@ -1,6 +1,7 @@
 import { Actor, HttpAgent } from '@dfinity/agent';
 import { AuthClient } from '@dfinity/auth-client';
 import { Principal } from '@dfinity/principal';
+import { AnonymousIdentity } from '@dfinity/agent';
 import { idlFactory } from './declarations/consumer/consumer.did.js';
 import { IDL } from '@dfinity/candid';
 import HybridICClient from './hybrid-ic-client.js';
@@ -805,17 +806,42 @@ async function initAuth() {
             }
         });
         
-        // Check if already authenticated
-        const isAuthenticated = await globalAuthClient.isAuthenticated();
-        logger.debug('[Auth] Already authenticated:', isAuthenticated);
+        // First check Chrome storage for principalId
+        const storageResult = await chrome.storage.local.get(['principalId']);
+        const hasPrincipalInStorage = !!storageResult.principalId;
+        
+        // Then check Internet Identity authentication
+        const isAuthenticatedWithII = await globalAuthClient.isAuthenticated();
+        
+        // Consider authenticated if either storage has principalId OR II is authenticated
+        const isAuthenticated = hasPrincipalInStorage || isAuthenticatedWithII;
+        
+        logger.debug('[Auth] Authentication status:', {
+            hasPrincipalInStorage,
+            isAuthenticatedWithII,
+            isAuthenticated
+        });
         
         if (isAuthenticated) {
-            // Get identity
-            const identity = globalAuthClient.getIdentity();
-            logger.debug('[Auth] Got identity:', identity.getPrincipal().toString());
+            let principalIdString;
+            
+            // If authenticated with II, use that identity
+            let identity;
+            if (isAuthenticatedWithII) {
+                identity = globalAuthClient.getIdentity();
+                principalIdString = identity.getPrincipal().toString();
+                logger.debug('[Auth] Got identity from II:', principalIdString);
+            }
+            // Otherwise, use the principalId from storage
+            else if (hasPrincipalInStorage) {
+                principalIdString = storageResult.principalId;
+                logger.debug('[Auth] Using principalId from storage:', principalIdString);
+                // Create an anonymous identity when using principalId from storage
+                identity = new AnonymousIdentity();
+                logger.debug('[Auth] Created anonymous identity for storage-based auth');
+            }
             
             // Store the principal ID in local storage
-            const principalIdString = identity.getPrincipal().toString();
             logger.debug('[Auth] Storing principal ID in local storage:', principalIdString);
             
             try {

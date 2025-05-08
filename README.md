@@ -99,6 +99,9 @@ RhinoSpider adheres to strict privacy and security guidelines:
 
 ## Recent Changes
 
+- **Enhanced URL Fetching Strategy**: Added multi-source URL discovery with RSS feeds, sitemaps, and fallback mechanisms
+- **Storage Canister Reset**: Implemented tools to reset and clear storage canister data when needed
+
 ### Version 3.2.2 (2025-03-11)
 - Consolidated documentation in `docs-consolidated` directory
 - Comprehensive architecture documentation

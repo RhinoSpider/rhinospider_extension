@@ -1,0 +1,103 @@
+(
+  "type UserProfile = 
+ record {
+   created: int;
+   devices: vec text;
+   lastLogin: int;
+   preferences: record {
+                  notificationsEnabled: bool;
+                  theme: text;
+                };
+   \"principal\": principal;
+ };
+type ScrapingTopic = 
+ record {
+   activeHours: record {
+                  end: nat;
+                  start: nat;
+                };
+   aiConfig: AIConfig;
+   createdAt: int;
+   description: text;
+   extractionRules: ExtractionRules;
+   id: text;
+   maxRetries: nat;
+   name: text;
+   scrapingInterval: nat;
+   status: text;
+   urlPatterns: vec text;
+ };
+type ScrapingField = 
+ record {
+   aiPrompt: opt text;
+   fieldType: text;
+   name: text;
+   required: bool;
+ };
+type ScrapedData = 
+ record {
+   client_id: principal;
+   content: text;
+   id: text;
+   scraping_time: int;
+   source: text;
+   status: text;
+   timestamp: int;
+   topic: text;
+   url: text;
+ };
+type Result_3 = 
+ variant {
+   err: Error;
+   ok: UserProfile;
+ };
+type Result_2 = 
+ variant {
+   err: Error;
+   ok: vec ScrapedData;
+ };
+type Result_1 = 
+ variant {
+   err: Error;
+   ok: vec ScrapingTopic;
+ };
+type Result = 
+ variant {
+   err: Error;
+   ok;
+ };
+type ExtractionRules = 
+ record {
+   customPrompt: opt text;
+   fields: vec ScrapingField;
+ };
+type Error = 
+ variant {
+   AlreadyExists;
+   InvalidInput: text;
+   NotAuthorized;
+   NotFound;
+   SystemError: text;
+ };
+type CostLimits = 
+ record {
+   maxConcurrent: nat;
+   maxDailyCost: float64;
+   maxMonthlyCost: float64;
+ };
+type AIConfig = 
+ record {
+   apiKey: text;
+   costLimits: CostLimits;
+   model: text;
+ };
+service : {
+  getProfile: () -> (Result_3);
+  getScrapedData: (vec text) -> (Result_2);
+  getTopics: () -> (Result_1);
+  registerDevice: (text) -> (Result);
+  submitScrapedData: (ScrapedData) -> (Result);
+  updatePreferences: (bool, text) -> (Result);
+}
+",
+)

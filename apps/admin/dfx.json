@@ -2,24 +2,23 @@
   "canisters": {
     "admin": {
       "frontend": {
-        "entrypoint": "apps/admin/dist/index.html"
+        "entrypoint": "dist/index.html"
       },
       "source": [
-        "apps/admin/dist/"
+        "dist/"
       ],
       "type": "assets"
     }
   },
   "defaults": {
     "build": {
+      "args": "",
       "packtool": ""
     }
   },
   "networks": {
     "ic": {
-      "providers": [
-        "https://ic0.app"
-      ],
+      "providers": ["https://ic0.app"],
       "type": "persistent"
     }
   },

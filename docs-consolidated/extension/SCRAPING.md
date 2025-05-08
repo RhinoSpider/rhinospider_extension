@@ -96,7 +96,21 @@ function generateUrlsFromTopic(topic) {
 }
 ```
 
-### 2. Search Proxy Integration
+### 2. Enhanced URL Fetching Strategy
+
+The extension implements a multi-strategy approach to URL discovery, ensuring resilience and reliability:
+
+#### a. Multi-Source URL Discovery
+
+URLs are discovered through multiple sources in the following priority order:
+
+1. **RSS Feeds** - Automatically detects and parses RSS/Atom feeds from topic domains
+2. **XML Sitemaps** - Extracts URLs from website sitemaps
+3. **Search Proxy Service** - Uses the dedicated search proxy service
+4. **Cached URLs** - Falls back to previously cached URLs when other methods fail
+5. **DuckDuckGo Search** - As a last resort, searches DuckDuckGo for relevant URLs
+
+#### b. Search Proxy Integration
 
 For topics without specific URL patterns, the extension uses a dedicated search proxy service:
 

@@ -1,8 +1,10 @@
 // Background script for RhinoSpider extension
 import submissionHelper from './submission-helper';
-import { getUrlsForTopics, prefetchUrlsForAllTopics, checkProxyHealth, getUrlForTopic } from './search-proxy-client.js';
-import { config } from './config.js';
+import searchProxyClient from './search-proxy-client.js';
 import proxyClient from './proxy-client.js';
+const { getUrlsForTopics, prefetchUrlsForAllTopics, checkProxyHealth, getUrlForTopic } = searchProxyClient;
+import { config } from './config.js';
+import debugTools from './debug-tools.js';
 
 // Advanced logger utility with log levels and extreme throttling
 // Global settings
@@ -17,7 +19,7 @@ const LOG_LEVEL = {
 };
 
 // Set the current log level - adjust this to control verbosity
-const CURRENT_LOG_LEVEL = LOG_LEVEL.INFO; // Show info logs for better debugging
+let CURRENT_LOG_LEVEL = LOG_LEVEL.INFO; // Show info logs for better debugging
 
 // Tracking for throttled logs - use a Map for better performance with large numbers of logs
 const recentLogs = new Map();
@@ -794,7 +796,7 @@ async function performScrape() {
         const selectedTopic = activeTopics[randomIndex];
         
         // Get a URL for the selected topic using the imported function
-        const urlResult = await getUrlForTopic(selectedTopic);
+        let urlResult = await getUrlForTopic(selectedTopic);
         
         // Check if we have a valid URL
         if (!urlResult || !urlResult.url) {
@@ -879,7 +881,7 @@ async function performScrape() {
         }
         
         // Process the content based on topic extraction rules
-        const extractedData = processContent(content, selectedTopic, selectedUrl);
+        let extractedData = processContent(content, selectedTopic, selectedUrl);
         
         // Evaluate scraping quality
         let scrapingQuality = 'poor';
@@ -958,7 +960,7 @@ async function performScrape() {
             // Submit the data with retry logic
             let submissionResult;
             try {
-                submissionResult = await submitScrapedData(selectedUrl, content, selectedTopic.id, 'completed', extractedData, metricsData);
+                submissionResult = await submissionHelper.submitScrapedData({url: selectedUrl, content, topic: selectedTopic.id, status: 'completed', extractedData, ...metricsData});
                 logger.log(`Submission result:`, submissionResult);
             } catch (submissionError) {
                 logger.error(`Error in first submission attempt:`, submissionError);
@@ -968,7 +970,7 @@ async function performScrape() {
                 logger.log(`Retrying submission...`);
                 
                 try {
-                    submissionResult = await submitScrapedData(selectedUrl, content, selectedTopic.id, 'completed', extractedData, metricsData);
+                    submissionResult = await submissionHelper.submitScrapedData({url: selectedUrl, content, topic: selectedTopic.id, status: 'completed', extractedData, ...metricsData});
                     logger.log(`Retry submission result:`, submissionResult);
                 } catch (retryError) {
                     logger.error(`Error in retry submission:`, retryError);
@@ -2392,20 +2394,85 @@ async function testUrlFetching() {
 // Expose debug functions to the global scope (service worker context)
 // Note: Don't use window object in service workers
 const rhinoSpiderDebug = {
-    getTopics: (forceRefresh = false) => getTopics(forceRefresh),
-    startScraping: () => startScraping(),
-    stopScraping: () => stopScraping(),
-    forceRefreshTopics: () => forceRefreshTopics(),
-    cleanStorageCanister: () => cleanStorageCanister(),
-    testUrlFetching: () => testUrlFetching(),
-    testScrapeUrl: (url) => {
-        // Test a specific URL for scraping
-        return fetchPageContent(url).then(content => {
-            return { success: true, contentLength: content.length };
-        }).catch(error => {
-            return { success: false, error: error.message };
-        });
-    },
+  getTopics(forceRefresh = false) {
+    return getTopics(forceRefresh);
+  },
+  startScraping() {
+    return startScraping();
+  },
+  stopScraping() {
+    return stopScraping();
+  },
+  forceRefreshTopics() {
+    return forceRefreshTopics();
+  },
+  cleanStorageCanister() {
+    return cleanStorageCanister();
+  },
+  testUrlFetching() {
+    return testUrlFetching();
+  },
+  testSearchProxy() {
+    return debugTools.testSearchProxy();
+  },
+  testConsumerSubmission() {
+    console.log('Testing submission to consumer canister via proxy...');
+    
+    // Create a unique test ID to track this submission
+    const testId = `test_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    
+    // Get the principal ID from storage
+    return new Promise((resolve) => {
+      chrome.storage.local.get(['principalId'], async (result) => {
+        const principalId = result.principalId || 'nqkf7-4psg2-xnfiu-ht7if-oghvx-m2gb5-e3ifk-pjtfq-o5wiu-scumu-dqe';
+        console.log('Using principal ID:', principalId);
+        
+        // Create test data with the exact format expected by the consumer canister
+        const testData = {
+          id: testId,
+          url: 'https://test-consumer-submission.example.com/' + testId,
+          content: `<html><body><h1>Test Submission</h1><p>This is a test submission created at ${new Date().toISOString()}</p><p>Test ID: ${testId}</p></body></html>`,
+          topic: 'test',
+          source: 'extension',
+          timestamp: Math.floor(Date.now() / 1000), // Use seconds for timestamp
+          status: 'completed',
+          scraping_time: 500,
+          
+          // These fields are for the proxy server
+          topicId: 'test',
+          principalId: principalId,
+          storageCanisterId: config.canisters.storage || 'nwy3f-jyaaa-aaaao-a4htq-cai',
+          forwardToStorage: true,
+          storeInConsumer: true
+        };
+        
+        console.log('Created test data with ID:', testId);
+        console.log('Storage Canister ID from config:', config.canisters.storage);
+        console.log('Consumer Canister ID from config:', config.canisters.consumer);
+        console.log('Admin app URL: https://sxsvc-aqaaa-aaaaj-az4ta-cai.icp0.io/');
+        
+        // Submit the test data using the proxy client directly to ensure it uses the correct endpoint
+        try {
+          // Use the /api/consumer-submit endpoint which is specifically designed for the consumer canister
+          console.log('Submitting to /api/consumer-submit endpoint which will properly format the client_id as a Principal');
+          const result = await proxyClient.request('/api/consumer-submit', testData);
+          console.log('Direct consumer submission result:', result);
+          resolve(result);
+        } catch (error) {
+          console.error('Error submitting test data:', error);
+          resolve({ error: error.message });
+        }
+      });
+    });
+  },
+  testScrapeUrl: (url) => {
+    // Test a specific URL for scraping
+    return fetchPageContent(url).then(content => {
+      return { success: true, contentLength: content.length };
+    }).catch(error => {
+      return { success: false, error: error.message };
+    });
+  },
     getExtractedData: () => {
         return chrome.storage.local.get(['extractedData']).then(result => result.extractedData || []);
     },
@@ -2612,7 +2679,7 @@ async function fetchWithFallbacks(url, options = {}) {
     // Use our direct storage server for fetching content
     // This avoids CORS issues by using our own server as a proxy
     const directStorageUrl = config.directStorage.url || 'http://143.244.133.154:3002';
-    const apiPassword = config.directStorage.apiPassword || 'ffGpA2saNS47qr';
+    // No longer using API password
     
     // Single proxy method using our direct storage server
     const proxyServices = [
@@ -3076,10 +3143,7 @@ async function fetchWithFallbacks(url, options = {}) {
                 'Pragma': 'no-cache'
             };
             
-            // Add authorization header if using our direct storage server
-            if (proxyUrl.includes(directStorageUrl)) {
-                headers['Authorization'] = `Bearer ${apiPassword}`;
-            }
+            // No longer using API key for authorization
             
             const response = await fetch(proxyUrl, {
                 method: options.method || 'GET',

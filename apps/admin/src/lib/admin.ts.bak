@@ -2,7 +2,7 @@ import { Actor, HttpAgent } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { AuthClient } from '@dfinity/auth-client';
 import { idlFactory } from './admin.did';
-import { getScrapedDataDirect } from './storage-candid';
+import { getScrapedData as getScrapedDataDirect } from './storage-http-client';
 import { ScrapedData, Result } from './types';
 
 // Admin canister ID

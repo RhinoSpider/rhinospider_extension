@@ -16,11 +16,8 @@ if [ "$DIGITAL_OCEAN_IP" == "your-digital-ocean-ip" ]; then
   read -p "Enter your Digital Ocean server IP: " DIGITAL_OCEAN_IP
 fi
 
-# Ask for SSH user if needed
-read -p "Enter SSH user (default: root): " INPUT_SSH_USER
-if [ ! -z "$INPUT_SSH_USER" ]; then
-  SSH_USER=$INPUT_SSH_USER
-fi
+# Use root as SSH user
+echo "Using SSH user: $SSH_USER"
 
 # Create a deployment package
 echo "Creating deployment package..."
@@ -84,7 +81,19 @@ sshpass -p "$SSH_PASS" ssh $SSH_USER@$DIGITAL_OCEAN_IP << EOF
   # Start the service
   echo "Starting service..."
   # Set environment variables for the service
-  PORT=$SERVICE_PORT API_PASSWORD="ffGpA2saNS47qr" pm2 start server.js --name $SERVICE_NAME
+  PORT=$SERVICE_PORT \
+  API_PASSWORD="ffGpA2saNS47qr" \
+  MAX_URLS_PER_DAY=1000 \
+  MAX_CONCURRENT_REQUESTS=5 \
+  BATCH_SIZE=30 \
+  INITIAL_BACKOFF_MS=5000 \
+  MAX_BACKOFF_MS=3600000 \
+  ENABLE_COMMON_CRAWL=true \
+  ENABLE_GOV_SITEMAPS=true \
+  ENABLE_RSS_FEEDS=true \
+  ENABLE_WAYBACK_MACHINE=true \
+  ENABLE_WIKIMEDIA_API=true \
+  pm2 start server.js --name $SERVICE_NAME
   
   # Save PM2 configuration
   pm2 save

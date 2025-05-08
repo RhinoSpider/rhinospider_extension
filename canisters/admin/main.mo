@@ -184,7 +184,7 @@ actor Admin {
     };
 
     // Constants
-    private let STORAGE_CANISTER_ID: Text = "i2gk7-oyaaa-aaaao-a37cq-cai"; // Updated to the current storage canister ID
+    private let STORAGE_CANISTER_ID: Text = "nwy3f-jyaaa-aaaao-a4htq-cai"; // Updated to the current storage canister ID
     private let CONSUMER_CANISTER_ID: Text = "tgyl5-yyaaa-aaaaj-az4wq-cai";
 
     // Canister references
@@ -285,10 +285,27 @@ actor Admin {
     };
 
     public shared({ caller }) func getScrapedData(topicIds: [Text]): async Result.Result<[StorageTypes.ScrapedData], Text> {
-        if (not _isAuthorized(caller)) {
+        if (not isAuthorized(caller)) {
             return #err("Unauthorized");
         };
-        let result = await storage.getScrapedData(topicIds);
+        
+        try {
+            let result = await storage.getScrapedData(topicIds);
+            
+            switch (result) {
+                case (#ok(data)) {
+                    // Convert numeric field names to human-readable field names
+                    let convertedData = convertNumericFields(data);
+                    #ok(convertedData)
+                };
+                case (#err(error)) {
+                    #err("Error retrieving data: " # debug_show(error))
+                };
+            }
+        } catch (error) {
+            #err("Error calling storage canister: " # Error.message(error))
+        };
+    };        let result = await storage.getScrapedData(topicIds);
         switch (result) {
             case (#ok(data)) { #ok(data) };
             case (#err(msg)) { #err(msg) };

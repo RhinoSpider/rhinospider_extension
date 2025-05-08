@@ -7,7 +7,7 @@ RED='\033[0;31m'
 NC='\033[0m' # No Color
 
 # Storage canister ID
-STORAGE_CANISTER_ID="i2gk7-oyaaa-aaaao-a37cq-cai"
+STORAGE_CANISTER_ID="nwy3f-jyaaa-aaaao-a4htq-cai"
 # Wallet canister ID
 WALLET_CANISTER_ID="bfjmy-ryaaa-aaaao-a36qq-cai"
 # Amount of cycles to add (5T cycles = 5 trillion cycles)

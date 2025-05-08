@@ -99,11 +99,19 @@ router.post('/urls', async (req, res, next) => {
         
         // Fetch new URLs for this topic using our search handler with quota management
         console.log(`Fetching new URLs for topic: ${topic.name} (page ${currentPage})`);
-        const searchResult = await searchForUrls(topic.name, topic.keywords, currentPage, extensionId, topic.id);
+        // Pass the topic object directly to allow access to domains and other properties
+        const searchResults = await searchForUrls(
+          topic.name, 
+          topic.keywords || [], 
+          currentPage, 
+          extensionId, 
+          topic.id, 
+          { domains: topic.domains || [] }
+        );
         
         // Add new unique URLs to the pool
         const existingUrls = new Set(urlPool[topic.id]);
-        searchResult.urls.forEach(url => {
+        searchResults.urls.forEach(url => {
           if (!existingUrls.has(url)) {
             urlPool[topic.id].push(url);
             existingUrls.add(url);

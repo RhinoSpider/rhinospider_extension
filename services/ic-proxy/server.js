@@ -23,7 +23,7 @@ const CONSUMER_CANISTER_ID = process.env.CONSUMER_CANISTER_ID || 'tgyl5-yyaaa-aa
 const ADMIN_CANISTER_ID = process.env.ADMIN_CANISTER_ID || '444wf-gyaaa-aaaaj-az5sq-cai';
 const STORAGE_CANISTER_ID = process.env.STORAGE_CANISTER_ID || 'i2gk7-oyaaa-aaaao-a37cq-cai'; // Production storage canister ID
 const PORT = process.env.PORT || 3001;
-const API_PASSWORD = process.env.API_PASSWORD || 'ffGpA2saNS47qr';
+// No longer using API password for authentication
 
 const app = express();
 
@@ -31,33 +31,9 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Authentication middleware
+// No longer using authentication middleware
 const authenticateApiKey = (req, res, next) => {
-  // Skip authentication for health check endpoint
-  if (req.path === '/health') {
-    return next();
-  }
-  
-  // Get authorization header
-  const authHeader = req.headers.authorization;
-  
-  if (!authHeader) {
-    return res.status(401).json({ error: 'Authorization header is required' });
-  }
-  
-  // Check if the header is in the correct format
-  const [type, token] = authHeader.split(' ');
-  
-  if (type !== 'Bearer' || !token) {
-    return res.status(401).json({ error: 'Invalid authorization format. Use Bearer token' });
-  }
-  
-  // Verify the token
-  if (token !== API_PASSWORD) {
-    return res.status(401).json({ error: 'Invalid API password' });
-  }
-  
-  // If we get here, the request is authenticated
+  // Authentication has been removed - all requests are allowed
   next();
 };
 
@@ -345,10 +321,13 @@ app.post('/api/consumer-submit', authenticateApiKey, async (req, res) => {
     typeof value === 'bigint' ? value.toString() : value));
   
   try {
-    const { url, content, topicId, topic, principalId, status, extractedData, metrics, deviceId, scraping_time } = req.body;
+    const { url, content, topicId, topic, principalId, status, extractedData, metrics, deviceId, scraping_time, storageData, forwardToStorage } = req.body;
     
     // Check for device ID in headers or body
     const requestDeviceId = req.headers['x-device-id'] || deviceId;
+    
+    // Log if we're forwarding to storage
+    console.log(`[/api/consumer-submit] Forward to storage: ${forwardToStorage ? 'yes' : 'no'}`);
     
     if (!requestDeviceId) {
       console.warn('[/api/consumer-submit] No device ID provided, this may cause authorization issues');
@@ -464,8 +443,57 @@ app.post('/api/consumer-submit', authenticateApiKey, async (req, res) => {
           canisterId: STORAGE_CANISTER_ID
         });
         
-        const fallbackResult = await storageActor.submitScrapedData(scrapedData);
-        console.log('[/api/consumer-submit] Fallback storage submission result:', fallbackResult);
+        // Check if we have storageData in the request
+        let storageDataToSubmit;
+        if (req.body.storageData) {
+          console.log('[/api/consumer-submit] Using provided storageData for storage submission');
+          storageDataToSubmit = req.body.storageData;
+          
+          // Ensure all required fields are properly formatted
+          if (typeof storageDataToSubmit['2_781_795_542'] === 'number') {
+            storageDataToSubmit['2_781_795_542'] = BigInt(storageDataToSubmit['2_781_795_542']);
+          }
+          
+          if (typeof storageDataToSubmit['3_457_862_683'] === 'number') {
+            storageDataToSubmit['3_457_862_683'] = BigInt(storageDataToSubmit['3_457_862_683']);
+          }
+          
+          // Convert client_id to Principal if it's a string
+          if (typeof storageDataToSubmit['3_355_830_415'] === 'string') {
+            storageDataToSubmit['3_355_830_415'] = Principal.fromText(storageDataToSubmit['3_355_830_415']);
+          }
+        } else {
+          // Create storage data from scraped data
+          console.log('[/api/consumer-submit] Creating storage data from scraped data');
+          storageDataToSubmit = {
+            '23_515': scrapedData.id,                // id
+            '5_843_823': scrapedData.url,           // url
+            '100_394_802': scrapedData.status,       // status
+            '338_645_423': scrapedData.topic,        // topic
+            '427_265_337': scrapedData.content,      // content
+            '842_117_339': scrapedData.source,       // source
+            '2_781_795_542': scrapedData.timestamp,  // timestamp as BigInt
+            '3_355_830_415': scrapedData.client_id,  // client_id as Principal
+            '3_457_862_683': scrapedData.scraping_time // scraping_time as BigInt
+          };
+        }
+        
+        // Log the storage data we're submitting
+        console.log('[/api/consumer-submit] Storage data structure:', {
+          id: storageDataToSubmit['23_515'],
+          url: storageDataToSubmit['5_843_823'],
+          status: storageDataToSubmit['100_394_802'],
+          topic: storageDataToSubmit['338_645_423'],
+          content_length: storageDataToSubmit['427_265_337'] ? storageDataToSubmit['427_265_337'].length : 0,
+          source: storageDataToSubmit['842_117_339'],
+          timestamp: String(storageDataToSubmit['2_781_795_542']),
+          client_id: storageDataToSubmit['3_355_830_415'] ? storageDataToSubmit['3_355_830_415'].toString() : 'null',
+          scraping_time: String(storageDataToSubmit['3_457_862_683'])
+        });
+        
+        // Submit to storage canister
+        const fallbackResult = await storageActor.addScrapedData(storageDataToSubmit);
+        console.log('[/api/consumer-submit] Storage submission result:', fallbackResult);
         
         return res.status(200).json({
           ok: {

@@ -20,8 +20,8 @@ class HybridICClient {
         // 'directHttp' - Removed to avoid unnecessary errors
       ],
       logger: options.logger || console,
-      proxyUrl: options.proxyUrl,
-      apiPassword: options.apiPassword
+      proxyUrl: options.proxyUrl
+      // No longer using API password
     };
     
     this.agent = null;

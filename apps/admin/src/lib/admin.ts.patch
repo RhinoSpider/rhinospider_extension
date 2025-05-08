@@ -1,0 +1,109 @@
+// Import the storage adapter
+import { wrapStorageResponse } from './storage-adapter';
+
+// Replace the getScrapedDataDirect function
+export async function getScrapedDataDirect(topicId?: string): Promise<ScrapedData[]> {
+  console.log(`[admin.ts] getScrapedDataDirect called with topicId:`, topicId);
+  
+  try {
+    // Get the storage actor directly
+    const storageActor = await getStorageActor();
+    
+    // If a specific topic ID is provided, use it directly
+    if (topicId && topicId.trim() !== '' && topicId !== 'ALL_TOPICS') {
+      console.log(`[admin.ts] Using specific topic ID for direct storage call:`, topicId);
+      const param = [topicId];
+      
+      console.log(`[admin.ts] Making direct call to storage canister with param:`, param);
+      try {
+        const rawResult = await storageActor.getScrapedData(param);
+        
+        // Wrap the raw result in the expected format
+        const result = wrapStorageResponse(rawResult);
+        
+        if ('err' in result) {
+          console.error(`[admin.ts] Error from direct storage call:`, result.err);
+          throw new Error(result.err);
+        }
+        
+        console.log(`[admin.ts] Successfully retrieved ${result.ok ? result.ok.length : 0} items directly from storage`);
+        return result.ok || [];
+      } catch (storageError) {
+        console.error(`[admin.ts] Error calling storage canister:`, storageError);
+        throw storageError;
+      }
+    } 
+    // If ALL_TOPICS is specified or no topic ID is provided, fetch all topics and query each one
+    else {
+      console.log(`[admin.ts] ALL_TOPICS specified or no topic ID provided, fetching all topics`);
+      
+      // Get all available topics
+      let topics: ScrapingTopic[] = [];
+      try {
+        topics = await getTopics();
+        console.log(`[admin.ts] Retrieved ${topics.length} topics for ALL_TOPICS query`);
+      } catch (topicError) {
+        console.error(`[admin.ts] Error fetching topics for ALL_TOPICS query:`, topicError);
+        // Continue with empty topics array if we can't fetch topics
+      }
+      
+      // If no topics are available, try the ALL_TOPICS marker as a fallback
+      if (!topics || topics.length === 0) {
+        console.log(`[admin.ts] No topics available, falling back to ALL_TOPICS marker`);
+        const param: string[] = [];  // Empty array to get all data
+        
+        console.log(`[admin.ts] Making direct call to storage canister with empty param to get all data`);
+        try {
+          const rawResult = await storageActor.getScrapedData(param);
+          
+          // Wrap the raw result in the expected format
+          const result = wrapStorageResponse(rawResult);
+          
+          if ('err' in result) {
+            console.error(`[admin.ts] Error from direct storage call with ALL_TOPICS marker:`, result.err);
+            return []; // Return empty array instead of throwing
+          }
+          
+          console.log(`[admin.ts] Successfully retrieved ${result.ok ? result.ok.length : 0} items with ALL_TOPICS marker`);
+          return result.ok || [];
+        } catch (storageError) {
+          console.error(`[admin.ts] Error calling storage canister with empty param:`, storageError);
+          return [];
+        }
+      }
+      
+      // Query each topic individually and combine the results
+      console.log(`[admin.ts] Querying each topic individually for ALL_TOPICS`);
+      const allData: ScrapedData[] = [];
+      
+      for (const topic of topics) {
+        try {
+          console.log(`[admin.ts] Querying topic: ${topic.id}`);
+          const param = [topic.id];
+          
+          const rawResult = await storageActor.getScrapedData(param);
+          
+          // Wrap the raw result in the expected format
+          const result = wrapStorageResponse(rawResult);
+          
+          if ('ok' in result && result.ok) {
+            console.log(`[admin.ts] Retrieved ${result.ok.length} items for topic ${topic.id}`);
+            allData.push(...result.ok);
+          } else if ('err' in result) {
+            console.warn(`[admin.ts] Error querying topic ${topic.id}:`, result.err);
+            // Continue with other topics even if one fails
+          }
+        } catch (topicError) {
+          console.warn(`[admin.ts] Exception querying topic ${topic.id}:`, topicError);
+          // Continue with other topics even if one fails
+        }
+      }
+      
+      console.log(`[admin.ts] Successfully retrieved ${allData.length} total items across all topics`);
+      return allData;
+    }
+  } catch (error) {
+    console.error(`[admin.ts] Exception in getScrapedDataDirect:`, error);
+    throw error;
+  }
+}

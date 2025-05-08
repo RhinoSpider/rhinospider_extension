@@ -89,7 +89,7 @@ function validateUrlStructure(url) {
     }
 }
 
-// Export the utility functions
+// Export for modules that use import syntax
 export {
     addCacheBusterToUrl,
     validateUrlStructure

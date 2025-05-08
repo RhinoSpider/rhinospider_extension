@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "RhinoSpider",
   "description": "RhinoSpider Extension",
-  "version": "3.2.2",
+  "version": "3.2.17",
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
@@ -39,15 +39,15 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "assets/*",
+        "popup.html",
         "pages/*",
-        "src/*",
         "icons/*",
+        "direct-test.html",
+        "src/*",
         "ii-content.js",
         "ic-agent.js",
         "ic-deps.js",
         "certificate-patch.js",
-        "direct-test.html",
         "test-url-fetching.html"
       ],
       "matches": [

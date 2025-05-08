@@ -71,7 +71,7 @@ export const ExtractionTester: React.FC<ExtractionTesterProps> = ({ topic, onClo
       if ('ok' in result) {
         // Result is a data array
         const extractedData = result.ok.data;
-        const formattedResults = extractedData.map(([key, value]) => `${key}: ${value}`).join('\n');
+        const formattedResults = extractedData.map(([key, value]: [string, string]) => `${key}: ${value}`).join('\n');
         setResults(formattedResults);
         setError(null);
       } else {
@@ -114,7 +114,7 @@ export const ExtractionTester: React.FC<ExtractionTesterProps> = ({ topic, onClo
             <div className="text-sm bg-yellow-500/10 border border-yellow-500/20 rounded-md p-3">
               <strong>Local Testing Mode:</strong>
               <ul className="list-disc list-inside mt-1 space-y-1">
-                <li>Enter a URL to test with mock data</li>
+                <li>Enter a URL to test with real data from the storage canister</li>
                 <li>Or paste HTML content directly to test extraction rules</li>
                 <li>No cycles required for testing</li>
               </ul>

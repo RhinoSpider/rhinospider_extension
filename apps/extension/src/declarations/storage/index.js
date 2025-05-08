@@ -9,8 +9,8 @@ export { idlFactory } from "./storage.did.js";
  * process.env.CANISTER_ID_<CANISTER_NAME_UPPERCASE>
  * beginning in dfx 0.15.0
  */
-// Use a hardcoded canister ID to ensure it's always available
-export const canisterId = 'i2gk7-oyaaa-aaaao-a37cq-cai';
+// Use the same canister ID as in config.js
+export const canisterId = 'nwy3f-jyaaa-aaaao-a4htq-cai';
 
 export const createActor = (canisterId, options = {}) => {
   const agent = options.agent || new HttpAgent({ ...options.agentOptions });

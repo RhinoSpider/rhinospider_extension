@@ -2,7 +2,8 @@
 // This replaces the complex URL generation logic
 
 import { addCacheBusterToUrl } from './url-utils.js';
-import { getUrlForTopic, prefetchUrlsForAllTopics } from './search-proxy-client.js';
+import searchProxyClient from './search-proxy-client.js';
+const { getUrlForTopic, prefetchUrlsForAllTopics } = searchProxyClient;
 import { directSearchProxyCall } from './service-worker-adapter.js';
 
 // Cache for prefetched URLs
@@ -258,130 +259,217 @@ function checkAllSampleUrlsScraped(topics) {
 async function selectTopicAndUrl(topics) {
     logger.log('Selecting topic and URL for scraping');
     
-    if (!topics || topics.length === 0) {
-        logger.log('No topics available');
-        return { topic: null, url: null };
-    }
-    
-    // Check if all sample URLs have been scraped - only do this check once per session
-    // to avoid excessive logging
-    if (!allSampleUrlsScraped && checkAllSampleUrlsScraped(topics)) {
-        // Set the flag to true to indicate all sample URLs have been scraped
-        allSampleUrlsScraped = true;
-        logger.log('All sample URLs have been scraped, switching to search proxy service');
-        // Store this information in storage to avoid rechecking
-        try {
-            await chrome.storage.local.set({ allSampleUrlsScraped: true });
-        } catch (error) {
-            logger.error('Error storing allSampleUrlsScraped flag:', error);
-        }
-    }
-    
-    // Filter active topics
-    const activeTopics = topics.filter(topic => topic.status === 'active');
-    logger.log(`Active topics count: ${activeTopics.length}`);
-    
-    if (activeTopics.length === 0) {
-        logger.log('No active topics found');
-        return { topic: null, url: null };
-    }
-    
-    // Prefetch URLs for all topics if we haven't already
-    if (Object.keys(prefetchedUrlsByTopic).length === 0) {
-        logger.log('No prefetched URLs available, prefetching for all topics');
-        await prefetchUrlsForTopics(activeTopics);
-    }
-    
-    // Get all topics that have prefetched URLs available
-    const topicsWithUrls = activeTopics.filter(topic => 
-        prefetchedUrlsByTopic[topic.id] && 
-        prefetchedUrlsByTopic[topic.id].length > 0
-    );
-    
-    // Select a topic - prioritize topics with available prefetched URLs
-    let selectedTopic;
-    
-    if (topicsWithUrls.length > 0) {
-        // Select a random topic from those with available URLs
-        const randomIndex = Math.floor(Math.random() * topicsWithUrls.length);
-        selectedTopic = topicsWithUrls[randomIndex];
-        logger.log(`Selected topic with available URLs: ${selectedTopic.name}`);
-    } else {
-        // Fall back to selecting a random topic if none have prefetched URLs
-        const randomIndex = Math.floor(Math.random() * activeTopics.length);
-        selectedTopic = activeTopics[randomIndex];
-        logger.log(`Selected random topic (no prefetched URLs available): ${selectedTopic.name}`);
-    }
-    
-    logger.log(`Processing topic: ${selectedTopic.name}`);
-    
-    // Initialize tracking for this topic if not exists
-    if (!successfullyScrapedUrls[selectedTopic.id]) {
-        successfullyScrapedUrls[selectedTopic.id] = [];
-    }
-    
-    // Always use the search proxy service for URLs
-    let url = null;
-    logger.log('Bypassing sampleArticleUrls: always using search proxy URLs.');
-    
     try {
-        // First try the standard approach
-        try {
-            const isHealthy = await import('./search-proxy-client.js').then(module => module.checkProxyHealth());
-            logger.log(`[URLSelector] Search proxy health check before URL fetch: ${isHealthy ? 'HEALTHY' : 'UNHEALTHY'}`);
-            logger.log(`[URLSelector] Calling getUrlForTopic for topic ${selectedTopic.id} (${selectedTopic.name})`);
-            url = await getUrlForTopic(selectedTopic);
-            logger.log(`[URLSelector] Result from getUrlForTopic:`, url);
-        } catch (importError) {
-            // If the standard approach fails, try direct API call
-            logger.error('Error using standard getUrlForTopic:', importError);
-            console.error('[URL Selector] Error using standard getUrlForTopic, trying direct API call');
-            
-            // Fall back to direct API call
-            url = await directSearchProxyCall(selectedTopic);
-            logger.log(`[URLSelector] Direct API call returned: ${url ? url : 'null'}`);
-        }
-        
-        // Check if we got a URL from either approach
-        if (!url) {
-            logger.warn(`No URLs could be generated for topic ${selectedTopic.id}`);
+        if (!topics || topics.length === 0) {
+            logger.log('No topics available');
             return { topic: null, url: null };
         }
+        
+        // Check if all sample URLs have been scraped - only do this check once per session
+        // to avoid excessive logging
+        if (!allSampleUrlsScraped && checkAllSampleUrlsScraped(topics)) {
+            // Set the flag to true to indicate all sample URLs have been scraped
+            allSampleUrlsScraped = true;
+            logger.log('All sample URLs have been scraped, switching to search proxy service');
+            // Store this information in storage to avoid rechecking
+            try {
+                await chrome.storage.local.set({ allSampleUrlsScraped: true });
+            } catch (error) {
+                logger.error('Error storing allSampleUrlsScraped flag:', error);
+            }
+        }
+        
+        // Filter active topics
+        const activeTopics = topics.filter(topic => topic.status === 'active');
+        logger.log(`Active topics count: ${activeTopics.length}`);
+        
+        if (activeTopics.length === 0) {
+            logger.log('No active topics found');
+            return { topic: null, url: null };
+        }
+        
+        // Prefetch URLs for all topics if we haven't already
+        if (Object.keys(prefetchedUrlsByTopic).length === 0) {
+            logger.log('No prefetched URLs available, prefetching for all topics');
+            await prefetchUrlsForTopics(activeTopics);
+        }
+        
+        // Get all topics that have prefetched URLs available
+        const topicsWithUrls = activeTopics.filter(topic => 
+            prefetchedUrlsByTopic[topic.id] && 
+            prefetchedUrlsByTopic[topic.id].length > 0
+        );
+        
+        // Select a topic - prioritize topics with available prefetched URLs
+        let selectedTopic;
+        
+        if (topicsWithUrls.length > 0) {
+            // Select a random topic from those with available URLs
+            const randomIndex = Math.floor(Math.random() * topicsWithUrls.length);
+            selectedTopic = topicsWithUrls[randomIndex];
+            logger.log(`Selected topic with available URLs: ${selectedTopic.name}`);
+        } else {
+            // Fall back to selecting a random topic if none have prefetched URLs
+            const randomIndex = Math.floor(Math.random() * activeTopics.length);
+            selectedTopic = activeTopics[randomIndex];
+            logger.log(`Selected random topic (no prefetched URLs available): ${selectedTopic.name}`);
+        }
+        
+        logger.log(`Processing topic: ${selectedTopic.name}`);
+        
+        // Initialize tracking for this topic if not exists
+        if (!successfullyScrapedUrls[selectedTopic.id]) {
+            successfullyScrapedUrls[selectedTopic.id] = [];
+        }
+        
+        // Try to get a URL for the selected topic
+        let url = null;
+        logger.log('Attempting to get URL for topic: ' + selectedTopic.name);
+        
+        // Check if we have prefetched URLs for this topic
+        if (prefetchedUrlsByTopic[selectedTopic.id] && prefetchedUrlsByTopic[selectedTopic.id].length > 0) {
+            // Use a prefetched URL
+            url = prefetchedUrlsByTopic[selectedTopic.id].shift(); // Remove and return the first URL
+            logger.log(`Using prefetched URL for topic ${selectedTopic.name}:`, url);
+        } else {
+            // No prefetched URLs available, try to get a new one
+            logger.log('No prefetched URLs available, fetching new URL from search proxy');
+            
+            // First check if we have any cached URLs in storage
+            try {
+                const cachedData = await chrome.storage.local.get(['cachedUrls', 'cachedUrlsTimestamp']);
+                
+                // Check if we have cached URLs for this topic that are less than 24 hours old
+                if (cachedData.cachedUrls && 
+                    cachedData.cachedUrls[selectedTopic.id] && 
+                    cachedData.cachedUrls[selectedTopic.id].length > 0 &&
+                    cachedData.cachedUrlsTimestamp && 
+                    (Date.now() - cachedData.cachedUrlsTimestamp < 24 * 60 * 60 * 1000)) {
+                    
+                    // Use a cached URL
+                    const cachedUrls = cachedData.cachedUrls[selectedTopic.id];
+                    url = cachedUrls.shift(); // Remove and return the first URL
+                    
+                    // Update the cached URLs
+                    cachedData.cachedUrls[selectedTopic.id] = cachedUrls;
+                    await chrome.storage.local.set({ cachedUrls: cachedData.cachedUrls });
+                    
+                    logger.log(`Using cached URL for topic ${selectedTopic.name}:`, url);
+                    return { topic: selectedTopic, url };
+                }
+            } catch (cacheError) {
+                logger.error('Error retrieving cached URLs:', cacheError);
+            }
+            
+            try {
+                // Try the standard approach with searchProxyClient
+                const isHealthy = await searchProxyClient.checkProxyHealth();
+                logger.log(`Search proxy health check before URL fetch: ${isHealthy ? 'HEALTHY' : 'UNHEALTHY'}`);
+                logger.log(`Calling getUrlForTopic for topic ${selectedTopic.id} (${selectedTopic.name})`);
+                
+                // Force reset=true to get fresh URLs
+                url = await getUrlForTopic(selectedTopic);
+                logger.log(`Result from getUrlForTopic:`, url);
+            } catch (error) {
+                // If the standard approach fails, try direct API call
+                logger.error('Error using standard getUrlForTopic:', error);
+                
+                try {
+                    // Fall back to direct API call
+                    url = await directSearchProxyCall(selectedTopic);
+                    logger.log(`Direct API call returned: ${url ? url : 'null'}`);
+                } catch (directError) {
+                    logger.error('Error with direct API call:', directError);
+                }
+            }
+        }
+        
+        // Check if we got a URL from any approach
+        if (!url) {
+            logger.warn(`No URLs could be generated for topic ${selectedTopic.id}, trying fallback URLs`);
+            
+            // Use fallback URLs for this topic
+            try {
+                // Check if we have fallback URLs stored
+                const fallbackData = await chrome.storage.local.get('fallbackUrls');
+                
+                if (fallbackData.fallbackUrls && fallbackData.fallbackUrls[selectedTopic.id] && 
+                    fallbackData.fallbackUrls[selectedTopic.id].length > 0) {
+                    
+                    // Use a fallback URL
+                    url = fallbackData.fallbackUrls[selectedTopic.id].shift();
+                    
+                    // Update the fallback URLs
+                    await chrome.storage.local.set({ fallbackUrls: fallbackData.fallbackUrls });
+                    
+                    logger.log(`Using fallback URL for topic ${selectedTopic.name}:`, url);
+                } else {
+                    // No fallback URLs available, use a hardcoded fallback URL based on topic
+                    const hardcodedFallbacks = {
+                        'technology': ['https://techcrunch.com', 'https://wired.com', 'https://theverge.com'],
+                        'health': ['https://webmd.com', 'https://health.com', 'https://mayoclinic.org'],
+                        'science': ['https://scientificamerican.com', 'https://science.org', 'https://nature.com'],
+                        'business': ['https://bloomberg.com', 'https://forbes.com', 'https://wsj.com'],
+                        'entertainment': ['https://variety.com', 'https://hollywoodreporter.com', 'https://ew.com']
+                    };
+                    
+                    // Try to match the topic name to a category
+                    const topicName = selectedTopic.name.toLowerCase();
+                    let category = Object.keys(hardcodedFallbacks).find(cat => topicName.includes(cat));
+                    
+                    // If no match, use technology as default
+                    if (!category) category = 'technology';
+                    
+                    // Select a random fallback URL
+                    const fallbackUrls = hardcodedFallbacks[category];
+                    const randomIndex = Math.floor(Math.random() * fallbackUrls.length);
+                    url = fallbackUrls[randomIndex];
+                    
+                    logger.log(`Using hardcoded fallback URL for topic ${selectedTopic.name}:`, url);
+                }
+            } catch (fallbackError) {
+                logger.error('Error retrieving fallback URLs:', fallbackError);
+                return { topic: null, url: null };
+            }
+        }
+        
+        // If we still don't have a URL after all fallback attempts, log an error and return null
+        if (!url) {
+            logger.error(`Failed to get URL for topic ${selectedTopic.name} after all fallback attempts`);
+            return { topic: null, url: null };
+        }
+        
+        // If we have a valid URL, add a cache buster
+        try {
+            // Extract the URL string if we have a URL object
+            let urlString = url;
+            if (typeof url === 'object' && url.url) {
+                urlString = url.url;
+            }
+            
+            // Validate the URL
+            new URL(urlString);
+            
+            // Add cache buster
+            const urlWithCacheBuster = addCacheBusterToUrl(urlString);
+            logger.log(`Added cache buster to URL: ${urlWithCacheBuster}`);
+            
+            // Log selection (but not too frequently)
+            const currentTime = Date.now();
+            if (!selectTopicAndUrl.lastUrlSelectionLog || (currentTime - selectTopicAndUrl.lastUrlSelectionLog > 600000)) {
+                logger.log(`Selected topic "${selectedTopic.name}" with URL`);
+                selectTopicAndUrl.lastUrlSelectionLog = currentTime;
+            }
+            
+            return { topic: selectedTopic, url: urlWithCacheBuster };
+        } catch (error) {
+            logger.error(`Invalid URL for topic ${selectedTopic.name}: ${url}`, error);
+            return { topic: selectedTopic, url: null };
+        }
     } catch (error) {
-        // Handle any errors in the URL fetching process
-        logger.error('Error getting URL from search proxy service:', error);
-        console.error('[URL Selector] Error getting URL:', error);
+        // Handle any errors in the URL selection process
+        logger.error('Error in selectTopicAndUrl:', error);
         return { topic: null, url: null };
-    }
-    
-    // If we have a valid URL, add a cache buster
-    try {
-        // Extract the URL string if we have a URL object
-        let urlString = url;
-        if (typeof url === 'object' && url.url) {
-            urlString = url.url;
-        }
-        
-        // Validate the URL
-        new URL(urlString);
-        
-        // Add cache buster
-        const urlWithCacheBuster = addCacheBusterToUrl(urlString);
-        logger.log(`[URLSelector] Added cache buster to URL: ${urlWithCacheBuster}`);
-        console.log(`[URL Selector] URL with cache buster: ${urlWithCacheBuster}`);
-        
-        // Log selection (but not too frequently)
-        const currentTime = Date.now();
-        if (!selectTopicAndUrl.lastUrlSelectionLog || (currentTime - selectTopicAndUrl.lastUrlSelectionLog > 600000)) {
-            logger.log(`Selected topic "${selectedTopic.name}" with URL`);
-            selectTopicAndUrl.lastUrlSelectionLog = currentTime;
-        }
-        
-        return { topic: selectedTopic, url: urlWithCacheBuster };
-    } catch (error) {
-        logger.error(`Invalid URL for topic ${selectedTopic.name}: ${url}`, error);
-        console.error(`[URL Selector] Invalid URL for topic ${selectedTopic.name}: ${url}`, error);
-        return { topic: selectedTopic, url: null };
     }
 }
 
@@ -441,20 +529,55 @@ async function prefetchUrlsForTopics(topics) {
         return {};
     }
 }
-
-// Initialize the module
 async function initialize() {
-    await loadSuccessfullyScrapedUrls();
-    
-    // Load the allSampleUrlsScraped flag from storage
     try {
-        const result = await chrome.storage.local.get(['allSampleUrlsScraped']);
-        allSampleUrlsScraped = result.allSampleUrlsScraped || false;
-        logger.log(`Loaded allSampleUrlsScraped flag from storage: ${allSampleUrlsScraped}`);
+        // Load from storage
+        const data = await chrome.storage.local.get(['allSampleUrlsScraped', 'fallbackUrls']);
+        if (data.allSampleUrlsScraped) {
+            allSampleUrlsScraped = true;
+            logger.log('All sample URLs have been scraped (loaded from storage)');
+        }
+        
+        // Initialize fallback URLs if they don't exist
+        if (!data.fallbackUrls) {
+            // Create a set of fallback URLs for common topics
+            const fallbackUrls = {
+                // Technology-related topics
+                'technology': ['https://techcrunch.com', 'https://wired.com', 'https://theverge.com', 'https://arstechnica.com', 'https://cnet.com'],
+                'tech': ['https://techcrunch.com', 'https://wired.com', 'https://theverge.com', 'https://arstechnica.com', 'https://cnet.com'],
+                'programming': ['https://github.blog', 'https://dev.to', 'https://stackoverflow.blog', 'https://css-tricks.com', 'https://smashingmagazine.com'],
+                'ai': ['https://ai.googleblog.com', 'https://openai.com/blog', 'https://deepmind.com/blog', 'https://machinelearningmastery.com', 'https://distill.pub'],
+                
+                // Health-related topics
+                'health': ['https://webmd.com', 'https://health.com', 'https://mayoclinic.org', 'https://medicalnewstoday.com', 'https://healthline.com'],
+                'fitness': ['https://menshealth.com', 'https://womenshealthmag.com', 'https://shape.com', 'https://runnersworld.com', 'https://self.com'],
+                'nutrition': ['https://eatright.org', 'https://nutritiondata.self.com', 'https://nutrition.gov', 'https://foodnetwork.com/healthy', 'https://eatingwell.com'],
+                
+                // Science-related topics
+                'science': ['https://scientificamerican.com', 'https://science.org', 'https://nature.com', 'https://popsci.com', 'https://newscientist.com'],
+                'space': ['https://space.com', 'https://nasa.gov', 'https://universetoday.com', 'https://skyandtelescope.org', 'https://astronomy.com'],
+                'environment': ['https://nationalgeographic.com/environment', 'https://epa.gov', 'https://nature.org', 'https://earthday.org', 'https://sierraclub.org'],
+                
+                // Business-related topics
+                'business': ['https://bloomberg.com', 'https://forbes.com', 'https://wsj.com', 'https://ft.com', 'https://hbr.org'],
+                'finance': ['https://cnbc.com', 'https://marketwatch.com', 'https://investopedia.com', 'https://fool.com', 'https://morningstar.com'],
+                'economy': ['https://economist.com', 'https://worldbank.org', 'https://imf.org', 'https://federalreserve.gov', 'https://bls.gov'],
+                
+                // Entertainment-related topics
+                'entertainment': ['https://variety.com', 'https://hollywoodreporter.com', 'https://ew.com', 'https://deadline.com', 'https://rottentomatoes.com'],
+                'movies': ['https://imdb.com', 'https://boxofficemojo.com', 'https://filmsite.org', 'https://rogerebert.com', 'https://metacritic.com/movies'],
+                'music': ['https://billboard.com', 'https://pitchfork.com', 'https://rollingstone.com/music', 'https://npr.org/music', 'https://genius.com']
+            };
+            
+            // Store the fallback URLs
+            await chrome.storage.local.set({ fallbackUrls });
+            logger.log('Initialized fallback URLs');
+        }
     } catch (error) {
-        allSampleUrlsScraped = false;
-        logger.error('Error loading allSampleUrlsScraped flag from storage:', error);
+        logger.error('Error initializing simplified URL selector:', error);
     }
+    
+    await loadSuccessfullyScrapedUrls();
     
     logger.log('URL selector initialized');
     

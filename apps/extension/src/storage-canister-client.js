@@ -22,10 +22,12 @@ const IC_HOST = config.network.ic.host;
  */
 class StorageCanisterClient {
   constructor() {
-    this.storageCanisterId = STORAGE_CANISTER_ID;
+    // Get the storage canister ID from config
+    this.storageCanisterId = config.canisters.storage;
     this.icHost = IC_HOST;
-    logger.log('Initialized with storage canister ID:', this.storageCanisterId);
-    logger.log('Using IC host:', this.icHost);
+    
+    logger.log('[StorageCanisterClient] Initialized with storage canister ID:', this.storageCanisterId);
+    logger.log('[StorageCanisterClient] Using IC host:', this.icHost);
   }
 
   /**
