@@ -16,9 +16,8 @@ actor class Storage() = this {
 
     // Stable storage
     private stable var authorizedCanisterIds: [Principal] = [
-        Principal.fromText("444wf-gyaaa-aaaaj-az5sq-cai"), // admin (corrected ID)
-        Principal.fromText("tgyl5-yyaaa-aaaaj-az4wq-cai"),  // consumer
-        Principal.fromText("t52au-jmmys-xpd7e-f2cc7-xgsya-2ajbl-22leo-e7hep-kclwp-kqzoq-jae") // user's principal
+        Principal.fromText("s6r66-wyaaa-aaaaj-az4sq-cai"), // admin
+        Principal.fromText("tgyl5-yyaaa-aaaaj-az4wq-cai")  // consumer
     ];
     private stable var stableTopics: [(Text, SharedTypes.ScrapingTopic)] = [];
     private stable var stableScrapedData: [(Text, SharedTypes.ScrapedData)] = [];
@@ -68,25 +67,17 @@ actor class Storage() = this {
 
     // Admin management
     public shared({ caller }) func addAuthorizedCanister(id: Principal): async Result.Result<(), SharedTypes.Error> {
-        // Allow both the admin canister and the user's principal to add authorized canisters
-        if (Principal.toText(caller) != "444wf-gyaaa-aaaaj-az5sq-cai" and 
-            Principal.toText(caller) != "t52au-jmmys-xpd7e-f2cc7-xgsya-2ajbl-22leo-e7hep-kclwp-kqzoq-jae") {
-            Debug.print("Unauthorized caller trying to add canister: " # Principal.toText(caller));
+        if (Principal.toText(caller) != "s6r66-wyaaa-aaaaj-az4sq-cai") {
             return #err(#NotAuthorized);
         };
-        Debug.print("Adding authorized canister: " # Principal.toText(id));
         authorizedCanisterIds := Array.append(authorizedCanisterIds, [id]);
         #ok()
     };
 
     public shared({ caller }) func removeAuthorizedCanister(id: Principal): async Result.Result<(), SharedTypes.Error> {
-        // Allow both the admin canister and the user's principal to remove authorized canisters
-        if (Principal.toText(caller) != "444wf-gyaaa-aaaaj-az5sq-cai" and 
-            Principal.toText(caller) != "t52au-jmmys-xpd7e-f2cc7-xgsya-2ajbl-22leo-e7hep-kclwp-kqzoq-jae") {
-            Debug.print("Unauthorized caller trying to remove canister: " # Principal.toText(caller));
+        if (Principal.toText(caller) != "s6r66-wyaaa-aaaaj-az4sq-cai") {
             return #err(#NotAuthorized);
         };
-        Debug.print("Removing authorized canister: " # Principal.toText(id));
         authorizedCanisterIds := Array.filter(authorizedCanisterIds, func(p: Principal): Bool { not Principal.equal(p, id) });
         #ok()
     };
@@ -129,72 +120,15 @@ actor class Storage() = this {
 
     // Scraping data management
     public shared({ caller }) func submitScrapedData(data: SharedTypes.ScrapedData): async Result.Result<(), SharedTypes.Error> {
-        // Detailed logging for debugging authorization issues
-        Debug.print("submitScrapedData called by: " # Principal.toText(caller));
-        
-        // CRITICAL: Bypass authorization checks for submitScrapedData
-        // This ensures all extension users can submit data regardless of their identity
-        // Log caller information for debugging
-        let isAnonymous = Principal.toText(caller) == "2vxsx-fae";
-        let isConsumer = Principal.toText(caller) == "tgyl5-yyaaa-aaaaj-az4wq-cai";
-        let isSelf = Principal.equal(caller, Principal.fromActor(this));
-        
-        Debug.print("BYPASSING AUTHORIZATION FOR DATA SUBMISSION");
-        Debug.print("Caller details:");
-        Debug.print(" - Principal: " # Principal.toText(caller));
-        Debug.print(" - Is anonymous identity: " # debug_show(isAnonymous));
-        Debug.print(" - Is consumer canister: " # debug_show(isConsumer));
-        Debug.print(" - Is self call: " # debug_show(isSelf));
+        if (not isAuthorizedCaller(caller)) {
+            return #err(#NotAuthorized);
+        };
         
         // Add cycles for computation
         ExperimentalCycles.add(CYCLES_PER_CALL);
         
-        // Store the data
         scrapedData.put(data.id, data);
-        Debug.print("Data successfully stored with ID: " # data.id);
-        
-        // Return success
-        return #ok();
-    };
-
-    // Alternative method for data submission (storeContent)
-    public shared({ caller }) func storeContent(data: SharedTypes.ScrapedData): async Result.Result<(), SharedTypes.Error> {
-        // Log the caller for debugging
-        Debug.print("storeContent called by: " # Principal.toText(caller));
-        
-        // Bypass all authorization checks - allow any caller
-        Debug.print("BYPASSING AUTHORIZATION FOR DATA SUBMISSION");
-        Debug.print("Caller details: " # Principal.toText(caller));
-        
-        // Add cycles for computation
-        ExperimentalCycles.add(CYCLES_PER_CALL);
-        
-        // Store the data
-        scrapedData.put(data.id, data);
-        Debug.print("Data successfully stored with ID: " # data.id);
-        
-        // Return success
-        return #ok();
-    };
-    
-    // Another alternative method for data submission (addScrapedData)
-    public shared({ caller }) func addScrapedData(data: SharedTypes.ScrapedData): async Result.Result<(), SharedTypes.Error> {
-        // Log the caller for debugging
-        Debug.print("addScrapedData called by: " # Principal.toText(caller));
-        
-        // Bypass all authorization checks - allow any caller
-        Debug.print("BYPASSING AUTHORIZATION FOR DATA SUBMISSION");
-        Debug.print("Caller details: " # Principal.toText(caller));
-        
-        // Add cycles for computation
-        ExperimentalCycles.add(CYCLES_PER_CALL);
-        
-        // Store the data
-        scrapedData.put(data.id, data);
-        Debug.print("Data successfully stored with ID: " # data.id);
-        
-        // Return success
-        return #ok();
+        #ok()
     };
 
     public query({ caller }) func getScrapedData(topicIds: [Text]): async Result.Result<[SharedTypes.ScrapedData], SharedTypes.Error> {

@@ -104,7 +104,6 @@ service : {
     getBySource: (text) -> (vec ScrapedData) query;
     getStats: () -> (StorageStats) query;
     getCycles: () -> (nat) query;
-    getScrapedData: (vec text) -> (vec ScrapedData) query;
     
     // New endpoints
     storeContent: (ScrapedContent) -> (Result);
