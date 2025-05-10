@@ -75,7 +75,7 @@ export default defineConfig({
   define: {
     'process.env.NODE_ENV': JSON.stringify('production'),
     'process.env.ADMIN_CANISTER_ID': JSON.stringify('s6r66-wyaaa-aaaaj-az4sq-cai'),
-    'process.env.STORAGE_CANISTER_ID': JSON.stringify('nwy3f-jyaaa-aaaao-a4htq-cai'),
+    'process.env.STORAGE_CANISTER_ID': JSON.stringify('hhaip-uiaaa-aaaao-a4khq-cai'),
     'process.env.AUTH_CANISTER_ID': JSON.stringify('slwpt-xqaaa-aaaaj-az4ra-cai'),
     'process.env.II_URL': JSON.stringify('https://identity.ic0.app'),
     'process.env.IC_HOST': JSON.stringify('https://icp0.io')

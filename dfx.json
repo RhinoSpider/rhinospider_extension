@@ -8,6 +8,13 @@
         "apps/admin/dist/"
       ],
       "type": "assets"
+    },
+    "storage": {
+      "main": "canisters/storage/main.mo",
+      "type": "motoko",
+      "canister_id": {
+        "ic": "hhaip-uiaaa-aaaao-a4khq-cai"
+      }
     }
   },
   "defaults": {

@@ -5,7 +5,7 @@ export const config = {
         // Use the consumer canister ID from environment
         consumer: import.meta.env.VITE_CONSUMER_CANISTER_ID,
         // Storage canister ID - same as used in the admin app
-        storage: import.meta.env.VITE_STORAGE_CANISTER_ID || 'nwy3f-jyaaa-aaaao-a4htq-cai',
+        storage: import.meta.env.VITE_STORAGE_CANISTER_ID || 'hhaip-uiaaa-aaaao-a4khq-cai',
     },
     
     // Network configuration

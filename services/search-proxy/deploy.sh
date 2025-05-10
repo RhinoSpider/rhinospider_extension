@@ -3,18 +3,22 @@
 # Deployment script for RhinoSpider Search Proxy Service
 # This script deploys the updated search proxy service to Digital Ocean
 
+# Get password from command line argument
+if [ -z "$1" ]; then
+  echo "Error: Password is required as the first argument"
+  echo "Usage: $0 <password>"
+  exit 1
+fi
+
+SSH_PASSWORD="$1"
+
 echo "=== RhinoSpider Search Proxy Deployment ==="
 
 # Configuration
-DIGITAL_OCEAN_IP="143.244.133.154"
+SERVER_HOST="search-proxy.rhinospider.com"
 SSH_USER="root"
 SERVICE_NAME="search-proxy"
 SERVICE_PORT=3002
-
-# Ask for Digital Ocean IP if not set
-if [ "$DIGITAL_OCEAN_IP" == "your-digital-ocean-ip" ]; then
-  read -p "Enter your Digital Ocean server IP: " DIGITAL_OCEAN_IP
-fi
 
 # Use root as SSH user
 echo "Using SSH user: $SSH_USER"
@@ -47,12 +51,12 @@ if ! command -v sshpass &> /dev/null; then
 fi
 
 # Upload to server using sshpass
-echo "Uploading to $DIGITAL_OCEAN_IP..."
-sshpass -p "$SSH_PASS" scp $TAR_NAME $SSH_USER@$DIGITAL_OCEAN_IP:/tmp/
+echo "Uploading to $SERVER_HOST..."
+sshpass -p "$SSH_PASSWORD" scp -o StrictHostKeyChecking=no $TAR_NAME $SSH_USER@$SERVER_HOST:/tmp/
 
 # Execute deployment commands on the server using sshpass
 echo "Deploying on the server..."
-sshpass -p "$SSH_PASS" ssh $SSH_USER@$DIGITAL_OCEAN_IP << EOF
+sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no $SSH_USER@$SERVER_HOST << EOF
   # Stop the existing service
   echo "Stopping existing service..."
   pm2 stop $SERVICE_NAME || true
@@ -107,6 +111,6 @@ rm -rf $DEPLOY_DIR
 rm $TAR_NAME
 
 echo "=== Deployment completed ==="
-echo "The search proxy service has been deployed to $DIGITAL_OCEAN_IP:$SERVICE_PORT"
+echo "The search proxy service has been deployed to https://$SERVER_HOST"
 echo "Verify the deployment by checking:"
-echo "  curl http://$DIGITAL_OCEAN_IP:$SERVICE_PORT/api/health"
+echo "  curl https://$SERVER_HOST/api/health"

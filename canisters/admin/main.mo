@@ -184,7 +184,7 @@ actor Admin {
     };
 
     // Constants
-    private let STORAGE_CANISTER_ID: Text = "nwy3f-jyaaa-aaaao-a4htq-cai"; // Updated to the current storage canister ID
+    private let STORAGE_CANISTER_ID: Text = "hhaip-uiaaa-aaaao-a4khq-cai"; // Updated to the latest storage canister ID
     private let CONSUMER_CANISTER_ID: Text = "tgyl5-yyaaa-aaaaj-az4wq-cai";
 
     // Canister references

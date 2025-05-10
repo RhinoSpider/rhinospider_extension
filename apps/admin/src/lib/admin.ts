@@ -323,7 +323,7 @@ export async function getScrapedDataDirect(topicId?: string): Promise<ScrapedDat
     const agent = new HttpAgent({ identity, host });
     
     // Use the storage canister ID from the environment
-    const storageCanisterId = Principal.fromText('nwy3f-jyaaa-aaaao-a4htq-cai');
+    const storageCanisterId = Principal.fromText('hhaip-uiaaa-aaaao-a4khq-cai');
     console.log(`[admin.ts] Using storage canister ID:`, storageCanisterId.toString());
     
     // Prepare the parameter - always use a properly formatted array for Vec<Text>
@@ -514,7 +514,7 @@ export async function getStorageActor() {
     console.log('[admin.ts] Got identity for storage canister:', principalId);
 
     // Use production canister ID as fallback
-    const canisterId = import.meta.env.VITE_STORAGE_CANISTER_ID || 'nwy3f-jyaaa-aaaao-a4htq-cai';
+    const canisterId = import.meta.env.VITE_STORAGE_CANISTER_ID || 'hhaip-uiaaa-aaaao-a4khq-cai';
     if (!canisterId) {
       throw new Error('Storage canister ID not found in environment variables');
     }

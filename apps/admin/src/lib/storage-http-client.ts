@@ -55,7 +55,7 @@ export async function getScrapedData(topicIds?: string[]): Promise<ScrapedData[]
       console.log('[storage-http-client] Trying direct HTTP API...');
       
       // Use the correct URL format for the raw IC API
-      const directResponse = await fetch('https://ic0.app/api/v2/canister/nwy3f-jyaaa-aaaao-a4htq-cai/query', {
+      const directResponse = await fetch('https://ic0.app/api/v2/canister/hhaip-uiaaa-aaaao-a4khq-cai/query', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -63,7 +63,7 @@ export async function getScrapedData(topicIds?: string[]): Promise<ScrapedData[]
         body: JSON.stringify({
           request_type: 'query',
           sender: '2vxsx-fae',  // Anonymous principal
-          canister_id: 'nwy3f-jyaaa-aaaao-a4htq-cai',
+          canister_id: 'hhaip-uiaaa-aaaao-a4khq-cai',
           method_name: 'getScrapedData',
           arg: 'DIDL\x00\x01\x71\x01\x00\x00', // Empty vec argument in Candid
         }),

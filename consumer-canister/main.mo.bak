@@ -20,15 +20,15 @@ actor ConsumerCanister {
         preferences: {
             notificationsEnabled: Bool;
             theme: Text;
-        };
+        }
         principal: Principal;
-    };
+    }
 
     type ScrapingTopic = {
         activeHours: {
             end: Nat;
             start: Nat;
-        };
+        }
         aiConfig: AIConfig;
         createdAt: Int;
         description: Text;
@@ -39,14 +39,14 @@ actor ConsumerCanister {
         scrapingInterval: Nat;
         status: Text;
         urlPatterns: [Text];
-    };
+    }
 
     type ScrapingField = {
         aiPrompt: ?Text;
         fieldType: Text;
         name: Text;
         required: Bool;
-    };
+    }
 
     type ScrapedData = {
         client_id: Principal;
@@ -58,7 +58,7 @@ actor ConsumerCanister {
         timestamp: Int;
         topic: Text;
         url: Text;
-    };
+    }
 
     type Error = {
         #AlreadyExists;
@@ -66,42 +66,42 @@ actor ConsumerCanister {
         #NotAuthorized;
         #NotFound;
         #SystemError: Text;
-    };
+    }
 
     type Result<T> = {
         #ok: T;
         #err: Error;
-    };
+    }
 
     type ExtractionRules = {
         customPrompt: ?Text;
         fields: [ScrapingField];
-    };
+    }
 
     type CostLimits = {
         maxConcurrent: Nat;
         maxDailyCost: Float;
         maxMonthlyCost: Float;
-    };
+    }
 
     type AIConfig = {
         apiKey: Text;
         costLimits: CostLimits;
         model: Text;
-    };
+    }
 
     // Storage canister interface
     type StorageCanister = actor {
         storeBatch: (DataBatch) -> async Result<Nat>;
         storeScrapedData: (ScrapedData) -> async Result<Nat>;
         getScrapedData: ([Text]) -> async [ScrapedData];
-    };
+    }
 
     type DataBatch = {
         items: [ScrapedData];
         clientId: Principal;
         batchId: Text;
-    };
+    }
 
     // Storage for user profiles
     private var profiles = HashMap.HashMap<Principal, UserProfile>(0, Principal.equal, Principal.hash);
@@ -116,16 +116,16 @@ actor ConsumerCanister {
     private var scrapedDataCache = Buffer.Buffer<ScrapedData>(0);
 
     // Storage canister ID
-    private let storageCanisterId = "i2gk7-oyaaa-aaaao-a37cq-cai";
+    private let storageCanisterId = "hhaip-uiaaa-aaaao-a4khq-cai";
     private let storageCanister : StorageCanister = actor(storageCanisterId);
 
     // Helper function to check if a principal is authorized
     private func isAuthorized(caller: Principal) : Bool {
         switch (profiles.get(caller)) {
-            case null { false };
-            case (?_) { true };
+            case null { false }
+            case (?_) { true }
         }
-    };
+    }
 
     // Initialize with sample topics
     private func initTopics() {
@@ -138,7 +138,7 @@ actor ConsumerCanister {
             activeHours = {
                 start = 0;
                 end = 24;
-            };
+            }
             urlPatterns = ["https://techcrunch.com/*"];
             extractionRules = {
                 fields = [
@@ -168,7 +168,7 @@ actor ConsumerCanister {
                     }
                 ];
                 customPrompt = ?"Extract the core technology news content from this TechCrunch article, focusing on factual information about companies, products, funding, and technology trends. Ignore promotional content, opinions, and advertisements.";
-            };
+            }
             aiConfig = {
                 model = "gpt-3.5-turbo";
                 apiKey = "";
@@ -176,11 +176,11 @@ actor ConsumerCanister {
                     maxConcurrent = 5;
                     maxDailyCost = 1.0;
                     maxMonthlyCost = 10.0;
-                };
-            };
+                }
+            }
             createdAt = 1741191494445463672;
             status = "active";
-        };
+        }
         
         let ecommerceTopic : ScrapingTopic = {
             id = "topic_t7wkl7zyb";
@@ -191,7 +191,7 @@ actor ConsumerCanister {
             activeHours = {
                 start = 0;
                 end = 24;
-            };
+            }
             urlPatterns = ["https://www.amazon.com/*/dp/*", "https://www.bestbuy.com/site/*/", "https://www.walmart.com/ip/*"];
             extractionRules = {
                 fields = [
@@ -221,7 +221,7 @@ actor ConsumerCanister {
                     }
                 ];
                 customPrompt = ?"Extract information from the webpage";
-            };
+            }
             aiConfig = {
                 model = "gpt-3.5-turbo";
                 apiKey = "";
@@ -229,15 +229,15 @@ actor ConsumerCanister {
                     maxConcurrent = 5;
                     maxDailyCost = 1.0;
                     maxMonthlyCost = 10.0;
-                };
-            };
+                }
+            }
             createdAt = 1741239962379386497;
             status = "active";
-        };
+        }
         
         topics.put(techCrunchTopic.id, techCrunchTopic);
         topics.put(ecommerceTopic.id, ecommerceTopic);
-    };
+    }
 
     // Initialize the canister
     initTopics();
@@ -245,24 +245,24 @@ actor ConsumerCanister {
     // Get user profile
     public shared({ caller }) func getProfile() : async Result<UserProfile> {
         switch (profiles.get(caller)) {
-            case null { #err(#NotFound) };
-            case (?profile) { #ok(profile) };
+            case null { #err(#NotFound) }
+            case (?profile) { #ok(profile) }
         }
-    };
+    }
 
     // Get topics
     public shared({ caller }) func getTopics() : async Result<[ScrapingTopic]> {
         if (not isAuthorized(caller)) {
             return #err(#NotAuthorized);
-        };
+        }
         
         let topicsArray = Buffer.Buffer<ScrapingTopic>(topics.size());
         for ((_, topic) in topics.entries()) {
             topicsArray.add(topic);
-        };
+        }
         
         #ok(Buffer.toArray(topicsArray))
-    };
+    }
 
     // Register device
     public shared({ caller }) func registerDevice(deviceId: Text) : async Result<()> {
@@ -279,15 +279,15 @@ actor ConsumerCanister {
                     preferences = {
                         notificationsEnabled = true;
                         theme = "light";
-                    };
-                };
+                    }
+                }
                 profiles.put(caller, newProfile);
-            };
+            }
             case (?profile) {
                 let updatedDevices = Buffer.Buffer<Text>(profile.devices.size() + 1);
                 for (device in profile.devices.vals()) {
                     updatedDevices.add(device);
-                };
+                }
                 updatedDevices.add(deviceId);
                 
                 let updatedProfile : UserProfile = {
@@ -296,18 +296,18 @@ actor ConsumerCanister {
                     lastLogin = Time.now();
                     devices = Buffer.toArray(updatedDevices);
                     preferences = profile.preferences;
-                };
+                }
                 profiles.put(caller, updatedProfile);
-            };
-        };
+            }
+        }
         
         #ok()
-    };
+    }
 
     // Update preferences
     public shared({ caller }) func updatePreferences(notificationsEnabled: Bool, theme: Text) : async Result<()> {
         switch (profiles.get(caller)) {
-            case null { #err(#NotFound) };
+            case null { #err(#NotFound) }
             case (?profile) {
                 let updatedProfile : UserProfile = {
                     principal = profile.principal;
@@ -317,13 +317,13 @@ actor ConsumerCanister {
                     preferences = {
                         notificationsEnabled = notificationsEnabled;
                         theme = theme;
-                    };
-                };
+                    }
+                }
                 profiles.put(caller, updatedProfile);
                 #ok()
-            };
+            }
         }
-    };
+    }
 
     // Submit scraped data
     public shared({ caller }) func submitScrapedData(data: ScrapedData) : async Result<()> {
@@ -341,19 +341,19 @@ actor ConsumerCanister {
                 case (#ok(count)) {
                     Debug.print("Consumer: Successfully forwarded data to storage canister. Items stored: " # Nat.toText(count));
                     #ok()
-                };
+                }
                 case (#err(message)) {
                     Debug.print("Consumer: Error forwarding data to storage canister: " # message);
                     // Still return ok to the client since we've cached the data locally
                     #ok()
-                };
+                }
             }
         } catch (error) {
             Debug.print("Consumer: Exception when forwarding data to storage canister: " # Error.message(error));
             // Still return ok to the client since we've cached the data locally
             #ok()
         }
-    };
+    }
 
     // Get scraped data
     public shared({ caller }) func getScrapedData(topicIds: [Text]) : async Result<[ScrapedData]> {
@@ -378,15 +378,15 @@ actor ConsumerCanister {
                             if (data.topic == topicId) {
                                 filteredData.add(data);
                                 break;
-                            };
-                        };
-                    };
+                            }
+                        }
+                    }
                 } else {
                     // Return all data
                     for (data in scrapedDataCache.vals()) {
                         filteredData.add(data);
-                    };
-                };
+                    }
+                }
                 
                 Debug.print("Consumer: Found " # Nat.toText(filteredData.size()) # " items in local cache");
                 #ok(Buffer.toArray(filteredData))
@@ -403,18 +403,18 @@ actor ConsumerCanister {
                         if (data.topic == topicId) {
                             filteredData.add(data);
                             break;
-                        };
-                    };
-                };
+                        }
+                    }
+                }
             } else {
                 // Return all data
                 for (data in scrapedDataCache.vals()) {
                     filteredData.add(data);
-                };
-            };
+                }
+            }
             
             Debug.print("Consumer: Using local cache as fallback, found " # Nat.toText(filteredData.size()) # " items");
             #ok(Buffer.toArray(filteredData))
         }
-    };
+    }
 }

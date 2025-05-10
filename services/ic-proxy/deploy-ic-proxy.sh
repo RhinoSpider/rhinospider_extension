@@ -7,9 +7,18 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
+# Get password from command line argument
+if [ -z "$1" ]; then
+  echo -e "${RED}Error: Password is required as the first argument${NC}"
+  echo -e "Usage: $0 <password>"
+  exit 1
+fi
+
+SSH_PASSWORD="$1"
+
 # Configuration
 REMOTE_USER="root"
-REMOTE_HOST="143.244.133.154"
+REMOTE_HOST="ic-proxy.rhinospider.com"
 IC_PROXY_DIR="/root/rhinospider-ic-proxy"
 
 # Print section header
@@ -32,7 +41,7 @@ section "Deploying IC Proxy Service"
 # Step 1: Create directory on server
 section "Step 1: Creating directory on server"
 status "Creating IC Proxy directory..."
-ssh ${REMOTE_USER}@${REMOTE_HOST} "mkdir -p ${IC_PROXY_DIR}"
+sshpass -p "${SSH_PASSWORD}" ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} "mkdir -p ${IC_PROXY_DIR}"
 
 # Step 2: Prepare IC Proxy files
 section "Step 2: Preparing IC Proxy files"
@@ -62,7 +71,7 @@ const fetch = require('node-fetch');
 // Environment variables
 const IC_HOST = process.env.IC_HOST || 'https://icp0.io';
 const CONSUMER_CANISTER_ID = process.env.CONSUMER_CANISTER_ID || 'tgyl5-yyaaa-aaaaj-az4wq-cai';
-const STORAGE_CANISTER_ID = process.env.STORAGE_CANISTER_ID || 'i2gk7-oyaaa-aaaao-a37cq-cai';
+const STORAGE_CANISTER_ID = process.env.STORAGE_CANISTER_ID || 'hhaip-uiaaa-aaaao-a4khq-cai';
 
 // Define the storage canister interface with just the authorization method
 const storageIdlFactory = ({ IDL }) => {
@@ -191,15 +200,15 @@ cd /tmp
 tar -czf rhinospider-ic-proxy.tar.gz rhinospider-ic-proxy
 
 status "Copying compressed IC Proxy files to server..."
-scp /tmp/rhinospider-ic-proxy.tar.gz ${REMOTE_USER}@${REMOTE_HOST}:/tmp/
+sshpass -p "${SSH_PASSWORD}" scp -o StrictHostKeyChecking=no /tmp/rhinospider-ic-proxy.tar.gz ${REMOTE_USER}@${REMOTE_HOST}:/tmp/
 
 status "Extracting IC Proxy files on server..."
-ssh ${REMOTE_USER}@${REMOTE_HOST} "cd /tmp && tar -xzf rhinospider-ic-proxy.tar.gz && cp -r rhinospider-ic-proxy/* ${IC_PROXY_DIR}/ && rm -rf /tmp/rhinospider-ic-proxy*"
+sshpass -p "${SSH_PASSWORD}" ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} "cd /tmp && tar -xzf rhinospider-ic-proxy.tar.gz && cp -r rhinospider-ic-proxy/* ${IC_PROXY_DIR}/ && rm -rf /tmp/rhinospider-ic-proxy*"
 
 # Step 3: Install dependencies and run the service
 section "Step 3: Installing dependencies"
 status "Installing dependencies for IC Proxy..."
-ssh ${REMOTE_USER}@${REMOTE_HOST} "cd ${IC_PROXY_DIR} && npm install --force"
+sshpass -p "${SSH_PASSWORD}" ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} "cd ${IC_PROXY_DIR} && npm install --force"
 
 # Step 4: Create Docker Compose file for IC Proxy only
 section "Step 4: Creating Docker Compose file"
@@ -225,41 +234,41 @@ services:
       - IC_HOST=https://icp0.io
       - CONSUMER_CANISTER_ID=tgyl5-yyaaa-aaaaj-az4wq-cai
       - ADMIN_CANISTER_ID=444wf-gyaaa-aaaaj-az5sq-cai
-      - STORAGE_CANISTER_ID=i2gk7-oyaaa-aaaao-a37cq-cai
+      - STORAGE_CANISTER_ID=hhaip-uiaaa-aaaao-a4khq-cai
       - API_PASSWORD=ffGpA2saNS47qr
 EOL
 
 status "Copying Docker Compose file to server..."
-scp /tmp/docker-compose.yml ${REMOTE_USER}@${REMOTE_HOST}:/root/
+sshpass -p "${SSH_PASSWORD}" scp -o StrictHostKeyChecking=no /tmp/docker-compose.yml ${REMOTE_USER}@${REMOTE_HOST}:/root/
 
 # Step 5: Start the service
 section "Step 5: Starting IC Proxy service"
 status "Stopping any existing services..."
-ssh ${REMOTE_USER}@${REMOTE_HOST} "docker stop ic-proxy 2>/dev/null || true"
-ssh ${REMOTE_USER}@${REMOTE_HOST} "docker rm ic-proxy 2>/dev/null || true"
+sshpass -p "${SSH_PASSWORD}" ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} "docker stop ic-proxy 2>/dev/null || true"
+sshpass -p "${SSH_PASSWORD}" ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} "docker rm ic-proxy 2>/dev/null || true"
 
 status "Starting IC Proxy using Docker Compose..."
-ssh ${REMOTE_USER}@${REMOTE_HOST} "cd /root && docker-compose up -d"
+sshpass -p "${SSH_PASSWORD}" ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} "cd /root && docker-compose up -d"
 
 status "Waiting for service to start..."
 sleep 10
 
 status "Checking if service is running..."
-ssh ${REMOTE_USER}@${REMOTE_HOST} "docker ps"
+sshpass -p "${SSH_PASSWORD}" ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} "docker ps"
 
 # Step 6: Authorize consumer canister
 section "Step 6: Authorizing consumer canister"
 status "Running authorization script..."
-ssh ${REMOTE_USER}@${REMOTE_HOST} "cd ${IC_PROXY_DIR} && node simple-authorize.js"
+sshpass -p "${SSH_PASSWORD}" ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} "cd ${IC_PROXY_DIR} && node simple-authorize.js"
 
 # Step 7: Test the endpoint
 section "Step 7: Testing IC Proxy endpoint"
 status "Testing IC Proxy health endpoint..."
-ssh ${REMOTE_USER}@${REMOTE_HOST} "curl -s http://localhost:3001/api/health"
+sshpass -p "${SSH_PASSWORD}" ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} "curl -s http://localhost:3001/api/health"
 echo ""
 
 status "Testing consumer-submit endpoint..."
-ssh ${REMOTE_USER}@${REMOTE_HOST} "curl -s -X POST http://localhost:3001/api/consumer-submit \
+sshpass -p "${SSH_PASSWORD}" ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} "curl -s -X POST http://localhost:3001/api/consumer-submit \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer ffGpA2saNS47qr' \
   -d '{\"url\":\"https://example.com\",\"content\":\"test content\",\"topicId\":\"test-topic\",\"deviceId\":\"test-device\",\"principalId\":\"2vxsx-fae\"}'"
@@ -267,9 +276,9 @@ echo ""
 
 section "Deployment Complete"
 echo -e "${GREEN}IC Proxy has been deployed successfully.${NC}"
-echo -e "\nIC Proxy URL: http://${REMOTE_HOST}:3001"
+echo -e "IC Proxy URL: https://ic-proxy.rhinospider.com"
 echo -e "\nTo check Docker logs:"
-echo -e "  ${YELLOW}ssh ${REMOTE_USER}@${REMOTE_HOST} \"docker logs ic-proxy\"${NC}"
+echo -e "  ${YELLOW}sshpass -p "${SSH_PASSWORD}" ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} \"docker logs ic-proxy\"${NC}"
 
 # Clean up temporary files
 rm -rf /tmp/rhinospider-ic-proxy

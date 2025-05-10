@@ -21,7 +21,7 @@ cat > dfx.json << EOL
 {
   "canisters": {
     "consumer": {
-      "main": "../main.mo",
+      "main": "main.mo",
       "type": "motoko"
     }
   },
@@ -35,8 +35,8 @@ cat > dfx.json << EOL
 EOL
 
 # Copy the main.mo file to the temp directory
-cp ../main.mo .
-cp ../consumer.did .
+cp ./main.mo .
+cp ./consumer.did .
 
 # Create the canister locally
 echo "Creating canister locally..."

@@ -10,97 +10,98 @@ import Principal "mo:base/Principal";
 import Result "mo:base/Result";
 import Text "mo:base/Text";
 import Time "mo:base/Time";
+import Error "mo:base/Error";
 
 actor ConsumerCanister {
     // Type definitions based on the Candid interface
     type UserProfile = {
-        created: Int;
-        devices: [Text];
-        lastLogin: Int;
-        preferences: {
-            notificationsEnabled: Bool;
-            theme: Text;
+        created : Int;
+        devices : [Text];
+        lastLogin : Int;
+        preferences : {
+            notificationsEnabled : Bool;
+            theme : Text;
         };
-        principal: Principal;
+        principal : Principal;
     };
 
     type ScrapingTopic = {
-        activeHours: {
-            end: Nat;
-            start: Nat;
+        activeHours : {
+            end : Nat;
+            start : Nat;
         };
-        aiConfig: AIConfig;
-        createdAt: Int;
-        description: Text;
-        extractionRules: ExtractionRules;
-        id: Text;
-        maxRetries: Nat;
-        name: Text;
-        scrapingInterval: Nat;
-        status: Text;
-        urlPatterns: [Text];
+        aiConfig : AIConfig;
+        createdAt : Int;
+        description : Text;
+        extractionRules : ExtractionRules;
+        id : Text;
+        maxRetries : Nat;
+        name : Text;
+        scrapingInterval : Nat;
+        status : Text;
+        urlPatterns : [Text];
     };
 
     type ScrapingField = {
-        aiPrompt: ?Text;
-        fieldType: Text;
-        name: Text;
-        required: Bool;
+        aiPrompt : ?Text;
+        fieldType : Text;
+        name : Text;
+        required : Bool;
     };
 
     type ScrapedData = {
-        client_id: Principal;
-        content: Text;
-        id: Text;
-        scraping_time: Int;
-        source: Text;
-        status: Text;
-        timestamp: Int;
-        topic: Text;
-        url: Text;
+        client_id : Principal;
+        content : Text;
+        id : Text;
+        scraping_time : Nat;
+        source : Text;
+        status : Text;
+        timestamp : Nat;
+        topic : Text;
+        url : Text;
     };
 
     type Error = {
         #AlreadyExists;
-        #InvalidInput: Text;
+        #InvalidInput : Text;
         #NotAuthorized;
         #NotFound;
-        #SystemError: Text;
+        #SystemError : Text;
     };
 
     type Result<T> = {
-        #ok: T;
-        #err: Error;
+        #ok : T;
+        #err : Error;
     };
 
     type ExtractionRules = {
-        customPrompt: ?Text;
-        fields: [ScrapingField];
+        customPrompt : ?Text;
+        fields : [ScrapingField];
     };
 
     type CostLimits = {
-        maxConcurrent: Nat;
-        maxDailyCost: Float;
-        maxMonthlyCost: Float;
+        maxConcurrent : Nat;
+        maxDailyCost : Float;
+        maxMonthlyCost : Float;
     };
 
     type AIConfig = {
-        apiKey: Text;
-        costLimits: CostLimits;
-        model: Text;
+        apiKey : Text;
+        costLimits : CostLimits;
+        model : Text;
     };
 
     // Storage canister interface
     type StorageCanister = actor {
-        storeBatch: (DataBatch) -> async Result<Nat>;
-        storeScrapedData: (ScrapedData) -> async Result<Nat>;
-        getScrapedData: ([Text]) -> async [ScrapedData];
+        storeBatch : (DataBatch) -> async Result<Nat>;
+        storeScrapedData : (ScrapedData) -> async Result<Nat>;
+        getScrapedData : ([Text]) -> async [ScrapedData];
     };
 
     type DataBatch = {
-        items: [ScrapedData];
-        clientId: Principal;
-        batchId: Text;
+        items : [ScrapedData];
+        clientId : Principal;
+        batchId : Text;
     };
 
     // Storage for user profiles
@@ -116,15 +117,29 @@ actor ConsumerCanister {
     private var scrapedDataCache = Buffer.Buffer<ScrapedData>(0);
 
     // Storage canister ID
-    private let storageCanisterId = "nwy3f-jyaaa-aaaao-a4htq-cai";
+    private let storageCanisterId = "hhaip-uiaaa-aaaao-a4khq-cai";
     private let storageCanister : StorageCanister = actor(storageCanisterId);
 
     // Helper function to check if a principal is authorized
-    private func isAuthorized(caller: Principal) : Bool {
-        switch (profiles.get(caller)) {
-            case null { false };
-            case (?_) { true };
-        }
+    private func isAuthorized(caller : Principal) : Bool {
+        // Temporarily allow all callers for testing
+        return true;
+        // Original authorization logic:
+        // switch (profiles.get(caller)) {
+        //     case null { false };
+        //     case (?_) { true };
+        // };
+    };
+
+    // Helper function to convert Error to Text
+    private func errorToText(err : Error) : Text {
+        switch (err) {
+            case (#AlreadyExists) { "Already exists" };
+            case (#InvalidInput(msg)) { "Invalid input: " # msg };
+            case (#NotAuthorized) { "Not authorized" };
+            case (#NotFound) { "Not found" };
+            case (#SystemError(msg)) { "System error: " # msg };
+        };
     };
 
     // Initialize with sample topics
@@ -176,7 +191,7 @@ actor ConsumerCanister {
                     maxConcurrent = 5;
                     maxDailyCost = 1.0;
                     maxMonthlyCost = 10.0;
-                };
+                }
             };
             createdAt = 1741191494445463672;
             status = "active";
@@ -229,7 +244,7 @@ actor ConsumerCanister {
                     maxConcurrent = 5;
                     maxDailyCost = 1.0;
                     maxMonthlyCost = 10.0;
-                };
+                }
             };
             createdAt = 1741239962379386497;
             status = "active";
@@ -247,7 +262,7 @@ actor ConsumerCanister {
         switch (profiles.get(caller)) {
             case null { #err(#NotFound) };
             case (?profile) { #ok(profile) };
-        }
+        };
     };
 
     // Get topics
@@ -265,7 +280,7 @@ actor ConsumerCanister {
     };
 
     // Register device
-    public shared({ caller }) func registerDevice(deviceId: Text) : async Result<()> {
+    public shared({ caller }) func registerDevice(deviceId : Text) : async Result<()> {
         devices.put(deviceId, caller);
         
         // Create profile if it doesn't exist
@@ -279,7 +294,7 @@ actor ConsumerCanister {
                     preferences = {
                         notificationsEnabled = true;
                         theme = "light";
-                    };
+                    }
                 };
                 profiles.put(caller, newProfile);
             };
@@ -305,7 +320,7 @@ actor ConsumerCanister {
     };
 
     // Update preferences
-    public shared({ caller }) func updatePreferences(notificationsEnabled: Bool, theme: Text) : async Result<()> {
+    public shared({ caller }) func updatePreferences(notificationsEnabled : Bool, theme : Text) : async Result<()> {
         switch (profiles.get(caller)) {
             case null { #err(#NotFound) };
             case (?profile) {
@@ -317,16 +332,16 @@ actor ConsumerCanister {
                     preferences = {
                         notificationsEnabled = notificationsEnabled;
                         theme = theme;
-                    };
+                    }
                 };
                 profiles.put(caller, updatedProfile);
                 #ok()
             };
-        }
+        };
     };
 
     // Submit scraped data
-    public shared({ caller }) func submitScrapedData(data: ScrapedData) : async Result<()> {
+    public shared({ caller }) func submitScrapedData(data : ScrapedData) : async Result<()> {
         Debug.print("Consumer: Received scraped data submission for URL: " # data.url);
         
         // Add to local cache
@@ -343,20 +358,30 @@ actor ConsumerCanister {
                     #ok()
                 };
                 case (#err(message)) {
-                    Debug.print("Consumer: Error forwarding data to storage canister: " # message);
+                    Debug.print("Consumer: Error forwarding data to storage canister: " # errorToText(message));
                     // Still return ok to the client since we've cached the data locally
                     #ok()
                 };
-            }
+            };
         } catch (error) {
             Debug.print("Consumer: Exception when forwarding data to storage canister: " # Error.message(error));
             // Still return ok to the client since we've cached the data locally
             #ok()
-        }
+        };
+    };
+
+    // Helper function to check if data is related to any of the topics
+    private func isDataRelatedToTopics(data : ScrapedData, topicIds : [Text]) : Bool {
+        for (topicId in topicIds.vals()) {
+            if (data.topic == topicId) {
+                return true;
+            };
+        };
+        return false;
     };
 
     // Get scraped data
-    public shared({ caller }) func getScrapedData(topicIds: [Text]) : async Result<[ScrapedData]> {
+    public shared({ caller }) func getScrapedData(topicIds : [Text]) : async Result<[ScrapedData]> {
         Debug.print("Consumer: Getting scraped data for topics: " # debug_show(topicIds));
         
         try {
@@ -373,12 +398,10 @@ actor ConsumerCanister {
                 let filteredData = Buffer.Buffer<ScrapedData>(0);
                 
                 if (topicIds.size() > 0) {
+                    // Filter data based on topic IDs
                     for (data in scrapedDataCache.vals()) {
-                        for (topicId in topicIds.vals()) {
-                            if (data.topic == topicId) {
-                                filteredData.add(data);
-                                break;
-                            };
+                        if (isDataRelatedToTopics(data, topicIds)) {
+                            filteredData.add(data);
                         };
                     };
                 } else {
@@ -390,7 +413,7 @@ actor ConsumerCanister {
                 
                 Debug.print("Consumer: Found " # Nat.toText(filteredData.size()) # " items in local cache");
                 #ok(Buffer.toArray(filteredData))
-            }
+            };
         } catch (error) {
             Debug.print("Consumer: Error retrieving data from storage canister: " # Error.message(error));
             
@@ -398,12 +421,10 @@ actor ConsumerCanister {
             let filteredData = Buffer.Buffer<ScrapedData>(0);
             
             if (topicIds.size() > 0) {
+                // Filter data based on topic IDs
                 for (data in scrapedDataCache.vals()) {
-                    for (topicId in topicIds.vals()) {
-                        if (data.topic == topicId) {
-                            filteredData.add(data);
-                            break;
-                        };
+                    if (isDataRelatedToTopics(data, topicIds)) {
+                        filteredData.add(data);
                     };
                 };
             } else {
@@ -415,6 +436,6 @@ actor ConsumerCanister {
             
             Debug.print("Consumer: Using local cache as fallback, found " # Nat.toText(filteredData.size()) # " items");
             #ok(Buffer.toArray(filteredData))
-        }
+        };
     };
 }

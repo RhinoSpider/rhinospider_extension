@@ -55,6 +55,8 @@ const idlFactory = ({ IDL }) => {
     'err' : Error,
   });
   const Result = IDL.Variant({ 'ok' : IDL.Null, 'err' : Error });
+  
+  // Define ScrapedData with explicit Nat types for timestamp and scraping_time
   const ScrapedData = IDL.Record({
     'id' : IDL.Text,
     'url' : IDL.Text,
@@ -66,6 +68,7 @@ const idlFactory = ({ IDL }) => {
     'client_id' : IDL.Principal,
     'scraping_time' : IDL.Nat,
   });
+  
   return IDL.Service({
     'getProfile' : IDL.Func([], [Result_2], []), 
     'getTopics' : IDL.Func([], [Result_1], []),

@@ -27,7 +27,7 @@ actor ConsumerBackend {
     };
 
     // Constants
-    private let STORAGE_CANISTER_ID = "nwy3f-jyaaa-aaaao-a4htq-cai"; // Updated to match the admin app's storage canister ID
+    private let STORAGE_CANISTER_ID = "hhaip-uiaaa-aaaao-a4khq-cai"; // Updated to the latest storage canister ID
     private let ADMIN_CANISTER_ID = "444wf-gyaaa-aaaaj-az5sq-cai";  // Updated to match extension's .env file
     private let CYCLES_PER_CALL = 100_000_000_000; // 100B cycles per call
 

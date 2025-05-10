@@ -40,7 +40,7 @@ const storageIdlFactory = ({ IDL }) => {
 // Environment variables
 const IC_HOST = process.env.IC_HOST || 'https://icp0.io';
 const CONSUMER_CANISTER_ID = process.env.CONSUMER_CANISTER_ID || 'tgyl5-yyaaa-aaaaj-az4wq-cai';
-const STORAGE_CANISTER_ID = process.env.STORAGE_CANISTER_ID || 'i2gk7-oyaaa-aaaao-a37cq-cai';
+const STORAGE_CANISTER_ID = process.env.STORAGE_CANISTER_ID || 'hhaip-uiaaa-aaaao-a4khq-cai';
 
 // Path to identity file
 const IDENTITY_FILE = path.join(__dirname, 'admin-identity.json');

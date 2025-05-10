@@ -16,7 +16,11 @@ const PORT = process.env.PORT || 3002;
 
 // Apply security middleware
 app.use(helmet());
-app.use(cors());
+
+// Disable CORS in the application since nginx is handling it
+// app.use(cors());
+
+
 app.use(express.json());
 app.use(morgan('combined'));
 

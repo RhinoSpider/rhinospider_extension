@@ -5,7 +5,7 @@ class APIConfig {
     this.initialized = false;
     this.icHost = 'https://ic0.app';  // ICP mainnet
     this.adminCanisterId = process.env.VITE_ADMIN_CANISTER_ID || 'bkyz2-fmaaa-aaaaa-qaaaq-cai';
-    this.storageCanisterId = process.env.VITE_STORAGE_CANISTER_ID || 'nwy3f-jyaaa-aaaao-a4htq-cai';
+    this.storageCanisterId = process.env.VITE_STORAGE_CANISTER_ID || 'hhaip-uiaaa-aaaao-a4khq-cai';
   }
 
   async init() {

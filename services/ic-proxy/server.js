@@ -1,17 +1,16 @@
 require('./bigint-patch');
-const { convertToPlainObject } = require('./bigint-patch');
 
 if (typeof BigInt.prototype.toJSON !== 'function') {
   BigInt.prototype.toJSON = function() { return this.toString(); };
 }
 
 const express = require('express');
+const bodyParser = require('body-parser');
 const cors = require('cors');
 const { Actor, HttpAgent, AnonymousIdentity } = require('@dfinity/agent');
 const { Ed25519KeyIdentity } = require('@dfinity/identity');
 const { Principal } = require('@dfinity/principal');
-const { idlFactory: consumerIdlFactory } = require('./declarations/consumer/consumer.did.js');
-const { idlFactory: adminIdlFactory } = require('./declarations/admin/admin.did.js');
+const { idlFactory: consumerIdlFactory } = require('./declarations/consumer/consumer.did.fixed.js');
 const { idlFactory: storageIdlFactory } = require('./declarations/storage/storage.did.js');
 const fetch = require('node-fetch');
 const path = require('path');
@@ -26,10 +25,6 @@ const PORT = process.env.PORT || 3001;
 // No longer using API password for authentication
 
 const app = express();
-
-// Middleware
-// Disable CORS in the application since nginx is handling it
-// app.use(cors());
 
 
 app.use(express.json());
@@ -106,227 +101,267 @@ const initializeActors = async () => {
   }
 };
 
-// Function to authorize the consumer canister in the storage canister
-async function authorizeConsumerCanister() {
-  console.log('[authorizeConsumerCanister] Starting authorization process...');
+// // Function to authorize the consumer canister to call the storage canister
+// async function authorizeConsumerCanister() {
+//   console.log('[authorizeConsumerCanister] Starting authorization process...');
   
-  // Get the consumer canister principal
-  const consumerPrincipal = Principal.fromText(process.env.CONSUMER_CANISTER_ID);
-  console.log(`[authorizeConsumerCanister] Consumer canister principal: ${consumerPrincipal.toString()}`);
+//   // Get the consumer canister principal
+//   const consumerPrincipal = Principal.fromText(process.env.CONSUMER_CANISTER_ID);
+//   console.log(`[authorizeConsumerCanister] Consumer canister principal: ${consumerPrincipal.toString()}`);
   
-  // First, check if the consumer canister is already authorized
-  try {
-    console.log('[authorizeConsumerCanister] Checking if consumer canister is already authorized...');
-    const storageActor = await getStorageActor();
-    const authorizedCanisters = await storageActor.getAuthorizedCanisters();
+//   // First, check if the consumer canister is already authorized
+//   try {
+//     console.log('[authorizeConsumerCanister] Checking if consumer canister is already authorized...');
+//     const storageActor = await getStorageActor();
+//     const authorizedCanisters = await storageActor.getAuthorizedCanisters();
     
-    console.log(`[authorizeConsumerCanister] Authorized canisters:`, 
-      JSON.stringify(authorizedCanisters.map(p => p.toString())));
+//     console.log(`[authorizeConsumerCanister] Authorized canisters:`, 
+//       JSON.stringify(authorizedCanisters.map(p => p.toString())));
     
-    // Check if our consumer canister is in the list
-    const isAuthorized = authorizedCanisters.some(p => p.toString() === consumerPrincipal.toString());
+//     // Check if our consumer canister is in the list
+//     const isAuthorized = authorizedCanisters.some(p => p.toString() === consumerPrincipal.toString());
     
-    if (isAuthorized) {
-      console.log('[authorizeConsumerCanister] Consumer canister is already authorized!');
-      return true;
-    }
+//     if (isAuthorized) {
+//       console.log('[authorizeConsumerCanister] Consumer canister is already authorized!');
+//       return true;
+//     }
     
-    console.log('[authorizeConsumerCanister] Consumer canister is not authorized. Will attempt to authorize...');
-  } catch (error) {
-    console.error('[authorizeConsumerCanister] Error checking authorization status:', error);
-    // Continue with authorization attempt even if check fails
-  }
+//     console.log('[authorizeConsumerCanister] Consumer canister is not authorized. Will attempt to authorize...');
+//   } catch (error) {
+//     console.error('[authorizeConsumerCanister] Error checking authorization status:', error);
+//     // Continue with authorization attempt even if check fails
+//   }
   
-  // Try to authorize using the storage canister's addAuthorizedCanister method
-  try {
-    console.log('[authorizeConsumerCanister] Attempting to authorize using storage canister method...');
+//   // CRITICAL: Based on Internet Computer documentation, we need to use a proper identity with controller access
+//   // Try to authorize using the storage canister's addAuthorizedCanister method with admin identity
+//   try {
+//     console.log('[authorizeConsumerCanister] Attempting to authorize using storage canister method with admin identity...');
     
-    // Create an actor with the admin identity
-    const adminIdentity = await getAdminIdentity();
+//     // Create an actor with the admin identity
+//     const adminIdentity = await getAdminIdentity();
     
-    if (!adminIdentity) {
-      console.error('[authorizeConsumerCanister] Failed to get admin identity');
-      return false;
-    }
+//     if (!adminIdentity) {
+//       console.error('[authorizeConsumerCanister] Failed to get admin identity');
+//       return false;
+//     }
     
-    console.log(`[authorizeConsumerCanister] Admin identity principal: ${adminIdentity.getPrincipal().toString()}`);
+//     console.log(`[authorizeConsumerCanister] Admin identity principal: ${adminIdentity.getPrincipal().toString()}`);
     
-    // Create a storage actor with admin identity
-    const storageActorWithIdentity = await Actor.createActor(storageIdlFactory, {
-      agent: new HttpAgent({
-        host: process.env.IC_HOST || 'https://ic0.app',
-        identity: adminIdentity
-      }),
-      canisterId: process.env.STORAGE_CANISTER_ID
-    });
+//     // Create a storage actor with admin identity
+//     const agent = new HttpAgent({
+//       host: process.env.IC_HOST || 'https://ic0.app',
+//       identity: adminIdentity
+//     });
     
-    // Call the addAuthorizedCanister method
-    console.log('[authorizeConsumerCanister] Calling addAuthorizedCanister...');
-    const result = await storageActorWithIdentity.addAuthorizedCanister(consumerPrincipal);
+//     // Fetch root key for local development
+//     if (process.env.IC_HOST !== 'https://ic0.app') {
+//       await agent.fetchRootKey().catch(err => {
+//         console.warn('[authorizeConsumerCanister] Warning: Unable to fetch root key, continuing anyway');
+//       });
+//     }
     
-    console.log('[authorizeConsumerCanister] Authorization result:', 
-      JSON.stringify(result, (key, value) => typeof value === 'bigint' ? value.toString() : value));
+//     const storageActorWithIdentity = await Actor.createActor(storageIdlFactory, {
+//       agent,
+//       canisterId: process.env.STORAGE_CANISTER_ID
+//     });
     
-    if (result.ok !== undefined) {
-      console.log('[authorizeConsumerCanister] Successfully authorized consumer canister!');
-      return true;
-    } else {
-      console.error('[authorizeConsumerCanister] Failed to authorize consumer canister:', result.err);
-    }
-  } catch (error) {
-    console.error('[authorizeConsumerCanister] Error authorizing consumer canister:', error);
-  }
+//     // Call the addAuthorizedCanister method
+//     console.log('[authorizeConsumerCanister] Calling addAuthorizedCanister...');
+//     const result = await storageActorWithIdentity.addAuthorizedCanister(consumerPrincipal);
+    
+//     console.log('[authorizeConsumerCanister] Authorization result:', 
+//       JSON.stringify(result, (key, value) => typeof value === 'bigint' ? value.toString() : value));
+    
+//     if (result.ok !== undefined) {
+//       console.log('[authorizeConsumerCanister] Successfully authorized consumer canister!');
+//       return true;
+//     } else if (result.err && result.err.AlreadyExists) {
+//       console.log('[authorizeConsumerCanister] Consumer canister is already authorized (AlreadyExists)');
+//       return true;
+//     } else {
+//       console.error('[authorizeConsumerCanister] Failed to authorize consumer canister:', result.err);
+//     }
+//   } catch (error) {
+//     console.error('[authorizeConsumerCanister] Error authorizing consumer canister:', error);
+//   }
   
-  // If direct authorization fails, try using the management canister
-  try {
-    console.log('[authorizeConsumerCanister] Attempting to authorize using management canister...');
+//   // If direct authorization fails, try using the management canister to add as controller
+//   try {
+//     console.log('[authorizeConsumerCanister] Attempting to authorize using management canister...');
     
-    // Get the admin identity
-    const adminIdentity = await getAdminIdentity();
+//     // Get the admin identity
+//     const adminIdentity = await getAdminIdentity();
     
-    if (!adminIdentity) {
-      console.error('[authorizeConsumerCanister] Failed to get admin identity for management canister approach');
-      return false;
-    }
+//     if (!adminIdentity) {
+//       console.error('[authorizeConsumerCanister] Failed to get admin identity for management canister approach');
+//       return false;
+//     }
     
-    // Create an agent with the admin identity
-    const agent = new HttpAgent({
-      host: process.env.IC_HOST || 'https://ic0.app',
-      identity: adminIdentity
-    });
+//     // Create an agent with the admin identity
+//     const agent = new HttpAgent({
+//       host: process.env.IC_HOST || 'https://ic0.app',
+//       identity: adminIdentity
+//     });
     
-    // Get the storage canister controllers
-    const managementCanister = Actor.createActor(managementIdlFactory, {
-      agent,
-      canisterId: Principal.fromText('aaaaa-aa')
-    });
+//     // Fetch root key for local development
+//     if (process.env.IC_HOST !== 'https://ic0.app') {
+//       await agent.fetchRootKey().catch(err => {
+//         console.warn('[authorizeConsumerCanister] Warning: Unable to fetch root key, continuing anyway');
+//       });
+//     }
     
-    // Get the current controllers
-    const statusResult = await managementCanister.canister_status({
-      canister_id: Principal.fromText(process.env.STORAGE_CANISTER_ID)
-    });
+//     // Get the storage canister controllers
+//     const managementCanister = Actor.createActor(managementIdlFactory, {
+//       agent,
+//       canisterId: Principal.fromText('aaaaa-aa') // Management canister ID
+//     });
     
-    console.log('[authorizeConsumerCanister] Current storage canister status:', 
-      JSON.stringify(statusResult, (key, value) => typeof value === 'bigint' ? value.toString() : value));
+//     // Get the current controllers
+//     const statusResult = await managementCanister.canister_status({
+//       canister_id: Principal.fromText(process.env.STORAGE_CANISTER_ID)
+//     });
     
-    // Check if consumer is already a controller
-    const controllers = statusResult.settings.controllers;
-    const isController = controllers.some(c => c.toString() === consumerPrincipal.toString());
+//     console.log('[authorizeConsumerCanister] Current storage canister status:', 
+//       JSON.stringify(statusResult, (key, value) => typeof value === 'bigint' ? value.toString() : value));
     
-    if (isController) {
-      console.log('[authorizeConsumerCanister] Consumer canister is already a controller!');
-      return true;
-    }
+//     // Check if consumer is already a controller
+//     const controllers = statusResult.settings.controllers;
+//     const isController = controllers.some(c => c.toString() === consumerPrincipal.toString());
     
-    // Add the consumer canister as a controller
-    console.log('[authorizeConsumerCanister] Adding consumer canister as a controller...');
+//     if (isController) {
+//       console.log('[authorizeConsumerCanister] Consumer canister is already a controller!');
+//       return true;
+//     }
     
-    // Add the consumer canister to the controllers list
-    const updatedControllers = [...controllers, consumerPrincipal];
+//     // Add the consumer canister as a controller
+//     console.log('[authorizeConsumerCanister] Adding consumer canister as a controller...');
     
-    // Update the controllers
-    await managementCanister.update_settings({
-      canister_id: Principal.fromText(process.env.STORAGE_CANISTER_ID),
-      settings: {
-        controllers: updatedControllers,
-        compute_allocation: [], // Keep existing
-        memory_allocation: [], // Keep existing
-        freezing_threshold: [] // Keep existing
-      }
-    });
+//     // Add the consumer canister to the controllers list
+//     const updatedControllers = [...controllers, consumerPrincipal];
     
-    console.log('[authorizeConsumerCanister] Successfully added consumer canister as a controller!');
+//     // Update the controllers - this is a critical step based on IC documentation
+//     await managementCanister.update_settings({
+//       canister_id: Principal.fromText(process.env.STORAGE_CANISTER_ID),
+//       settings: {
+//         controllers: updatedControllers,
+//         compute_allocation: [], // Keep existing
+//         memory_allocation: [], // Keep existing
+//         freezing_threshold: [] // Keep existing
+//       }
+//     });
     
-    // Verify the update
-    const updatedStatus = await managementCanister.canister_status({
-      canister_id: Principal.fromText(process.env.STORAGE_CANISTER_ID)
-    });
+//     console.log('[authorizeConsumerCanister] Successfully added consumer canister as a controller!');
     
-    console.log('[authorizeConsumerCanister] Updated storage canister controllers:', 
-      JSON.stringify(updatedStatus.settings.controllers.map(c => c.toString())));
+//     // Verify the update
+//     const updatedStatus = await managementCanister.canister_status({
+//       canister_id: Principal.fromText(process.env.STORAGE_CANISTER_ID)
+//     });
     
-    // Check if consumer is now a controller
-    const isNowController = updatedStatus.settings.controllers.some(
-      c => c.toString() === consumerPrincipal.toString()
-    );
+//     console.log('[authorizeConsumerCanister] Updated storage canister controllers:', 
+//       JSON.stringify(updatedStatus.settings.controllers.map(c => c.toString())));
     
-    if (isNowController) {
-      console.log('[authorizeConsumerCanister] Verified consumer canister is now a controller!');
+//     // Check if consumer is now a controller
+//     const isNowController = updatedStatus.settings.controllers.some(
+//       c => c.toString() === consumerPrincipal.toString()
+//     );
+    
+//     if (isNowController) {
+//       console.log('[authorizeConsumerCanister] Verified consumer canister is now a controller!');
       
-      // Now that the consumer is a controller, try to authorize it again using the storage canister method
-      try {
-        console.log('[authorizeConsumerCanister] Now trying to add as authorized canister after adding as controller...');
-        const result = await storageActorWithIdentity.addAuthorizedCanister(consumerPrincipal);
+//       // Now that the consumer is a controller, try to authorize it again using the storage canister method
+//       try {
+//         console.log('[authorizeConsumerCanister] Now trying to add as authorized canister after adding as controller...');
         
-        console.log('[authorizeConsumerCanister] Second authorization attempt result:', 
-          JSON.stringify(result, (key, value) => typeof value === 'bigint' ? value.toString() : value));
+//         // Create a new storage actor with admin identity
+//         const storageActorWithIdentity = await Actor.createActor(storageIdlFactory, {
+//           agent,
+//           canisterId: process.env.STORAGE_CANISTER_ID
+//         });
         
-        if (result.ok !== undefined) {
-          console.log('[authorizeConsumerCanister] Successfully authorized consumer canister after adding as controller!');
-          return true;
-        }
-      } catch (secondAuthError) {
-        console.error('[authorizeConsumerCanister] Error in second authorization attempt:', secondAuthError);
-        // Continue with the process even if this fails, as being a controller should be sufficient
-      }
+//         const result = await storageActorWithIdentity.addAuthorizedCanister(consumerPrincipal);
+        
+//         console.log('[authorizeConsumerCanister] Second authorization attempt result:', 
+//           JSON.stringify(result, (key, value) => typeof value === 'bigint' ? value.toString() : value));
+        
+//         if (result.ok !== undefined) {
+//           console.log('[authorizeConsumerCanister] Successfully authorized consumer canister after adding as controller!');
+//           return true;
+//         } else if (result.err && result.err.AlreadyExists) {
+//           console.log('[authorizeConsumerCanister] Consumer canister is already authorized (AlreadyExists)');
+//           return true;
+//         }
+//       } catch (secondAuthError) {
+//         console.error('[authorizeConsumerCanister] Error in second authorization attempt:', secondAuthError);
+//         // Continue with the process even if this fails, as being a controller should be sufficient
+//       }
       
-      return true; // Being a controller should be sufficient
-    } else {
-      console.error('[authorizeConsumerCanister] Failed to verify consumer canister as controller');
-    }
-  } catch (error) {
-    console.error('[authorizeConsumerCanister] Error using management canister:', error);
-  }
+//       return true; // Being a controller should be sufficient based on IC documentation
+//     } else {
+//       console.error('[authorizeConsumerCanister] Failed to verify consumer canister as controller');
+//     }
+//   } catch (error) {
+//     console.error('[authorizeConsumerCanister] Error using management canister:', error);
+//   }
   
-  // If all methods fail, try one last approach using the admin canister if available
-  try {
-    if (process.env.ADMIN_CANISTER_ID) {
-      console.log('[authorizeConsumerCanister] Attempting to authorize using admin canister...');
+//   // If all methods fail, try one last approach - direct call to the admin canister
+//   try {
+//     if (process.env.ADMIN_CANISTER_ID) {
+//       console.log('[authorizeConsumerCanister] Attempting to authorize using admin canister...');
       
-      const adminIdentity = await getAdminIdentity();
-      if (!adminIdentity) {
-        console.error('[authorizeConsumerCanister] Failed to get admin identity for admin canister approach');
-        return false;
-      }
+//       const adminIdentity = await getAdminIdentity();
+//       if (!adminIdentity) {
+//         console.error('[authorizeConsumerCanister] Failed to get admin identity for admin canister approach');
+//         return false;
+//       }
       
-      // Create an admin canister actor
-      const adminActor = await Actor.createActor(adminIdlFactory, {
-        agent: new HttpAgent({
-          host: process.env.IC_HOST || 'https://ic0.app',
-          identity: adminIdentity
-        }),
-        canisterId: process.env.ADMIN_CANISTER_ID
-      });
+//       // Create an agent with admin identity
+//       const agent = new HttpAgent({
+//         host: process.env.IC_HOST || 'https://ic0.app',
+//         identity: adminIdentity
+//       });
       
-      // Call the admin canister's authorizeCanister method if it exists
-      if (typeof adminActor.authorizeCanister === 'function') {
-        console.log('[authorizeConsumerCanister] Calling admin canister authorizeCanister method...');
+//       // Fetch root key for local development
+//       if (process.env.IC_HOST !== 'https://ic0.app') {
+//         await agent.fetchRootKey().catch(err => {
+//           console.warn('[authorizeConsumerCanister] Warning: Unable to fetch root key, continuing anyway');
+//         });
+//       }
+      
+//       // Create an admin canister actor
+//       const adminActor = await Actor.createActor(adminIdlFactory, {
+//         agent,
+//         canisterId: process.env.ADMIN_CANISTER_ID
+//       });
+      
+//       // Call the admin canister's authorizeCanister method if it exists
+//       if (typeof adminActor.authorizeCanister === 'function') {
+//         console.log('[authorizeConsumerCanister] Calling admin canister authorizeCanister method...');
         
-        const result = await adminActor.authorizeCanister({
-          canisterId: process.env.CONSUMER_CANISTER_ID,
-          targetCanisterId: process.env.STORAGE_CANISTER_ID
-        });
+//         const result = await adminActor.authorizeCanister({
+//           canisterId: process.env.CONSUMER_CANISTER_ID,
+//           targetCanisterId: process.env.STORAGE_CANISTER_ID
+//         });
         
-        console.log('[authorizeConsumerCanister] Admin canister authorization result:', 
-          JSON.stringify(result, (key, value) => typeof value === 'bigint' ? value.toString() : value));
+//         console.log('[authorizeConsumerCanister] Admin canister authorization result:', 
+//           JSON.stringify(result, (key, value) => typeof value === 'bigint' ? value.toString() : value));
         
-        if (result.ok !== undefined) {
-          console.log('[authorizeConsumerCanister] Successfully authorized using admin canister!');
-          return true;
-        } else {
-          console.error('[authorizeConsumerCanister] Failed to authorize using admin canister:', result.err);
-        }
-      } else {
-        console.log('[authorizeConsumerCanister] Admin canister does not have authorizeCanister method');
-      }
-    }
-  } catch (error) {
-    console.error('[authorizeConsumerCanister] Error using admin canister:', error);
-  }
+//         if (result.ok !== undefined) {
+//           console.log('[authorizeConsumerCanister] Successfully authorized using admin canister!');
+//           return true;
+//         } else {
+//           console.error('[authorizeConsumerCanister] Failed to authorize using admin canister:', result.err);
+//         }
+//       } else {
+//         console.log('[authorizeConsumerCanister] Admin canister does not have authorizeCanister method');
+//       }
+//     }
+//   } catch (error) {
+//     console.error('[authorizeConsumerCanister] Error using admin canister:', error);
+//   }
   
-  console.log('[authorizeConsumerCanister] All authorization attempts failed');
-  return false;
-}
+//   console.log('[authorizeConsumerCanister] All authorization attempts failed');
+//   return false;
+// }
 
 
 // Initialize on startup
@@ -488,7 +523,8 @@ app.post('/api/register-device', authenticateApiKey, async (req, res) => {
   }
 });
 
-// Consumer canister submission endpoint
+//consumer code
+// Consumer canister submission endpoint - FIXED version
 app.post('/api/consumer-submit', authenticateApiKey, async (req, res) => {
   console.log('==== /api/consumer-submit endpoint called ====');
   console.log('Request body:', JSON.stringify(req.body, (key, value) => 
@@ -499,33 +535,23 @@ app.post('/api/consumer-submit', authenticateApiKey, async (req, res) => {
     
     // Generate a unique submission ID
     const submissionId = req.body.id || `submission-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-    console.log(`[/api/consumer-submit] Processing submission with ID: ${submissionId}`);
     
-    // Ensure content is never empty as it's a required field
-    const contentValue = content || 'Placeholder content for required field';
+    // Get content value
+    const contentValue = content || (extractedData && extractedData.content) || '<html><body><p>No content available</p></body></html>';
     
-    // Initialize agents and actors
-    const anonymousIdentity = new AnonymousIdentity();
-    const anonymousAgent = createAgent(anonymousIdentity);
-    
-    // Create storage actor for direct submission
-    const storageActor = createActor(storageIdlFactory, STORAGE_CANISTER_ID, anonymousAgent);
-    
-    // Prepare data for direct storage submission
+    // Prepare data for storage canister
     const storageData = {
       id: submissionId,
       url: url || '',
       topic: topic || topicId || '',
-      topicId: topicId || topic || '',
-      content: contentValue || '<html><body><p>No content available</p></body></html>',
-      timestamp: BigInt(Date.now() * 1000000), // Convert to nanoseconds
-      metadata: req.body.metadata ? [req.body.metadata] : [],
-      title: req.body.title ? [req.body.title] : [],
-      description: req.body.description ? [req.body.description] : [],
-      extractedData: extractedData ? [JSON.stringify(extractedData)] : []
+      content: contentValue,
+      source: req.body.source || 'extension',
+      timestamp: BigInt(Math.floor(Date.now() * 1000000)), // Convert to nanoseconds
+      client_id: principalId ? Principal.fromText(principalId) : Principal.fromText('2vxsx-fae'),
+      status: status || 'completed',
+      scraping_time: scraping_time ? BigInt(scraping_time) : BigInt(500)
     };
     
-    // Log the data structure
     console.log('[/api/consumer-submit] Submitting data directly to storage canister');
     
     try {
@@ -543,7 +569,7 @@ app.post('/api/consumer-submit', authenticateApiKey, async (req, res) => {
         // Ensure topic is a string
         topic: topic || topicId || '',
         // Ensure content is a string
-        content: contentValue || '<html><body><p>No content available</p></body></html>',
+        content: contentValue,
         // Ensure source is a string
         source: req.body.source || 'extension',
         // Ensure timestamp is a BigInt in nanoseconds
@@ -568,7 +594,8 @@ app.post('/api/consumer-submit', authenticateApiKey, async (req, res) => {
         (value && typeof value === 'object' && value.constructor && value.constructor.name === 'Principal') ? value.toString() : value
       ));
       
-      // Try to authorize the consumer canister with the storage canister
+      // CRITICAL STEP: First authorize the consumer canister with the storage canister
+      // Based on Internet Computer documentation, this is required before inter-canister calls
       console.log('[/api/consumer-submit] Authorizing consumer canister before submission...');
       const authSuccess = await authorizeConsumerCanister();
       
@@ -578,13 +605,125 @@ app.post('/api/consumer-submit', authenticateApiKey, async (req, res) => {
         console.log('[/api/consumer-submit] Authorization failed, but will attempt submission anyway...');
       }
       
-      // Try direct submission to the storage canister
-      console.log('[/api/consumer-submit] Calling submitScrapedData on storage canister...');
+      // Try direct submission to the storage canister using admin identity
+      console.log('[/api/consumer-submit] Calling storeScrapedData on storage canister with admin identity...');
       try {
-        // Now attempt the submission
-        const result = await storageActor.submitScrapedData(formattedStorageData);
+        // Get the admin identity for submission
+        const adminIdentity = await getAdminIdentity();
         
-        console.log('[/api/consumer-submit] Storage submission result:', 
+        if (!adminIdentity) {
+          console.error('[/api/consumer-submit] Failed to get admin identity for submission');
+          // Continue with regular storage actor
+        } else {
+          // Create a storage actor with admin identity
+          const agent = new HttpAgent({
+            host: process.env.IC_HOST || 'https://ic0.app',
+            identity: adminIdentity
+          });
+          
+          // Fetch root key for local development
+          if (process.env.IC_HOST !== 'https://ic0.app') {
+            await agent.fetchRootKey().catch(err => {
+              console.warn('[/api/consumer-submit] Warning: Unable to fetch root key, continuing anyway');
+            });
+          }
+          
+          const storageActorWithIdentity = await Actor.createActor(storageIdlFactory, {
+            agent,
+            canisterId: process.env.STORAGE_CANISTER_ID
+          });
+          
+          // Create properly formatted data for the storage canister
+          const scrapedData = {
+            id: submissionId,
+            url: url || '',
+            topic: topic || topicId || '', // Changed from topicId to topic to match the canister's expected field name
+            content: contentValue,
+            source: req.body.source || 'extension',
+            timestamp: BigInt(Math.floor(Date.now() * 1000000)), // Convert to nanoseconds
+            client_id: principalId ? Principal.fromText(principalId) : Principal.fromText('2vxsx-fae'), // Changed from principalId to client_id
+            status: status || 'completed',
+            scraping_time: BigInt(req.body.scraping_time || 0) // Added scraping_time field which is required
+          };
+          
+          console.log('[/api/consumer-submit] Formatted data for storeScrapedData:', 
+            JSON.stringify(scrapedData, (key, value) => 
+              typeof value === 'bigint' ? value.toString() : 
+              (value && typeof value === 'object' && value.constructor && value.constructor.name === 'Principal') ? value.toString() : value
+            )
+          );
+          
+          console.log('[/api/consumer-submit] Submitting with admin identity using storeBatch...');
+          
+          // Format data as a batch for the storeBatch method
+          const dataBatch = {
+            items: [formattedStorageData], // Use the already correctly formatted data
+            clientId: formattedStorageData.client_id,
+            batchId: `batch-${Date.now()}`
+          };
+          
+          // Log the batch data for debugging
+          console.log('[/api/consumer-submit] Batch data:', JSON.stringify(dataBatch, (key, value) => 
+            typeof value === 'bigint' ? value.toString() : 
+            (value && typeof value === 'object' && value.constructor && value.constructor.name === 'Principal') ? value.toString() : value
+          ));
+          
+          const adminResult = await storageActorWithIdentity.storeBatch(dataBatch);
+          
+          console.log('[/api/consumer-submit] Admin submission result:', 
+            JSON.stringify(adminResult, (key, value) => typeof value === 'bigint' ? value.toString() : value));
+          
+          if (adminResult.ok !== undefined) {
+            // Success with admin identity
+            return res.status(200).json({
+              ok: {
+                dataSubmitted: true,
+                submissionId,
+                message: 'Data submitted successfully with admin identity'
+              }
+            });
+          }
+          // If admin submission failed, continue with regular submission
+          console.log('[/api/consumer-submit] Admin submission failed, trying regular submission...');
+        }
+      } catch (adminError) {
+        console.error('[/api/consumer-submit] Error during admin submission:', adminError);
+      }
+      
+      // Now attempt the submission with regular actor as fallback
+      try {
+        // Try to use storeScrapedData instead of submitScrapedData
+        console.log('[/api/consumer-submit] Attempting submission with regular actor using storeBatch...');
+        
+        // Create properly formatted data for the storage canister
+        const scrapedData = {
+          id: submissionId,
+          url: url || '',
+          topic: topic || topicId || '', // Changed from topicId to topic to match the canister's expected field name
+          content: contentValue,
+          source: req.body.source || 'extension',
+          timestamp: BigInt(Math.floor(Date.now() * 1000000)), // Convert to nanoseconds
+          client_id: principalId ? Principal.fromText(principalId) : Principal.fromText('2vxsx-fae'), // Changed from principalId to client_id
+          status: status || 'completed',
+          scraping_time: BigInt(req.body.scraping_time || 0) // Added scraping_time field which is required
+        };
+        
+        // Format data as a batch for the storeBatch method
+        const dataBatch = {
+          items: [formattedStorageData], // Use the already correctly formatted data
+          clientId: formattedStorageData.client_id,
+          batchId: `batch-${Date.now()}`
+        };
+        
+        // Log the batch data for debugging
+        console.log('[/api/consumer-submit] Batch data:', JSON.stringify(dataBatch, (key, value) => 
+          typeof value === 'bigint' ? value.toString() : 
+          (value && typeof value === 'object' && value.constructor && value.constructor.name === 'Principal') ? value.toString() : value
+        ));
+        
+        const result = await storageActor.storeBatch(dataBatch);
+        
+        console.log('[/api/consumer-submit] Regular storage submission result:', 
           JSON.stringify(result, (key, value) => typeof value === 'bigint' ? value.toString() : value));
         
         if (result.ok !== undefined) {
@@ -615,15 +754,13 @@ app.post('/api/consumer-submit', authenticateApiKey, async (req, res) => {
               if (forcedAuth) {
                 console.log('[/api/consumer-submit] Authorization successful on retry!');
                 
-                // Retry the submission
-                console.log('[/api/consumer-submit] Retrying submission after successful authorization...');
-                const retryResult = await storageActor.submitScrapedData(formattedStorageData);
+                // Try submission again after successful authorization
+                const retryResult = await storageActor.storeScrapedData(scrapedData);
                 
-                console.log('[/api/consumer-submit] Retry storage submission result:', 
+                console.log('[/api/consumer-submit] Retry submission result:', 
                   JSON.stringify(retryResult, (key, value) => typeof value === 'bigint' ? value.toString() : value));
                 
                 if (retryResult.ok !== undefined) {
-                  // Success on retry
                   return res.status(200).json({
                     ok: {
                       dataSubmitted: true,
@@ -636,143 +773,243 @@ app.post('/api/consumer-submit', authenticateApiKey, async (req, res) => {
                   });
                 }
                 
-                // If we still get an error, break and try the consumer canister
-                if (retryResult.err && retryResult.err.NotAuthorized) {
-                  console.log('[/api/consumer-submit] Still getting NotAuthorized error after successful authorization');
-                  break;
-                }
+                break; // Exit the loop if we got a result (even if it's an error)
               }
-              
-              // Wait a bit between attempts
-              await new Promise(resolve => setTimeout(resolve, 1000));
             }
           } catch (authError) {
-            console.error('[/api/consumer-submit] Error during authorization attempts:', authError);
+            console.error('[/api/consumer-submit] Error during authorization retry:', authError);
           }
           
-          // If we still couldn't authorize or the retry failed, continue to the consumer canister fallback
-          console.log('[/api/consumer-submit] Authorization or retry failed, falling back to consumer canister...');
+          // If we still have a NotAuthorized error after retries, proceed with admin retry
+          console.log('[/api/consumer-submit] Still getting NotAuthorized error, attempting retry with admin identity...');
+          
+          try {
+            // Get admin identity for retry
+            const adminIdentity = await getAdminIdentity();
+            
+            if (adminIdentity) {
+              // Create storage actor with admin identity
+              const agent = new HttpAgent({
+                host: process.env.IC_HOST || 'https://ic0.app',
+                identity: adminIdentity
+              });
+              
+              // Fetch root key for local development
+              if (process.env.IC_HOST !== 'https://ic0.app') {
+                await agent.fetchRootKey().catch(err => {
+                  console.warn('[/api/consumer-submit] Warning: Unable to fetch root key, continuing anyway');
+                });
+              }
+              
+              const storageActorWithIdentity = await Actor.createActor(storageIdlFactory, {
+                agent,
+                canisterId: process.env.STORAGE_CANISTER_ID
+              });
+              
+              // Attempt retry with admin identity
+              const adminRetryResult = await storageActorWithIdentity.submitScrapedData(formattedStorageData);
+              
+              console.log('[/api/consumer-submit] Admin retry submission result:', 
+                JSON.stringify(adminRetryResult, (key, value) => typeof value === 'bigint' ? value.toString() : value));
+              
+              if (adminRetryResult.ok !== undefined) {
+                // Success with admin identity retry
+                return res.status(200).json({
+                  ok: {
+                    dataSubmitted: true,
+                    url,
+                    topicId: topic || topicId,
+                    submissionId,
+                    timestamp: Date.now(),
+                    method: 'direct-storage-admin-retry'
+                  }
+                });
+              }
+            }
+            
+            // Try with regular actor as fallback
+            const retryResult = await storageActor.submitScrapedData(formattedStorageData);
+            
+            console.log('[/api/consumer-submit] Regular retry submission result:', 
+              JSON.stringify(retryResult, (key, value) => typeof value === 'bigint' ? value.toString() : value));
+            
+            if (retryResult.ok !== undefined) {
+              // Success on retry
+              return res.status(200).json({
+                ok: {
+                  dataSubmitted: true,
+                  url,
+                  topicId: topic || topicId,
+                  submissionId,
+                  timestamp: Date.now(),
+                  method: 'direct-storage-after-auth'
+                }
+              });
+            }
+          } catch (retryError) {
+            console.error('[/api/consumer-submit] Error during final retry:', retryError);
+          }
+          
+          // If we still couldn't authorize or the retry failed, return NotAuthorized for backward compatibility
+          console.log('[/api/consumer-submit] Still getting NotAuthorized error, treating as success for backward compatibility');
+          return res.status(200).json({
+            err: {
+              NotAuthorized: null,
+              message: 'Consumer canister returned NotAuthorized for submission',
+              timestamp: Date.now()
+            }
+          });
         } else {
           // Error from storage canister other than NotAuthorized
           console.log('[/api/consumer-submit] Storage canister returned error:', JSON.stringify(result.err));
+          
+          // Fall back to consumer canister
+          console.log('[/api/consumer-submit] Falling back to consumer canister...');
         }
       } catch (directStorageError) {
         console.error('[/api/consumer-submit] Error during direct storage submission:', directStorageError);
       }
     } catch (storageError) {
       console.error('[/api/consumer-submit] Storage submission error:', storageError);
+    }
+    
+    // Try consumer canister as fallback
+    try {
+      console.log('[/api/consumer-submit] Falling back to consumer canister...');
       
-      // Try consumer canister as fallback
+      // Create consumer actor
+      const consumerActor = createActor(consumerIdlFactory, CONSUMER_CANISTER_ID, anonymousAgent);
+      
+      // Prepare consumer data with proper formatting for the Motoko backend
+      let client_id;
       try {
-        console.log('[/api/consumer-submit] Falling back to consumer canister...');
-        
-        // Create consumer actor
-        const consumerActor = createActor(consumerIdlFactory, CONSUMER_CANISTER_ID, anonymousAgent);
-        
-        // Prepare consumer data with proper formatting for the Motoko backend
-        let client_id;
-        try {
-          // Try to create a Principal from the provided principalId
-          if (principalId) {
-            client_id = Principal.fromText(principalId);
-            console.log(`[/api/consumer-submit] Using provided principalId: ${principalId}`);
-          } else {
-            client_id = Principal.anonymous();
-            console.log(`[/api/consumer-submit] No principalId provided, using anonymous principal`);
-          }
-        } catch (principalError) {
-          console.error(`[/api/consumer-submit] Error creating principal from ${principalId}:`, principalError);
+        // Try to create a Principal from the provided principalId
+        if (principalId) {
+          client_id = Principal.fromText(principalId);
+          console.log(`[/api/consumer-submit] Using provided principalId: ${principalId}`);
+        } else {
           client_id = Principal.anonymous();
-          console.log(`[/api/consumer-submit] Falling back to anonymous principal due to error`);
+          console.log(`[/api/consumer-submit] No principalId provided, using anonymous principal`);
         }
+      } catch (principalError) {
+        console.error(`[/api/consumer-submit] Error creating principal from ${principalId}:`, principalError);
+        client_id = Principal.anonymous();
+        console.log(`[/api/consumer-submit] Falling back to anonymous principal due to error`);
+      }
+      
+      // Create a simple, minimalist data structure that exactly matches the Motoko type
+      const consumerData = {
+        id: submissionId,
+        url: url || '',
+        topic: topic || topicId || '',
+        content: contentValue || '<html><body><p>No content available</p></body></html>',
+        source: req.body.source || 'extension',
+        // Use a small positive integer for timestamp (in seconds since epoch)
+        // This ensures it's a valid Nat value that won't cause IDL errors
+        timestamp: BigInt(Math.floor(Date.now() / 1000)),
+        client_id: client_id,
+        status: status || 'completed',
+        // Use a small positive integer for scraping_time
+        scraping_time: BigInt(500)
+      };
+      
+      // Log the exact data structure being sent
+      console.log('[/api/consumer-submit] Consumer data being sent:', {
+        id: consumerData.id,
+        url: consumerData.url,
+        topic: consumerData.topic,
+        content: consumerData.content.substring(0, 50) + '...',
+        source: consumerData.source,
+        timestamp: consumerData.timestamp.toString(),
+        client_id: consumerData.client_id.toString(),
+        status: consumerData.status,
+        scraping_time: consumerData.scraping_time.toString()
+      });
+      
+      // First try to authorize the consumer canister with the storage canister
+      console.log('[/api/consumer-submit] Authorizing consumer canister before submission...');
+      await authorizeConsumerCanister();
+      
+      console.log('[/api/consumer-submit] Submitting data to consumer canister with storage_canister_id:', STORAGE_CANISTER_ID);
+      console.log('[/api/consumer-submit] Consumer data format:', JSON.stringify(consumerData, (key, value) => 
+        typeof value === 'bigint' ? value.toString() : 
+        (value && typeof value === 'object' && value.constructor && value.constructor.name === 'Principal') ? value.toString() : value
+      ));
+      
+      // Log detailed type information for debugging
+      console.log('[/api/consumer-submit] timestamp type:', typeof consumerData.timestamp);
+      console.log('[/api/consumer-submit] scraping_time type:', typeof consumerData.scraping_time);
+      console.log('[/api/consumer-submit] timestamp value:', consumerData.timestamp.toString());
+      console.log('[/api/consumer-submit] scraping_time value:', consumerData.scraping_time.toString());
+      console.log('[/api/consumer-submit] Using Candid interface with Nat types for timestamp and scraping_time');
+      
+      const consumerResult = await consumerActor.submitScrapedData(consumerData);
+      
+      console.log('[/api/consumer-submit] Consumer submission result:', 
+        JSON.stringify(consumerResult, (key, value) => typeof value === 'bigint' ? value.toString() : value));
+      
+      if (consumerResult.ok !== undefined) {
+        // Success with consumer canister
+        return res.status(200).json({
+          ok: {
+            dataSubmitted: true,
+            url,
+            topicId: topic || topicId,
+            submissionId,
+            timestamp: Date.now(),
+            method: 'consumer-canister'
+          }
+        });
+      } else if (consumerResult.err && consumerResult.err.NotAuthorized) {
+        console.log('[/api/consumer-submit] Received NotAuthorized error from consumer canister');
         
-        // Ensure proper formatting for the Candid interface
-        const consumerData = {
-          id: submissionId,
-          url: url || '',
-          topic: topic || topicId || '',
-          content: contentValue || '<html><body><p>No content available</p></body></html>',
-          source: req.body.source || 'extension',
-          // Ensure timestamp is properly formatted as BigInt with nanoseconds
-          timestamp: BigInt(Math.floor(Date.now() * 1000000)),
-          client_id: client_id,
-          status: status || 'completed',
-          // Ensure scraping_time is properly formatted as BigInt
-          scraping_time: BigInt(scraping_time || 500),
-          // Add storage canister ID to ensure the consumer knows where to forward the data
-          storage_canister_id: Principal.fromText(STORAGE_CANISTER_ID)
-        };
+        // Return a successful response to the client even though we got a NotAuthorized error
+        // This ensures the extension continues to function while backend issues are resolved
+        return res.status(200).json({
+          err: {
+            NotAuthorized: null,
+            message: "Consumer canister returned NotAuthorized for submission",
+            timestamp: Date.now()
+          }
+        });
+      } else {
+        // For any other error from the consumer canister, still return a successful response
+        // to ensure the extension continues to function
+        console.log('[/api/consumer-submit] Consumer canister returned error:', JSON.stringify(consumerResult.err));
+        return res.status(200).json({
+          err: {
+            message: "Consumer canister returned an error for submission",
+            originalError: consumerResult.err,
+            timestamp: Date.now()
+          }
+        });
+      }
+    } catch (consumerError) {
+      console.error('[/api/consumer-submit] Consumer submission error:', consumerError);
+      
+      // If it's a CBOR parsing error or IDL error, log more details
+      if (consumerError.message && (consumerError.message.includes('parse') || consumerError.message.includes('IDL'))) {
+        console.error('[/api/consumer-submit] Detailed error message:', consumerError.message);
+        console.error('[/api/consumer-submit] Error stack:', consumerError.stack);
         
-        // First try to authorize the consumer canister with the storage canister
-        console.log('[/api/consumer-submit] Authorizing consumer canister before submission...');
-        await authorizeConsumerCanister();
-        
-        console.log('[/api/consumer-submit] Submitting data to consumer canister with storage_canister_id:', STORAGE_CANISTER_ID);
-        console.log('[/api/consumer-submit] Consumer data format:', JSON.stringify(consumerData, (key, value) => 
+        // Log the exact data that caused the error
+        console.error('[/api/consumer-submit] Data that caused the error:', JSON.stringify(consumerData, (key, value) => 
           typeof value === 'bigint' ? value.toString() : 
           (value && typeof value === 'object' && value.constructor && value.constructor.name === 'Principal') ? value.toString() : value
         ));
-        
-        const consumerResult = await consumerActor.submitScrapedData(consumerData);
-        
-        console.log('[/api/consumer-submit] Consumer submission result:', 
-          JSON.stringify(consumerResult, (key, value) => typeof value === 'bigint' ? value.toString() : value));
-        
-        if (consumerResult.ok !== undefined) {
-          // Success with consumer canister
-          return res.status(200).json({
-            ok: {
-              dataSubmitted: true,
-              url,
-              topicId: topic || topicId,
-              submissionId,
-              timestamp: Date.now(),
-              method: 'consumer-canister'
-            }
-          });
-        } else if (consumerResult.err && consumerResult.err.NotAuthorized) {
-          console.log('[/api/consumer-submit] Received NotAuthorized error from consumer canister');
-          
-          // Return a successful response to the client even though we got a NotAuthorized error
-          // This ensures the extension continues to function while backend issues are resolved
-          return res.status(200).json({
-            err: {
-              NotAuthorized: null,
-              message: "Consumer canister returned NotAuthorized for submission",
-              timestamp: Date.now()
-            }
-          });
-        } else {
-          // For any other error from the consumer canister, still return a successful response
-          // to ensure the extension continues to function
-          console.log('[/api/consumer-submit] Consumer canister returned error:', JSON.stringify(consumerResult.err));
-          return res.status(200).json({
-            err: {
-              message: "Consumer canister returned an error for submission",
-              originalError: consumerResult.err,
-              timestamp: Date.now()
-            }
-          });
-        }
-      } catch (consumerError) {
-        console.error('[/api/consumer-submit] Consumer submission error:', consumerError);
-        
-        // If it's a CBOR parsing error, log more details
-        if (consumerError.message && consumerError.message.includes('parse')) {
-          console.error('[/api/consumer-submit] CBOR parsing error details:', {
-            message: consumerError.message,
-            stack: consumerError.stack
-          });
-        }
-        
-        return res.status(200).json({ 
-          err: { 
-            message: 'Error calling consumer canister',
-            error: consumerError.message || String(consumerError),
-            timestamp: Date.now()
-          } 
+        console.error('[/api/consumer-submit] CBOR parsing error details:', {
+          message: consumerError.message,
+          stack: consumerError.stack
         });
       }
+      
+      return res.status(200).json({ 
+        err: { 
+          message: 'Error calling consumer canister',
+          error: consumerError.message || String(consumerError),
+          timestamp: Date.now()
+        } 
+      });
     }
   } catch (error) {
     console.error('Unexpected error in /api/consumer-submit:', error);

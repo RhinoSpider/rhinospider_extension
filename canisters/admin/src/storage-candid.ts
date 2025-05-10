@@ -1,10 +1,14 @@
-import { Actor, HttpAgent } from '@dfinity/agent';
-import { Principal } from '@dfinity/principal';
+// Import types from relative paths to avoid dependency issues
 import { idlFactory } from './storage-candid.did';
 import { ScrapedData } from './types';
 
+// These types will be provided by the runtime environment
+declare const Actor: any;
+declare const Principal: any;
+declare const HttpAgent: any;
+
 // Storage canister ID
-const STORAGE_CANISTER_ID = 'nwy3f-jyaaa-aaaao-a4htq-cai';
+const STORAGE_CANISTER_ID = 'hhaip-uiaaa-aaaao-a4khq-cai';
 
 // Field mapping for numeric field names
 const numericFieldMap = {

@@ -7,7 +7,7 @@ const PORT = process.env.PORT || 3001;
 const API_PASSWORD = process.env.API_PASSWORD || 'ffGpA2saNS47qr';
 const IC_HOST = process.env.IC_HOST || 'https://icp0.io';
 const CONSUMER_CANISTER_ID = process.env.CONSUMER_CANISTER_ID || 'tgyl5-yyaaa-aaaaj-az4wq-cai';
-const STORAGE_CANISTER_ID = process.env.STORAGE_CANISTER_ID || 'i2gk7-oyaaa-aaaao-a37cq-cai';
+const STORAGE_CANISTER_ID = process.env.STORAGE_CANISTER_ID || 'hhaip-uiaaa-aaaao-a4khq-cai';
 
 // Create HTTP server
 const server = http.createServer((req, res) => {

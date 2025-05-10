@@ -1,11 +1,11 @@
 {
   "canisters": {
-    "consumer": {
+    "admin": {
       "main": "main.mo",
       "type": "motoko",
-      "candid": "consumer.did",
+      "candid": "admin.did",
       "canister_id": {
-        "ic": "tgyl5-yyaaa-aaaaj-az4wq-cai"
+        "ic": "sxsvc-aqaaa-aaaaj-az4ta-cai"
       }
     }
   },
