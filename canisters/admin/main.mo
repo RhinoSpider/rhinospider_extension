@@ -120,7 +120,7 @@ actor Admin {
     private var admins = HashMap.HashMap<Principal, Bool>(10, Principal.equal, Principal.hash);
     private var topics = HashMap.HashMap<Text, ScrapingTopic>(10, Text.equal, Text.hash);
     private var aiConfig : AIConfig = {
-        apiKey = "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";
+        apiKey = ""; // API key should be set via updateAIConfig, not hardcoded
         model = "gpt-3.5-turbo";
         costLimits = {
             maxDailyCost = 10.0;
