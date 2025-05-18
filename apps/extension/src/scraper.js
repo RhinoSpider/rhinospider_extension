@@ -1,3 +1,4 @@
+import { submitScrapedData } from './service-worker-adapter';
 // Scraper module for RhinoSpider extension
 // This module handles the actual scraping functionality
 
@@ -93,7 +94,24 @@ async function performScrape(topics, submitScrapedData, getIPAddress, measureInt
             logger.log(`Scraped content length: ${content.length} characters`);
             
             // Submit the scraped data
-            await submitScrapedData(url, content, topic.id, 'completed', null, metrics);
+            await submitScrapedData({
+            id: `${url.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`,
+            url,
+            topic: topicId,
+            content: content || '<html><body><p>No content available</p></body></html>',
+            source: 'extension',
+            status: 'completed',
+            principalId,
+            scraping_time: String(scrapingTime || 500)
+          })}-${Date.now()}`,
+          url,
+          topic: topicId,
+          content: content || '<html><body><p>No content available</p></body></html>',
+          source: 'extension',
+          status: 'completed',
+          principalId,
+          scraping_time: scrapingTime
+        });
             
             logger.log('Scraping completed successfully');
             return true;
@@ -109,7 +127,24 @@ async function performScrape(topics, submitScrapedData, getIPAddress, measureInt
                 metrics.error = 'CORS error';
                 
                 // Submit the failed scrape
-                await submitScrapedData(url, null, topic.id, 'failed', null, metrics);
+                await submitScrapedData({
+            id: `${url.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`,
+            url,
+            topic: topicId,
+            content: content || '<html><body><p>No content available</p></body></html>',
+            source: 'extension',
+            status: 'completed',
+            principalId,
+            scraping_time: String(scrapingTime || 500)
+          })}-${Date.now()}`,
+          url,
+          topic: topicId,
+          content: content || '<html><body><p>No content available</p></body></html>',
+          source: 'extension',
+          status: 'completed',
+          principalId,
+          scraping_time: scrapingTime
+        });
             } else {
                 logger.error(`Error scraping URL: ${url}`, error);
                 
@@ -120,7 +155,24 @@ async function performScrape(topics, submitScrapedData, getIPAddress, measureInt
                 metrics.error = error.message;
                 
                 // Submit the failed scrape
-                await submitScrapedData(url, null, topic.id, 'failed', null, metrics);
+                await submitScrapedData({
+            id: `${url.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`,
+            url,
+            topic: topicId,
+            content: content || '<html><body><p>No content available</p></body></html>',
+            source: 'extension',
+            status: 'completed',
+            principalId,
+            scraping_time: String(scrapingTime || 500)
+          })}-${Date.now()}`,
+          url,
+          topic: topicId,
+          content: content || '<html><body><p>No content available</p></body></html>',
+          source: 'extension',
+          status: 'completed',
+          principalId,
+          scraping_time: scrapingTime
+        });
             }
             
             return false;

@@ -12,7 +12,6 @@ const { Ed25519KeyIdentity } = require('@dfinity/identity');
 const { Principal } = require('@dfinity/principal');
 const { idlFactory: consumerIdlFactory } = require('./declarations/consumer/consumer.did.fixed.js');
 const { idlFactory: storageIdlFactory } = require('./declarations/storage/storage.did.js');
-const { idlFactory: adminIdlFactory } = require('./declarations/admin/admin.did.js');
 const fetch = require('node-fetch');
 const path = require('path');
 const fs = require('fs');
@@ -71,7 +70,6 @@ const createActor = (idlFactory, canisterId, agent) => {
 let agent;
 let consumerActor;
 let storageActor;
-let adminActor;
 
 const initializeActors = async () => {
   try {
@@ -102,23 +100,6 @@ const initializeActors = async () => {
     return false;
   }
 };
-
-// Function to get admin actor with proper authentication
-async function getAdminActor() {
-  try {
-    // Create an anonymous agent
-    const anonymousAgent = createAgent();
-    
-    // Create an actor for the admin canister
-    const actor = createActor(adminIdlFactory, ADMIN_CANISTER_ID, anonymousAgent);
-    
-    // Return the actor
-    return actor;
-  } catch (error) {
-    console.error('Error creating admin actor:', error.message);
-    throw error;
-  }
-}
 
 // Initialize on startup
 initializeActors().then(success => {
@@ -780,31 +761,8 @@ app.post('/api/consumer-submit', authenticateApiKey, async (req, res) => {
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-  res.status(200).json({ status: 'ok' });
-});
-
-// GET endpoint for topics
-app.get('/api/topics', async (req, res) => {
-  try {
-    console.log('GET /api/topics called');
-    const adminActor = await getAdminActor();
-    console.log('Admin actor initialized');
-    
-    const result = await adminActor.getTopics();
-    console.log('getTopics result:', JSON.stringify(result));
-    
-    if ('ok' in result) {
-      res.status(200).json(result.ok);
-    } else if ('err' in result) {
-      console.error('Error getting topics:', result.err);
-      res.status(403).json({ error: result.err });
-    } else {
-      res.status(500).json({ error: 'Unknown response format' });
-    }
-  } catch (error) {
-    console.error('Error in /api/topics:', error.message);
-    res.status(500).json({ error: error.message });
-  }
+  
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 // Get user profile endpoint
@@ -1087,30 +1045,108 @@ const processResponse = (response) => {
   }
 };
 
-app.post('/api/topics', async (req, res) => {
+app.post('/api/topics', authenticateApiKey, async (req, res) => {
   try {
-    console.log('Fetching topics directly from admin canister...');
+    const { principalId } = req.body;
     
-    // Create the admin actor
-    const adminActor = await getAdminActor();
-    
-    // Try to get topics directly from the admin canister
-    const result = await adminActor.getTopics();
-    
-    if ('err' in result) {
-      console.error('Error getting topics from admin canister:', result.err);
-      return res.json({ err: result.err });
+    if (!principalId) {
+      return res.status(400).json({ error: 'Principal ID is required' });
     }
     
-    // Return the topics without any modification
-    console.log('Successfully got topics from admin canister:', result.ok.length);
-    return res.json({ ok: result.ok });
+    console.log(`[/api/topics] Getting topics for principal: ${principalId}`);
+    console.log(`[/api/topics] Using consumer canister ID: ${CONSUMER_CANISTER_ID}`);
+    console.log(`[/api/topics] Using admin canister ID: ${ADMIN_CANISTER_ID}`);
+    console.log(`[/api/topics] Using IC host: ${IC_HOST}`);
+    
+    // Create identity from principal
+    const identity = createIdentityFromPrincipal(principalId);
+    console.log(`[/api/topics] Created identity from principal`);
+    
+    // Create agent
+    const agent = new HttpAgent({
+      host: IC_HOST,
+      identity,
+      fetchRootKey: true
+    });
+    console.log(`[/api/topics] Created HTTP agent with fetchRootKey: true`);
+    
+    // Create actor for consumer canister
+      const actor = Actor.createActor(consumerIdlFactory, {
+        agent,
+        canisterId: CONSUMER_CANISTER_ID
+      });
+      
+      console.log(`[/api/topics] Using consumer canister to get topics, which will call admin canister internally`);
+    console.log(`[/api/topics] Created actor for consumer canister`);
+    
+    try {
+      // Call getTopics from consumer canister
+      const timestamp = Date.now();
+      console.log(`[/api/topics] Calling getTopics from consumer canister at timestamp: ${timestamp}`);
+      
+      // Instead of just invalidating the identity, create a completely new one
+      // This addresses the "identity expired" error
+      const freshIdentity = Ed25519KeyIdentity.generate();
+      agent.replaceIdentity(freshIdentity);
+      console.log(`[/api/topics] Created and set fresh identity to ensure authentication works`);
+      
+      const topics = await actor.getTopics();
+      
+      // Log the response for debugging
+      console.log(`[/api/topics] Raw response type: ${typeof topics}`);
+      console.log(`[/api/topics] Raw response: ${JSON.stringify(topics, (key, value) => typeof value === 'bigint' ? value.toString() : value)}`);
+      
+      // Add detailed logging for the first topic to understand its structure
+      if (topics && topics.ok && Array.isArray(topics.ok) && topics.ok.length > 0) {
+        const firstTopic = topics.ok[0];
+        console.log(`[/api/topics] First topic keys: ${Object.keys(firstTopic).join(', ')}`);
+        
+        // Check for the missing fields
+        console.log(`[/api/topics] articleUrlPatterns:`, firstTopic.articleUrlPatterns);
+        console.log(`[/api/topics] excludePatterns:`, firstTopic.excludePatterns);
+        console.log(`[/api/topics] contentIdentifiers:`, firstTopic.contentIdentifiers);
+        console.log(`[/api/topics] urlGenerationStrategy:`, firstTopic.urlGenerationStrategy);
+        console.log(`[/api/topics] siteTypeClassification:`, firstTopic.siteTypeClassification);
+        console.log(`[/api/topics] paginationPatterns:`, firstTopic.paginationPatterns);
+      }
+      
+      // Process the response to handle BigInt and Principal objects
+      const processedTopics = processResponse(topics);
+      
+      // NO MOCK DATA - Return the actual topics as they are
+      console.log(`[/api/topics] Successfully processed topics with ${processedTopics.ok ? processedTopics.ok.length : 0} items`);
+      
+      // Log individual topics for debugging
+      if (processedTopics.ok && processedTopics.ok.length > 0) {
+        console.log(`[/api/topics] Topic details:`);
+        processedTopics.ok.forEach((topic, index) => {
+          console.log(`[/api/topics] Topic ${index + 1}: ID=${topic.id}, Name=${topic.name}`);
+        });
+      } else {
+        console.log(`[/api/topics] No topics found in the response`);
+      }
+      
+      return res.json(processedTopics);
+    } catch (error) {
+      console.error('[/api/topics] Error calling getTopics:', error);
+      console.error('[/api/topics] Error stack:', error.stack);
+      
+      // Return an empty array instead of an error to maintain compatibility
+      return res.json({ ok: [] });
+    }
   } catch (error) {
-    console.error('Error in /api/topics endpoint:', error.message);
-    return res.status(500).json({ err: error.message });
+    console.error('Error in topics endpoint:', error);
+    
+    // Return an empty array instead of an error to maintain compatibility
+    return res.json({ ok: [] });
   }
 });
 
+// Note: convertToPlainObject is imported from bigint-patch.js
+
+// Submit scraped data endpoint
+
+// Redirect /api/submit-scraped-content to /api/submit for backward compatibility
 app.post('/api/submit-scraped-content', authenticateApiKey, (req, res, next) => {
   console.log('[/api/submit-scraped-content] Received request, forwarding to /api/submit');
   req.url = '/api/submit';

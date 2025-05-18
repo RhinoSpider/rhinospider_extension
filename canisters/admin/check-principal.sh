@@ -1,3 +1,18 @@
+#!/bin/bash
+
+# Script to check the principal ID and create a new admin canister with that ID
+
+echo "CHECKING PRINCIPAL ID"
+echo "==================="
+
+# Switch to the ic-prod identity
+dfx identity use ic-prod
+PRINCIPAL=$(dfx identity get-principal)
+echo "Using identity: ic-prod"
+echo "Principal: $PRINCIPAL"
+
+# Create a new admin canister file with the correct principal ID
+cat > /Users/ayanuali/development/rhinospider/canisters/admin/admin-with-principal.mo << EOL
 import Result "mo:base/Result";
 import Principal "mo:base/Principal";
 import Text "mo:base/Text";
@@ -105,8 +120,7 @@ actor Admin {
     // Constants
     private let STORAGE_CANISTER_ID: Text = "hhaip-uiaaa-aaaao-a4khq-cai";
     private let CONSUMER_CANISTER_ID: Text = "tgyl5-yyaaa-aaaaj-az4wq-cai";
-    private let USER_PRINCIPAL_ID: Text = "p6gaf-qjt3x-6q6ci-ro7nd-aklhp-6hgfo-4dljo-busl6-3ftgp-iliyi-zqe";
-    private let ADMIN_PRINCIPAL_ID: Text = "t52au-jmmys-xpd7e-f2cc7-xgsya-2ajbl-22leo-e7hep-kclwp-kqzoq-jae";
+    private let USER_PRINCIPAL_ID: Text = "$PRINCIPAL";
 
     // Stable storage
     private stable var stableUsers : [(Principal, User)] = [];
@@ -142,10 +156,6 @@ actor Admin {
         let userPrincipal = Principal.fromText(USER_PRINCIPAL_ID);
         admins.put(userPrincipal, true);
         
-        // Add the admin principal to admins
-        let adminPrincipal = Principal.fromText(ADMIN_PRINCIPAL_ID);
-        admins.put(adminPrincipal, true);
-        
         // Add the user as a SuperAdmin
         let user : User = {
             principal = userPrincipal;
@@ -155,17 +165,7 @@ actor Admin {
         };
         users.put(userPrincipal, user);
         
-        // Add the admin as a SuperAdmin
-        let admin : User = {
-            principal = adminPrincipal;
-            role = #SuperAdmin;
-            addedBy = adminPrincipal;
-            addedAt = Time.now();
-        };
-        users.put(adminPrincipal, admin);
-        
         Debug.print("Added user principal to admins: " # USER_PRINCIPAL_ID);
-        Debug.print("Added admin principal to admins: " # ADMIN_PRINCIPAL_ID);
         initialized := true;
     };
 
@@ -213,16 +213,9 @@ actor Admin {
             return true;
         };
         
-        // Explicitly allow the admin principal
-        if (Text.equal(callerStr, ADMIN_PRINCIPAL_ID)) {
-            Debug.print("Admin principal explicitly authorized");
-            return true;
-        };
-        
-        // Allow anonymous principal for testing
         if (Principal.isAnonymous(caller)) {
-            Debug.print("Anonymous principal authorized for testing");
-            return true;
+            Debug.print("Anonymous caller rejected");
+            return false;
         };
         
         switch (users.get(caller)) {
@@ -510,3 +503,138 @@ actor Admin {
         _isAuthorized(caller)
     };
 }
+EOL
+
+# Replace the placeholder with the actual principal ID
+sed -i '' "s/\$PRINCIPAL/$PRINCIPAL/g" /Users/ayanuali/development/rhinospider/canisters/admin/admin-with-principal.mo
+
+echo "Created admin canister with principal ID: $PRINCIPAL"
+
+# Create a deployment script for this admin canister
+cat > /Users/ayanuali/development/rhinospider/canisters/admin/deploy-with-principal.sh << EOL
+#!/bin/bash
+
+# Script to deploy the admin canister with the correct principal ID
+
+echo "DEPLOYING ADMIN CANISTER WITH CORRECT PRINCIPAL ID"
+echo "============================================="
+
+# Set environment variables
+export DFX_NETWORK="ic"
+export ADMIN_CANISTER_ID="444wf-gyaaa-aaaaj-az5sq-cai"
+
+echo "Using network: \$DFX_NETWORK"
+echo "Admin canister ID: \$ADMIN_CANISTER_ID"
+
+# IMPORTANT: Switch to the ic-prod identity
+dfx identity use ic-prod
+PRINCIPAL=\$(dfx identity get-principal)
+echo "Using identity: ic-prod"
+echo "Principal: \$PRINCIPAL"
+
+# Create a temporary directory for the project
+TEMP_DIR=\$(mktemp -d)
+echo "Created temporary directory: \$TEMP_DIR"
+
+# Copy the admin canister code with the correct principal ID
+cp /Users/ayanuali/development/rhinospider/canisters/admin/admin-with-principal.mo \$TEMP_DIR/main.mo
+echo "Copied admin code with correct principal ID to temp directory"
+
+# Create a dfx.json file
+cat > \$TEMP_DIR/dfx.json << EOLINNER
+{
+  "canisters": {
+    "admin": {
+      "main": "main.mo",
+      "type": "motoko"
+    }
+  },
+  "defaults": {
+    "build": {
+      "packtool": ""
+    }
+  },
+  "networks": {
+    "local": {
+      "bind": "127.0.0.1:8000",
+      "type": "ephemeral"
+    }
+  },
+  "version": 1
+}
+EOLINNER
+echo "Created dfx.json in temp directory"
+
+# Go to the temp directory
+cd \$TEMP_DIR
+
+# Use moc directly to compile the canister
+echo "Compiling with moc directly..."
+MOC_PATH=\$(which moc)
+if [ -z "\$MOC_PATH" ]; then
+  MOC_PATH=\$(find ~/.cache/dfinity -name moc | grep -v "\.old" | head -n 1)
+  if [ -z "\$MOC_PATH" ]; then
+    echo "Error: Could not find moc compiler"
+    exit 1
+  fi
+fi
+echo "Using moc at: \$MOC_PATH"
+
+# Create a base directory for moc
+BASE_PATH=\$(dirname \$(dirname \$MOC_PATH))/base
+if [ ! -d "\$BASE_PATH" ]; then
+  BASE_PATH=\$(find ~/.cache/dfinity -name base -type d | grep -v "\.old" | head -n 1)
+  if [ -z "\$BASE_PATH" ]; then
+    echo "Error: Could not find base library"
+    exit 1
+  fi
+fi
+echo "Using base library at: \$BASE_PATH"
+
+# Compile the canister
+echo "Compiling admin canister..."
+\$MOC_PATH main.mo -o admin.wasm --package base \$BASE_PATH
+
+# Check if compilation was successful
+if [ ! -f "admin.wasm" ]; then
+  echo "Error: Failed to compile admin canister"
+  exit 1
+fi
+
+echo "Compilation successful! Wasm file created at: \$TEMP_DIR/admin.wasm"
+
+# Deploy the wasm to the existing canister on IC
+echo "Deploying to existing canister: \$ADMIN_CANISTER_ID"
+dfx canister --network \$DFX_NETWORK install --wasm admin.wasm --mode=reinstall --yes \$ADMIN_CANISTER_ID
+
+# Check if the deployment was successful
+if [ \$? -eq 0 ]; then
+  echo "Deployment successful!"
+  
+  # Check if the caller is authorized
+  echo "Checking if caller is authorized..."
+  dfx canister --network \$DFX_NETWORK call \$ADMIN_CANISTER_ID isAuthorized
+  
+  # Get topics to verify functionality
+  echo "Getting topics to verify functionality..."
+  dfx canister --network \$DFX_NETWORK call \$ADMIN_CANISTER_ID getTopics
+  
+  # Check if getAIConfig method is available
+  echo "Checking if getAIConfig method is available..."
+  dfx canister --network \$DFX_NETWORK call \$ADMIN_CANISTER_ID getAIConfig
+else
+  echo "Deployment failed!"
+fi
+
+# Clean up
+cd /Users/ayanuali/development/rhinospider
+rm -rf \$TEMP_DIR
+
+echo "Admin canister deployment completed!"
+EOL
+
+# Make the deployment script executable
+chmod +x /Users/ayanuali/development/rhinospider/canisters/admin/deploy-with-principal.sh
+
+echo "Created deployment script: /Users/ayanuali/development/rhinospider/canisters/admin/deploy-with-principal.sh"
+echo "Run this script to deploy the admin canister with the correct principal ID"

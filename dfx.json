@@ -15,6 +15,13 @@
       "canister_id": {
         "ic": "hhaip-uiaaa-aaaao-a4khq-cai"
       }
+    },
+    "consumer": {
+      "main": "canisters/consumer/main.mo",
+      "type": "motoko",
+      "canister_id": {
+        "ic": "tgyl5-yyaaa-aaaaj-az4wq-cai"
+      }
     }
   },
   "defaults": {

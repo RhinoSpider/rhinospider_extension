@@ -1,0 +1,22 @@
+type UserRole = variant {
+  Operator;
+  SuperAdmin;
+  Admin;
+};
+
+type Result = variant {
+  ok : null;
+  err : text;
+};
+
+type User = record {
+  principal : principal;
+  role : UserRole;
+  addedAt : int;
+  addedBy : principal;
+};
+
+service : {
+  add_user : (principal, UserRole) -> (Result);
+  get_users : () -> (variant { ok : vec User; err : text });
+}

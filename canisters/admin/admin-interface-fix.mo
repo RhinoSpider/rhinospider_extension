@@ -8,9 +8,7 @@ import Float "mo:base/Float";
 import HashMap "mo:base/HashMap";
 import Buffer "mo:base/Buffer";
 import Iter "mo:base/Iter";
-import Option "mo:base/Option";
 import Debug "mo:base/Debug";
-import Array "mo:base/Array";
 import Bool "mo:base/Bool";
 import Error "mo:base/Error";
 
@@ -29,7 +27,7 @@ actor Admin {
         addedAt: Time.Time;
     };
 
-    type ExtractionField = {
+    type ScrapingField = {
         name: Text;
         fieldType: Text;
         required: Bool;
@@ -37,7 +35,7 @@ actor Admin {
     };
 
     type ExtractionRules = {
-        fields: [ExtractionField];
+        fields: [ScrapingField];
         customPrompt: ?Text;
     };
 
@@ -47,12 +45,12 @@ actor Admin {
         maxConcurrent: Nat;
     };
 
+    // IMPORTANT: This AIConfig must exactly match the admin app's expected interface
+    // Note it does NOT include temperature or maxTokens fields
     type AIConfig = {
         apiKey: Text;
         model: Text;
         costLimits: CostLimits;
-        temperature: Float;
-        maxTokens: Nat;
     };
 
     type ContentIdentifiers = {
@@ -75,11 +73,10 @@ actor Admin {
         };
         maxRetries: Nat;
         articleUrlPatterns: ?[Text];
-        siteTypeClassification: ?Text;
+        siteTypeClassification: Text;
         contentIdentifiers: ?ContentIdentifiers;
         paginationPatterns: ?[Text];
-        sampleArticleUrls: ?[Text];
-        urlGenerationStrategy: ?Text;
+        urlGenerationStrategy: Text;
         excludePatterns: ?[Text];
         createdAt: Int;
         lastScraped: Int;
@@ -127,8 +124,6 @@ actor Admin {
             maxMonthlyCost = 100.0;
             maxConcurrent = 5;
         };
-        temperature = 0.7;
-        maxTokens = 4000;
     };
 
     // Canister references
@@ -309,20 +304,118 @@ actor Admin {
         #ok(Iter.toArray(topics.vals()))
     };
 
-    public shared({ caller }) func addTopic(topic: ScrapingTopic) : async Result.Result<(), Text> {
-        if (not _isAuthorized(caller)) {
-            return #err("Unauthorized");
+    // Create topic with request
+    type CreateTopicRequest = {
+        name: Text;
+        description: Text;
+        urlPatterns: [Text];
+        extractionRules: ExtractionRules;
+        scrapingInterval: Nat;
+        activeHours: {
+            start: Nat;
+            end: Nat;
         };
-        topics.put(topic.id, topic);
-        #ok()
+        maxRetries: Nat;
+        siteTypeClassification: ?Text;
+        urlGenerationStrategy: ?Text;
+        articleUrlPatterns: ?[Text];
+        contentIdentifiers: ?ContentIdentifiers;
+        paginationPatterns: ?[Text];
+        sampleArticleUrls: ?[Text];
+        excludePatterns: ?[Text];
     };
 
-    public shared({ caller }) func updateTopic(topic: ScrapingTopic) : async Result.Result<(), Text> {
+    public shared({ caller }) func createTopic(request: CreateTopicRequest): async Result.Result<ScrapingTopic, Text> {
         if (not _isAuthorized(caller)) {
             return #err("Unauthorized");
         };
-        topics.put(topic.id, topic);
-        #ok()
+        
+        let id = Text.concat(request.name, "-" # Int.toText(Time.now()));
+        
+        let siteTypeClassification = switch (request.siteTypeClassification) {
+            case (?siteType) { siteType };
+            case (null) { "generic" };
+        };
+        
+        let urlGenerationStrategy = switch (request.urlGenerationStrategy) {
+            case (?strategy) { strategy };
+            case (null) { "pattern_based" };
+        };
+        
+        let topic: ScrapingTopic = {
+            id = id;
+            name = request.name;
+            description = request.description;
+            urlPatterns = request.urlPatterns;
+            aiConfig = aiConfig;
+            status = "active";
+            extractionRules = request.extractionRules;
+            scrapingInterval = request.scrapingInterval;
+            lastScraped = Time.now();
+            activeHours = request.activeHours;
+            maxRetries = request.maxRetries;
+            createdAt = Time.now();
+            siteTypeClassification = siteTypeClassification;
+            urlGenerationStrategy = urlGenerationStrategy;
+            articleUrlPatterns = request.articleUrlPatterns;
+            contentIdentifiers = request.contentIdentifiers;
+            paginationPatterns = request.paginationPatterns;
+            excludePatterns = request.excludePatterns;
+        };
+        
+        topics.put(id, topic);
+        #ok(topic)
+    };
+
+    // Update topic with request
+    type UpdateTopicRequest = {
+        name: ?Text;
+        description: ?Text;
+        urlPatterns: ?[Text];
+        status: ?Text;
+        extractionRules: ?ExtractionRules;
+        siteTypeClassification: ?Text;
+        urlGenerationStrategy: ?Text;
+        articleUrlPatterns: ?[Text];
+        contentIdentifiers: ?ContentIdentifiers;
+        paginationPatterns: ?[Text];
+        excludePatterns: ?[Text];
+    };
+
+    public shared({ caller }) func updateTopic(id: Text, request: UpdateTopicRequest) : async Result.Result<ScrapingTopic, Text> {
+        if (not _isAuthorized(caller)) {
+            return #err("Unauthorized");
+        };
+        
+        switch (topics.get(id)) {
+            case (?topic) {
+                let updatedTopic: ScrapingTopic = {
+                    id = id;
+                    name = switch (request.name) { case (?n) { n }; case null { topic.name } };
+                    description = switch (request.description) { case (?d) { d }; case null { topic.description } };
+                    urlPatterns = switch (request.urlPatterns) { case (?u) { u }; case null { topic.urlPatterns } };
+                    status = switch (request.status) { case (?s) { s }; case null { topic.status } };
+                    extractionRules = switch (request.extractionRules) { case (?e) { e }; case null { topic.extractionRules } };
+                    aiConfig = topic.aiConfig;
+                    scrapingInterval = topic.scrapingInterval;
+                    activeHours = topic.activeHours;
+                    maxRetries = topic.maxRetries;
+                    createdAt = topic.createdAt;
+                    lastScraped = topic.lastScraped;
+                    siteTypeClassification = switch (request.siteTypeClassification) { case (?s) { s }; case null { topic.siteTypeClassification } };
+                    urlGenerationStrategy = switch (request.urlGenerationStrategy) { case (?u) { u }; case null { topic.urlGenerationStrategy } };
+                    articleUrlPatterns = switch (request.articleUrlPatterns) { case (?a) { ?a }; case null { topic.articleUrlPatterns } };
+                    contentIdentifiers = switch (request.contentIdentifiers) { case (?c) { ?c }; case null { topic.contentIdentifiers } };
+                    paginationPatterns = switch (request.paginationPatterns) { case (?p) { ?p }; case null { topic.paginationPatterns } };
+                    excludePatterns = switch (request.excludePatterns) { case (?e) { ?e }; case null { topic.excludePatterns } };
+                };
+                topics.put(id, updatedTopic);
+                #ok(updatedTopic)
+            };
+            case (null) {
+                #err("Topic not found")
+            };
+        }
     };
 
     public shared({ caller }) func deleteTopic(id: Text) : async Result.Result<(), Text> {
@@ -375,7 +468,6 @@ actor Admin {
                     articleUrlPatterns = topic.articleUrlPatterns;
                     contentIdentifiers = topic.contentIdentifiers;
                     paginationPatterns = topic.paginationPatterns;
-                    sampleArticleUrls = topic.sampleArticleUrls;
                     excludePatterns = topic.excludePatterns;
                 };
                 topics.put(id, updatedTopic);
@@ -413,7 +505,6 @@ actor Admin {
                     articleUrlPatterns = topic.articleUrlPatterns;
                     contentIdentifiers = topic.contentIdentifiers;
                     paginationPatterns = topic.paginationPatterns;
-                    sampleArticleUrls = topic.sampleArticleUrls;
                     excludePatterns = topic.excludePatterns;
                 };
                 topics.put(id, updatedTopic);
@@ -448,60 +539,6 @@ actor Admin {
         // This is just a placeholder - in a real implementation, this would
         // actually test the extraction rules on the given URL
         #ok("Extraction test successful. URL: " # url # ", Topic: " # topic.name)
-    };
-
-    // Create topic with request
-    type CreateTopicRequest = {
-        name: Text;
-        description: Text;
-        urlPatterns: [Text];
-        extractionRules: ExtractionRules;
-        scrapingInterval: Nat;
-        activeHours: {
-            start: Nat;
-            end: Nat;
-        };
-        maxRetries: Nat;
-        siteTypeClassification: ?Text;
-        urlGenerationStrategy: ?Text;
-        articleUrlPatterns: ?[Text];
-        contentIdentifiers: ?ContentIdentifiers;
-        paginationPatterns: ?[Text];
-        sampleArticleUrls: ?[Text];
-        excludePatterns: ?[Text];
-    };
-
-    public shared({ caller }) func createTopic(request: CreateTopicRequest): async Result.Result<ScrapingTopic, Text> {
-        if (not _isAuthorized(caller)) {
-            return #err("Unauthorized");
-        };
-        
-        let id = Text.concat(request.name, "-" # Int.toText(Time.now()));
-        
-        let topic: ScrapingTopic = {
-            id = id;
-            name = request.name;
-            description = request.description;
-            urlPatterns = request.urlPatterns;
-            aiConfig = aiConfig;
-            status = "active";
-            extractionRules = request.extractionRules;
-            scrapingInterval = request.scrapingInterval;
-            lastScraped = Time.now();
-            activeHours = request.activeHours;
-            maxRetries = request.maxRetries;
-            createdAt = Time.now();
-            siteTypeClassification = request.siteTypeClassification;
-            urlGenerationStrategy = request.urlGenerationStrategy;
-            articleUrlPatterns = request.articleUrlPatterns;
-            contentIdentifiers = request.contentIdentifiers;
-            paginationPatterns = request.paginationPatterns;
-            sampleArticleUrls = request.sampleArticleUrls;
-            excludePatterns = request.excludePatterns;
-        };
-        
-        topics.put(id, topic);
-        #ok(topic)
     };
 
     // Utility methods

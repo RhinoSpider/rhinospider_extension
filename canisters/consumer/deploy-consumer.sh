@@ -35,20 +35,33 @@ cat > dfx.json << EOL
 EOL
 
 # Copy the main.mo file to the temp directory
-cp ./main.mo .
-cp ./consumer.did .
+cp /Users/ayanuali/development/rhinospider/canisters/consumer/main.mo .
 
-# Create the canister locally
-echo "Creating canister locally..."
-dfx canister create consumer --network $DFX_NETWORK
+# Check if consumer.did exists, if not create a basic one
+if [ -f "/Users/ayanuali/development/rhinospider/canisters/consumer/consumer.did" ]; then
+  cp /Users/ayanuali/development/rhinospider/canisters/consumer/consumer.did .
+else
+  echo "Creating basic consumer.did file..."
+  cat > consumer.did << EOL
+service : {
+  getTopics : () -> (variant { ok: vec record { id: text; name: text; description: text; urlPatterns: vec text; aiConfig: record { apiKey: text; model: text; costLimits: record { maxDailyCost: float64; maxMonthlyCost: float64; maxConcurrent: nat } }; status: text; extractionRules: record { title: text; content: text; date: text; author: text; }; scrapingInterval: nat; lastScraped: int; activeHours: record { start: nat; end: nat }; maxRetries: nat; createdAt: int; siteTypeClassification: text; urlGenerationStrategy: text; articleUrlPatterns: opt vec text; contentIdentifiers: opt record { titleSelector: text; contentSelector: text; dateSelector: text; authorSelector: text }; paginationPatterns: opt vec text; excludePatterns: opt vec text }; err: variant { NotAuthorized; SystemError: text } });
+}
+EOL
+fi
 
-# Build the canister
-echo "Building consumer canister..."
-dfx build consumer --network $DFX_NETWORK
+# Build the canister locally
+echo "Building consumer canister locally..."
+dfx build
+
+# Check if the build was successful
+if [ ! -f ".dfx/local/canisters/consumer/consumer.wasm" ]; then
+  echo "Error: Failed to build consumer canister"
+  exit 1
+fi
 
 # Install the wasm to the existing canister
 echo "Installing to existing canister: $CONSUMER_CANISTER_ID"
-dfx canister install consumer --network $DFX_NETWORK --mode=upgrade --wasm .dfx/$DFX_NETWORK/canisters/consumer/consumer.wasm --id $CONSUMER_CANISTER_ID
+dfx canister install consumer --network $DFX_NETWORK --mode=upgrade --yes --argument '()' --canister-id $CONSUMER_CANISTER_ID
 
 # Clean up
 cd ..

@@ -106,7 +106,6 @@ actor Admin {
     private let STORAGE_CANISTER_ID: Text = "hhaip-uiaaa-aaaao-a4khq-cai";
     private let CONSUMER_CANISTER_ID: Text = "tgyl5-yyaaa-aaaaj-az4wq-cai";
     private let USER_PRINCIPAL_ID: Text = "p6gaf-qjt3x-6q6ci-ro7nd-aklhp-6hgfo-4dljo-busl6-3ftgp-iliyi-zqe";
-    private let ADMIN_PRINCIPAL_ID: Text = "t52au-jmmys-xpd7e-f2cc7-xgsya-2ajbl-22leo-e7hep-kclwp-kqzoq-jae";
 
     // Stable storage
     private stable var stableUsers : [(Principal, User)] = [];
@@ -142,10 +141,6 @@ actor Admin {
         let userPrincipal = Principal.fromText(USER_PRINCIPAL_ID);
         admins.put(userPrincipal, true);
         
-        // Add the admin principal to admins
-        let adminPrincipal = Principal.fromText(ADMIN_PRINCIPAL_ID);
-        admins.put(adminPrincipal, true);
-        
         // Add the user as a SuperAdmin
         let user : User = {
             principal = userPrincipal;
@@ -155,17 +150,7 @@ actor Admin {
         };
         users.put(userPrincipal, user);
         
-        // Add the admin as a SuperAdmin
-        let admin : User = {
-            principal = adminPrincipal;
-            role = #SuperAdmin;
-            addedBy = adminPrincipal;
-            addedAt = Time.now();
-        };
-        users.put(adminPrincipal, admin);
-        
         Debug.print("Added user principal to admins: " # USER_PRINCIPAL_ID);
-        Debug.print("Added admin principal to admins: " # ADMIN_PRINCIPAL_ID);
         initialized := true;
     };
 
@@ -213,16 +198,9 @@ actor Admin {
             return true;
         };
         
-        // Explicitly allow the admin principal
-        if (Text.equal(callerStr, ADMIN_PRINCIPAL_ID)) {
-            Debug.print("Admin principal explicitly authorized");
-            return true;
-        };
-        
-        // Allow anonymous principal for testing
         if (Principal.isAnonymous(caller)) {
-            Debug.print("Anonymous principal authorized for testing");
-            return true;
+            Debug.print("Anonymous caller rejected");
+            return false;
         };
         
         switch (users.get(caller)) {

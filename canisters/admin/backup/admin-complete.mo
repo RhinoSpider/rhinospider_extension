@@ -12,10 +12,9 @@ import Option "mo:base/Option";
 import Debug "mo:base/Debug";
 import Array "mo:base/Array";
 import Bool "mo:base/Bool";
-import Error "mo:base/Error";
 
 actor Admin {
-    // Types exactly matching the admin app's expectations
+    // Types
     type UserRole = {
         #SuperAdmin;
         #Admin;
@@ -29,16 +28,11 @@ actor Admin {
         addedAt: Time.Time;
     };
 
-    type ExtractionField = {
-        name: Text;
-        fieldType: Text;
-        required: Bool;
-        aiPrompt: ?Text;
-    };
-
-    type ExtractionRules = {
-        fields: [ExtractionField];
-        customPrompt: ?Text;
+    type ContentIdentifiers = {
+        titleSelector: Text;
+        contentSelector: Text;
+        dateSelector: Text;
+        authorSelector: Text;
     };
 
     type CostLimits = {
@@ -51,13 +45,13 @@ actor Admin {
         apiKey: Text;
         model: Text;
         costLimits: CostLimits;
-        temperature: Float;
-        maxTokens: Nat;
     };
 
-    type ContentIdentifiers = {
-        selectors: [Text];
-        keywords: [Text];
+    type ExtractionRules = {
+        title: Text;
+        content: Text;
+        date: Text;
+        author: Text;
     };
 
     type ScrapingTopic = {
@@ -65,36 +59,39 @@ actor Admin {
         name: Text;
         description: Text;
         urlPatterns: [Text];
+        aiConfig: AIConfig;
         status: Text;
         extractionRules: ExtractionRules;
-        aiConfig: AIConfig;
         scrapingInterval: Nat;
+        lastScraped: Int;
         activeHours: {
             start: Nat;
             end: Nat;
         };
         maxRetries: Nat;
+        createdAt: Int;
+        siteTypeClassification: Text;
+        urlGenerationStrategy: Text;
         articleUrlPatterns: ?[Text];
-        siteTypeClassification: ?Text;
         contentIdentifiers: ?ContentIdentifiers;
         paginationPatterns: ?[Text];
-        sampleArticleUrls: ?[Text];
-        urlGenerationStrategy: ?Text;
         excludePatterns: ?[Text];
-        createdAt: Int;
-        lastScraped: Int;
     };
 
     type ScrapedData = {
         id: Text;
+        topicId: Text;
         url: Text;
-        topic: Text;
+        title: Text;
         content: Text;
-        source: Text;
-        timestamp: Int;
-        client_id: Principal;
+        author: ?Text;
+        publishDate: ?Int;
+        scrapedAt: Int;
         status: Text;
-        scraping_time: Int;
+        metadata: ?{
+            #Json: Text;
+            #Cbor: [Nat8];
+        };
     };
 
     type StorageActor = actor {
@@ -102,72 +99,33 @@ actor Admin {
         getScrapedData : ([Text]) -> async Result.Result<[ScrapedData], Text>;
     };
 
-    // Constants
-    private let STORAGE_CANISTER_ID: Text = "hhaip-uiaaa-aaaao-a4khq-cai";
-    private let CONSUMER_CANISTER_ID: Text = "tgyl5-yyaaa-aaaaj-az4wq-cai";
-    private let USER_PRINCIPAL_ID: Text = "p6gaf-qjt3x-6q6ci-ro7nd-aklhp-6hgfo-4dljo-busl6-3ftgp-iliyi-zqe";
-    private let ADMIN_PRINCIPAL_ID: Text = "t52au-jmmys-xpd7e-f2cc7-xgsya-2ajbl-22leo-e7hep-kclwp-kqzoq-jae";
-
     // Stable storage
     private stable var stableUsers : [(Principal, User)] = [];
     private stable var stableAdmins : [(Principal, Bool)] = [];
     private stable var stableTopics : [(Text, ScrapingTopic)] = [];
     private stable var stableAIConfig : ?AIConfig = null;
-    private stable var initialized : Bool = false;
 
     // Runtime state
     private var users = HashMap.HashMap<Principal, User>(10, Principal.equal, Principal.hash);
     private var admins = HashMap.HashMap<Principal, Bool>(10, Principal.equal, Principal.hash);
     private var topics = HashMap.HashMap<Text, ScrapingTopic>(10, Text.equal, Text.hash);
     private var aiConfig : AIConfig = {
-        apiKey = "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";
+        apiKey = "default-api-key";
         model = "gpt-3.5-turbo";
         costLimits = {
             maxDailyCost = 10.0;
             maxMonthlyCost = 100.0;
             maxConcurrent = 5;
         };
-        temperature = 0.7;
-        maxTokens = 4000;
     };
+
+    // Constants
+    private let STORAGE_CANISTER_ID: Text = "hhaip-uiaaa-aaaao-a4khq-cai";
+    private let CONSUMER_CANISTER_ID: Text = "tgyl5-yyaaa-aaaaj-az4wq-cai";
+    private let USER_PRINCIPAL_ID: Text = "t52au-jmmys-xpd7e-f2cc7-xgsya-2ajbl-22leo-e7hep-kclwp-kqzoq-jae";
 
     // Canister references
     private let storage: StorageActor = actor(STORAGE_CANISTER_ID);
-
-    // Initialize admin
-    private func initializeAdmin() {
-        Debug.print("Initializing admin canister");
-        
-        // Add the user principal to admins
-        let userPrincipal = Principal.fromText(USER_PRINCIPAL_ID);
-        admins.put(userPrincipal, true);
-        
-        // Add the admin principal to admins
-        let adminPrincipal = Principal.fromText(ADMIN_PRINCIPAL_ID);
-        admins.put(adminPrincipal, true);
-        
-        // Add the user as a SuperAdmin
-        let user : User = {
-            principal = userPrincipal;
-            role = #SuperAdmin;
-            addedBy = userPrincipal;
-            addedAt = Time.now();
-        };
-        users.put(userPrincipal, user);
-        
-        // Add the admin as a SuperAdmin
-        let admin : User = {
-            principal = adminPrincipal;
-            role = #SuperAdmin;
-            addedBy = adminPrincipal;
-            addedAt = Time.now();
-        };
-        users.put(adminPrincipal, admin);
-        
-        Debug.print("Added user principal to admins: " # USER_PRINCIPAL_ID);
-        Debug.print("Added admin principal to admins: " # ADMIN_PRINCIPAL_ID);
-        initialized := true;
-    };
 
     // Lifecycle hooks
     system func preupgrade() {
@@ -187,19 +145,15 @@ actor Admin {
             case (null) {};
         };
 
-        // Always initialize admin on postupgrade
-        initializeAdmin();
+        // Ensure the user principal is always authorized
+        let userPrincipal = Principal.fromText(USER_PRINCIPAL_ID);
+        admins.put(userPrincipal, true);
     };
 
     // Authorization check
     private func _isAuthorized(caller: Principal) : Bool {
         let callerStr = Principal.toText(caller);
         Debug.print("Authorization check for caller: " # callerStr);
-        
-        // Always initialize if not already done
-        if (not initialized) {
-            initializeAdmin();
-        };
         
         // Allow consumer canister - using Text.equal for reliable comparison
         if (Text.equal(callerStr, CONSUMER_CANISTER_ID)) {
@@ -213,16 +167,9 @@ actor Admin {
             return true;
         };
         
-        // Explicitly allow the admin principal
-        if (Text.equal(callerStr, ADMIN_PRINCIPAL_ID)) {
-            Debug.print("Admin principal explicitly authorized");
-            return true;
-        };
-        
-        // Allow anonymous principal for testing
         if (Principal.isAnonymous(caller)) {
-            Debug.print("Anonymous principal authorized for testing");
-            return true;
+            Debug.print("Anonymous caller rejected");
+            return false;
         };
         
         switch (users.get(caller)) {
@@ -375,7 +322,6 @@ actor Admin {
                     articleUrlPatterns = topic.articleUrlPatterns;
                     contentIdentifiers = topic.contentIdentifiers;
                     paginationPatterns = topic.paginationPatterns;
-                    sampleArticleUrls = topic.sampleArticleUrls;
                     excludePatterns = topic.excludePatterns;
                 };
                 topics.put(id, updatedTopic);
@@ -385,69 +331,6 @@ actor Admin {
                 #err("Topic not found")
             };
         }
-    };
-
-    // Update last scraped time
-    public shared({ caller }) func updateLastScraped(id: Text): async Result.Result<(), Text> {
-        if (not _isAuthorized(caller)) {
-            return #err("Unauthorized");
-        };
-        
-        switch (topics.get(id)) {
-            case (?topic) {
-                let updatedTopic = {
-                    id = topic.id;
-                    name = topic.name;
-                    description = topic.description;
-                    urlPatterns = topic.urlPatterns;
-                    aiConfig = topic.aiConfig;
-                    status = topic.status;
-                    extractionRules = topic.extractionRules;
-                    scrapingInterval = topic.scrapingInterval;
-                    lastScraped = Time.now();
-                    activeHours = topic.activeHours;
-                    maxRetries = topic.maxRetries;
-                    createdAt = topic.createdAt;
-                    siteTypeClassification = topic.siteTypeClassification;
-                    urlGenerationStrategy = topic.urlGenerationStrategy;
-                    articleUrlPatterns = topic.articleUrlPatterns;
-                    contentIdentifiers = topic.contentIdentifiers;
-                    paginationPatterns = topic.paginationPatterns;
-                    sampleArticleUrls = topic.sampleArticleUrls;
-                    excludePatterns = topic.excludePatterns;
-                };
-                topics.put(id, updatedTopic);
-                #ok()
-            };
-            case (null) {
-                #err("Topic not found")
-            };
-        }
-    };
-
-    // Get scraped data
-    public shared({ caller }) func getScrapedData(topicIds: [Text]): async Result.Result<[ScrapedData], Text> {
-        if (not _isAuthorized(caller)) {
-            return #err("Unauthorized");
-        };
-        
-        try {
-            let result = await storage.getScrapedData(topicIds);
-            return result;
-        } catch (e) {
-            return #err("Error calling storage canister: " # Error.message(e));
-        };
-    };
-
-    // Test extraction
-    public shared({ caller }) func testExtraction(url: Text, topic: ScrapingTopic): async Result.Result<Text, Text> {
-        if (not _isAuthorized(caller)) {
-            return #err("Unauthorized");
-        };
-        
-        // This is just a placeholder - in a real implementation, this would
-        // actually test the extraction rules on the given URL
-        #ok("Extraction test successful. URL: " # url # ", Topic: " # topic.name)
     };
 
     // Create topic with request
@@ -462,12 +345,11 @@ actor Admin {
             end: Nat;
         };
         maxRetries: Nat;
-        siteTypeClassification: ?Text;
-        urlGenerationStrategy: ?Text;
+        siteTypeClassification: Text;
+        urlGenerationStrategy: Text;
         articleUrlPatterns: ?[Text];
         contentIdentifiers: ?ContentIdentifiers;
         paginationPatterns: ?[Text];
-        sampleArticleUrls: ?[Text];
         excludePatterns: ?[Text];
     };
 
@@ -496,7 +378,6 @@ actor Admin {
             articleUrlPatterns = request.articleUrlPatterns;
             contentIdentifiers = request.contentIdentifiers;
             paginationPatterns = request.paginationPatterns;
-            sampleArticleUrls = request.sampleArticleUrls;
             excludePatterns = request.excludePatterns;
         };
         

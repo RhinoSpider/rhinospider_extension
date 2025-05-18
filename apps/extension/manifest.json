@@ -5,7 +5,8 @@
   "description": "RhinoSpider Chrome Extension",
   "permissions": [
     "storage",
-    "tabs"
+    "tabs",
+    "downloads"
   ],
   "host_permissions": [
     "https://*.ic0.app/*",
@@ -39,7 +40,9 @@
         "node_modules/@dfinity/*",
         "declarations/*"
       ],
-      "matches": ["<all_urls>"]
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ]
 }

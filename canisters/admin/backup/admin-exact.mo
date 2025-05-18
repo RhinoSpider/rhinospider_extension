@@ -12,7 +12,6 @@ import Option "mo:base/Option";
 import Debug "mo:base/Debug";
 import Array "mo:base/Array";
 import Bool "mo:base/Bool";
-import Error "mo:base/Error";
 
 actor Admin {
     // Types exactly matching the admin app's expectations
@@ -102,18 +101,11 @@ actor Admin {
         getScrapedData : ([Text]) -> async Result.Result<[ScrapedData], Text>;
     };
 
-    // Constants
-    private let STORAGE_CANISTER_ID: Text = "hhaip-uiaaa-aaaao-a4khq-cai";
-    private let CONSUMER_CANISTER_ID: Text = "tgyl5-yyaaa-aaaaj-az4wq-cai";
-    private let USER_PRINCIPAL_ID: Text = "p6gaf-qjt3x-6q6ci-ro7nd-aklhp-6hgfo-4dljo-busl6-3ftgp-iliyi-zqe";
-    private let ADMIN_PRINCIPAL_ID: Text = "t52au-jmmys-xpd7e-f2cc7-xgsya-2ajbl-22leo-e7hep-kclwp-kqzoq-jae";
-
     // Stable storage
     private stable var stableUsers : [(Principal, User)] = [];
     private stable var stableAdmins : [(Principal, Bool)] = [];
     private stable var stableTopics : [(Text, ScrapingTopic)] = [];
     private stable var stableAIConfig : ?AIConfig = null;
-    private stable var initialized : Bool = false;
 
     // Runtime state
     private var users = HashMap.HashMap<Principal, User>(10, Principal.equal, Principal.hash);
@@ -131,43 +123,13 @@ actor Admin {
         maxTokens = 4000;
     };
 
+    // Constants
+    private let STORAGE_CANISTER_ID: Text = "hhaip-uiaaa-aaaao-a4khq-cai";
+    private let CONSUMER_CANISTER_ID: Text = "tgyl5-yyaaa-aaaaj-az4wq-cai";
+    private let USER_PRINCIPAL_ID: Text = "t52au-jmmys-xpd7e-f2cc7-xgsya-2ajbl-22leo-e7hep-kclwp-kqzoq-jae";
+
     // Canister references
     private let storage: StorageActor = actor(STORAGE_CANISTER_ID);
-
-    // Initialize admin
-    private func initializeAdmin() {
-        Debug.print("Initializing admin canister");
-        
-        // Add the user principal to admins
-        let userPrincipal = Principal.fromText(USER_PRINCIPAL_ID);
-        admins.put(userPrincipal, true);
-        
-        // Add the admin principal to admins
-        let adminPrincipal = Principal.fromText(ADMIN_PRINCIPAL_ID);
-        admins.put(adminPrincipal, true);
-        
-        // Add the user as a SuperAdmin
-        let user : User = {
-            principal = userPrincipal;
-            role = #SuperAdmin;
-            addedBy = userPrincipal;
-            addedAt = Time.now();
-        };
-        users.put(userPrincipal, user);
-        
-        // Add the admin as a SuperAdmin
-        let admin : User = {
-            principal = adminPrincipal;
-            role = #SuperAdmin;
-            addedBy = adminPrincipal;
-            addedAt = Time.now();
-        };
-        users.put(adminPrincipal, admin);
-        
-        Debug.print("Added user principal to admins: " # USER_PRINCIPAL_ID);
-        Debug.print("Added admin principal to admins: " # ADMIN_PRINCIPAL_ID);
-        initialized := true;
-    };
 
     // Lifecycle hooks
     system func preupgrade() {
@@ -187,19 +149,15 @@ actor Admin {
             case (null) {};
         };
 
-        // Always initialize admin on postupgrade
-        initializeAdmin();
+        // Ensure the user principal is always authorized
+        let userPrincipal = Principal.fromText(USER_PRINCIPAL_ID);
+        admins.put(userPrincipal, true);
     };
 
     // Authorization check
     private func _isAuthorized(caller: Principal) : Bool {
         let callerStr = Principal.toText(caller);
         Debug.print("Authorization check for caller: " # callerStr);
-        
-        // Always initialize if not already done
-        if (not initialized) {
-            initializeAdmin();
-        };
         
         // Allow consumer canister - using Text.equal for reliable comparison
         if (Text.equal(callerStr, CONSUMER_CANISTER_ID)) {
@@ -213,16 +171,9 @@ actor Admin {
             return true;
         };
         
-        // Explicitly allow the admin principal
-        if (Text.equal(callerStr, ADMIN_PRINCIPAL_ID)) {
-            Debug.print("Admin principal explicitly authorized");
-            return true;
-        };
-        
-        // Allow anonymous principal for testing
         if (Principal.isAnonymous(caller)) {
-            Debug.print("Anonymous principal authorized for testing");
-            return true;
+            Debug.print("Anonymous caller rejected");
+            return false;
         };
         
         switch (users.get(caller)) {

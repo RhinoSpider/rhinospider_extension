@@ -85,7 +85,11 @@ actor ConsumerBackend {
             
             Debug.print("Consumer getTopics: Calling admin canister at " # ADMIN_CANISTER_ID);
             
-            // Try calling getTopics directly first
+            // Get our own principal - this is the correct way to identify ourselves
+            let selfPrincipal = Principal.fromActor(ConsumerBackend);
+            Debug.print("Consumer getTopics: Self principal: " # Principal.toText(selfPrincipal));
+            
+            // Try direct getTopics call first - this should work if admin recognizes our principal
             Debug.print("Consumer getTopics: Trying direct getTopics call");
             let directResult = await admin.getTopics();
             
@@ -100,9 +104,9 @@ actor ConsumerBackend {
                 };
             };
             
-            // Fall back to getTopics_with_caller
+            // Fall back to getTopics_with_caller method
             Debug.print("Consumer getTopics: Falling back to getTopics_with_caller");
-            let result = await admin.getTopics_with_caller(caller);
+            let result = await admin.getTopics_with_caller(selfPrincipal);
             
             switch(result) {
                 case (#ok(topics)) {
@@ -113,8 +117,8 @@ actor ConsumerBackend {
                     #ok(topics)
                 };
                 case (#err(msg)) {
-                    Debug.print("Consumer getTopics: Admin returned error: " # msg);
-                    #err(#SystemError(msg))
+                    Debug.print("Consumer getTopics: Both methods failed. Last error: " # msg);
+                    #err(#SystemError("Failed to get topics from admin canister. Please check authorization."))
                 };
             }
         } catch (error) {

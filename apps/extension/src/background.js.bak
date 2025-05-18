@@ -1820,7 +1820,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                                 topicsTimestamp: Date.now()
                             });
                             
-                            logger.log(`Empty topics array initialized (${topics.length} topics)`);
+                            logger.log(`Fallback topics loaded (${topics.length} topics)`);
                         }
                         
                         // Start scraping
@@ -1840,7 +1840,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                             topicsTimestamp: Date.now()
                         });
                         
-                        logger.log(`Empty topics array initialized (${topics.length} topics)`);
+                        logger.log(`Fallback topics loaded (${topics.length} topics)`);
                         
                         // Start scraping
                         startScraping().then(() => {
@@ -2056,7 +2056,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                                 
                                 // If no topics were loaded, use mock topics as fallback
                                 if (!loadedTopics || loadedTopics.length === 0) {
-                                    logger.log('No topics available from proxy, continuing with empty topics array');                                
+                                    logger.log('No topics loaded from proxy, using fallback mock topics');                                
                                     topics = loadedTopics;
                                     
                                     // Cache the fallback topics
@@ -2065,7 +2065,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                                         topicsTimestamp: Date.now()
                                     });
                                     
-                                    logger.log(`Empty topics array initialized (${topics.length} topics)`);
+                                    logger.log(`Fallback topics loaded (${topics.length} topics)`);
                                 }
                                 
                                 // Schedule scraping to start after a short delay
@@ -2077,7 +2077,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                                 logger.error('Error loading topics after login:', error);
                                 
                                 // Use mock topics as fallback in case of error
-                                logger.log('Error loading topics, continuing with empty topics array');                                
+                                logger.log('Error loading topics, using fallback mock topics');                                
                                 
                                 // Cache the fallback topics
                                 chrome.storage.local.set({
@@ -2085,7 +2085,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                                     topicsTimestamp: Date.now()
                                 });
                                 
-                                logger.log(`Empty topics array initialized (${topics.length} topics)`);
+                                logger.log(`Fallback topics loaded (${topics.length} topics)`);
                                 
                                 // Schedule scraping to start after a short delay
                                 setTimeout(async () => {
