@@ -42,13 +42,9 @@ echo "Created temporary file: $TEMP_FILE"
 cat > $TEMP_FILE << EOL
 (
   record {
-    model = "gpt-3.5-turbo";
-    costLimits = record {
-      maxConcurrent = 5;
-      maxDailyCost = 10.0;
-      maxMonthlyCost = 100.0;
-    };
-    apiKey = "$API_KEY";
+    apiKey = opt "$API_KEY";
+    model = null;
+    costLimits = null;
   }
 )
 EOL

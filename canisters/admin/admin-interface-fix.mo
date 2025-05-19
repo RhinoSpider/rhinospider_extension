@@ -435,12 +435,27 @@ actor Admin {
         #ok(aiConfig)
     };
 
-    public shared({ caller }) func updateAIConfig(config: AIConfig) : async Result.Result<(), Text> {
+    // Update AI Config with request
+    type UpdateAIConfigRequest = {
+        apiKey: ?Text;
+        model: ?Text;
+        costLimits: ?CostLimits;
+    };
+
+    public shared({ caller }) func updateAIConfig(request: UpdateAIConfigRequest) : async Result.Result<AIConfig, Text> {
         if (not _isAuthorized(caller)) {
             return #err("Unauthorized");
         };
-        aiConfig := config;
-        #ok()
+        
+        // Update only the fields that are provided
+        let updatedConfig: AIConfig = {
+            apiKey = switch (request.apiKey) { case (?k) { k }; case null { aiConfig.apiKey } };
+            model = switch (request.model) { case (?m) { m }; case null { aiConfig.model } };
+            costLimits = switch (request.costLimits) { case (?c) { c }; case null { aiConfig.costLimits } };
+        };
+        
+        aiConfig := updatedConfig;
+        #ok(aiConfig)
     };
 
     // Topic status management
