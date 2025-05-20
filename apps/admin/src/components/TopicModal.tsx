@@ -316,6 +316,24 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
         }
       }
 
+      // Ensure arrays are properly wrapped for backend format
+      // Backend expects arrays of arrays for these fields
+      const wrappedExcludePatterns = formData.excludePatterns && formData.excludePatterns.length > 0
+        ? [formData.excludePatterns.filter(p => p.trim() !== '')]
+        : undefined;
+      
+      const wrappedArticleUrlPatterns = formData.articleUrlPatterns && formData.articleUrlPatterns.length > 0
+        ? [formData.articleUrlPatterns.filter(p => p.trim() !== '')]
+        : undefined;
+      
+      const wrappedPaginationPatterns = formData.paginationPatterns && formData.paginationPatterns.length > 0
+        ? [formData.paginationPatterns.filter(p => p.trim() !== '')]
+        : undefined;
+      
+      console.log('Wrapped excludePatterns for backend:', wrappedExcludePatterns);
+      console.log('Wrapped articleUrlPatterns for backend:', wrappedArticleUrlPatterns);
+      console.log('Wrapped paginationPatterns for backend:', wrappedPaginationPatterns);
+
       const newTopic: ScrapingTopic = {
         id: formData.id!,
         name: formData.name!,
@@ -333,13 +351,18 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
         scrapingInterval: formData.scrapingInterval,
         activeHours: formData.activeHours,
         maxRetries: formData.maxRetries,
-        articleUrlPatterns: formData.articleUrlPatterns,
+        articleUrlPatterns: wrappedArticleUrlPatterns,
         siteTypeClassification: formData.siteTypeClassification,
-        contentIdentifiers: formData.contentIdentifiers,
-        paginationPatterns: formData.paginationPatterns,
+        // Format contentIdentifiers as an optional record by wrapping it in an array
+        // Use the actual values from the form data
+        contentIdentifiers: [{
+          selectors: formData.contentIdentifiers?.selectors?.filter(s => typeof s === 'string' && s.trim() !== '') || [],
+          keywords: formData.contentIdentifiers?.keywords?.filter(k => typeof k === 'string' && k.trim() !== '') || []
+        }],
+        paginationPatterns: wrappedPaginationPatterns,
         sampleArticleUrls: formData.sampleArticleUrls,
         urlGenerationStrategy: formData.urlGenerationStrategy,
-        excludePatterns: formData.excludePatterns
+        excludePatterns: wrappedExcludePatterns
       };
 
       await onSave?.(newTopic);

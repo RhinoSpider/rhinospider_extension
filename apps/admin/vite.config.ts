@@ -32,11 +32,30 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        entryFileNames: `assets/[name]-${Date.now()}-[hash].js`,
-        chunkFileNames: `assets/[name]-${Date.now()}-[hash].js`,
-        assetFileNames: `assets/[name]-[hash].[ext]`,
+        entryFileNames: `assets/[name].[hash].js`,
+        chunkFileNames: `assets/[name].[hash].js`,
+        assetFileNames: `assets/[name].[hash].[ext]`,
+        manualChunks: (id) => {
+          // Split node_modules into separate chunks
+          if (id.includes('node_modules')) {
+            // Create a chunk for each major dependency
+            if (id.includes('react')) return 'vendor-react';
+            if (id.includes('@dfinity')) return 'vendor-dfinity';
+            if (id.includes('axios')) return 'vendor-axios';
+            return 'vendor'; // Other dependencies
+          }
+          // Split app code into logical chunks
+          if (id.includes('/components/')) return 'ui';
+          if (id.includes('/pages/')) return 'pages';
+          if (id.includes('/hooks/')) return 'hooks';
+          if (id.includes('/utils/')) return 'utils';
+        },
       },
     },
+    // Enable source maps for production
+    sourcemap: true,
+    // Use default minification (esbuild)
+    minify: true,
   },
   optimizeDeps: {
     esbuildOptions: {

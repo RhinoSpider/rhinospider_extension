@@ -170,14 +170,33 @@ export async function createTopic(topic: CreateTopicRequest): Promise<ScrapingTo
     siteTypeClassification: topic.siteTypeClassification || 'blog',
     urlGenerationStrategy: topic.urlGenerationStrategy || 'pattern_based',
     // Filter out empty patterns and store as a local field
+    // Wrap articleUrlPatterns in an additional array to match backend format
     articleUrlPatterns: topic.articleUrlPatterns && topic.articleUrlPatterns.length > 0 
-      ? topic.articleUrlPatterns.filter(p => typeof p === 'string' ? p.trim() !== '' : false) 
+      ? [topic.articleUrlPatterns.filter(p => typeof p === 'string' ? p.trim() !== '' : false)]
       : undefined,
     // Filter out empty selectors and keywords
     contentIdentifiers: topic.contentIdentifiers ? {
       selectors: topic.contentIdentifiers.selectors.filter(s => typeof s === 'string' ? s.trim() !== '' : false),
       keywords: topic.contentIdentifiers.keywords.filter(k => typeof k === 'string' ? k.trim() !== '' : false)
-    } : undefined
+    } : undefined,
+    // Format exclude patterns with wildcards if they don't already have them
+    // Wrap excludePatterns in an additional array to match backend format
+    excludePatterns: topic.excludePatterns && topic.excludePatterns.length > 0
+      ? [topic.excludePatterns
+          .filter(p => typeof p === 'string' ? p.trim() !== '' : false)
+          .map(pattern => {
+            // If the pattern doesn't already have wildcards, add them
+            if (pattern.startsWith('*') || pattern.endsWith('*')) {
+              return pattern;
+            } else {
+              return `*${pattern}*`;
+            }
+          })]
+      : undefined,
+    // Wrap paginationPatterns in an additional array to match backend format
+    paginationPatterns: topic.paginationPatterns && topic.paginationPatterns.length > 0
+      ? [topic.paginationPatterns.filter(p => typeof p === 'string' ? p.trim() !== '' : false)]
+      : undefined
   };
   
   console.log('Create request:', JSON.stringify(createRequest, replaceBigInt));
@@ -248,6 +267,19 @@ export async function updateTopic(id: string, topic: ScrapingTopic): Promise<Scr
     // Add paginationPatterns field - ALWAYS include this field
     paginationPatterns: topic.paginationPatterns && topic.paginationPatterns.length > 0
       ? [topic.paginationPatterns.filter(p => typeof p === 'string' ? p.trim() !== '' : false)]
+      : [],
+    // Format exclude patterns with wildcards if they don't already have them
+    excludePatterns: topic.excludePatterns && topic.excludePatterns.length > 0
+      ? [topic.excludePatterns
+          .filter(p => typeof p === 'string' ? p.trim() !== '' : false)
+          .map(pattern => {
+            // If the pattern doesn't already have wildcards, add them
+            if (pattern.startsWith('*') || pattern.endsWith('*')) {
+              return pattern;
+            } else {
+              return `*${pattern}*`;
+            }
+          })]
       : []
   };
 

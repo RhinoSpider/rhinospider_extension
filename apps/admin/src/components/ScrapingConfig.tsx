@@ -300,15 +300,7 @@ export const ScrapingConfig: React.FC = () => {
         console.log('Topic data:', JSON.stringify(topic, null, 2));
 
         // Format contentIdentifiers correctly for creation
-        const contentIdentifiersFormatted = topic.contentIdentifiers ? 
-          {
-            selectors: Array.isArray(topic.contentIdentifiers.selectors) 
-              ? topic.contentIdentifiers.selectors.filter((s: any) => typeof s === 'string' && s.trim() !== '') 
-              : [],
-            keywords: Array.isArray(topic.contentIdentifiers.keywords) 
-              ? topic.contentIdentifiers.keywords.filter((k: any) => typeof k === 'string' && k.trim() !== '') 
-              : []
-          } : null;
+        // Don't format contentIdentifiers here - we'll handle it in the createRequest
 
         const createRequest = {
           id: topic.id,
@@ -344,31 +336,42 @@ export const ScrapingConfig: React.FC = () => {
           maxRetries: topic.maxRetries || 3,
           siteTypeClassification: topic.siteTypeClassification || null,
           urlGenerationStrategy: topic.urlGenerationStrategy || null,
-          articleUrlPatterns: topic.articleUrlPatterns && 
-            topic.articleUrlPatterns.some((p: any) => typeof p === 'string' && p.trim() !== '')
-              ? topic.articleUrlPatterns
-                  .filter((p: any) => typeof p === 'string' && p.trim() !== '')
-                  .map((p: any) => p.trim())
-              : null,
-          contentIdentifiers: contentIdentifiersFormatted,
-          paginationPatterns: topic.paginationPatterns && 
-            topic.paginationPatterns.some((p: any) => typeof p === 'string' && p.trim() !== '')
-              ? topic.paginationPatterns
-                  .filter((p: any) => typeof p === 'string' && p.trim() !== '')
-                  .map((p: any) => p.trim())
-              : null,
-          excludePatterns: topic.excludePatterns && 
-            topic.excludePatterns.some((p: any) => typeof p === 'string' && p.trim() !== '')
-              ? topic.excludePatterns
-                  .filter((p: any) => typeof p === 'string' && p.trim() !== '')
-                  .map((p: any) => p.trim())
-              : null,
-          // For createTopic, sampleArticleUrls should be DOUBLE-WRAPPED for opt vec text
+          // Handle articleUrlPatterns - check if it's already wrapped in an array
+          articleUrlPatterns: topic.articleUrlPatterns ? 
+            (Array.isArray(topic.articleUrlPatterns[0]) ? 
+              // Already wrapped in an array, use as is
+              topic.articleUrlPatterns : 
+              // Wrap in an array if not already wrapped
+              [topic.articleUrlPatterns.filter((p: any) => typeof p === 'string' && p.trim() !== '').map((p: any) => p.trim())]) : 
+            [],
+          // Format contentIdentifiers as an optional record by wrapping it in an array
+          // Use the actual values from the topic data
+          contentIdentifiers: [{
+            selectors: topic.contentIdentifiers?.selectors?.filter((s: any) => typeof s === 'string' && s.trim() !== '') || [],
+            keywords: topic.contentIdentifiers?.keywords?.filter((k: any) => typeof k === 'string' && k.trim() !== '') || []
+          }],
+          // Handle paginationPatterns - check if it's already wrapped in an array
+          paginationPatterns: topic.paginationPatterns ? 
+            (Array.isArray(topic.paginationPatterns[0]) ? 
+              // Already wrapped in an array, use as is
+              topic.paginationPatterns : 
+              // Wrap in an array if not already wrapped
+              [topic.paginationPatterns.filter((p: any) => typeof p === 'string' && p.trim() !== '').map((p: any) => p.trim())]) : 
+            [],
+          // Handle excludePatterns - check if it's already wrapped in an array
+          excludePatterns: topic.excludePatterns ? 
+            (Array.isArray(topic.excludePatterns[0]) ? 
+              // Already wrapped in an array, use as is
+              topic.excludePatterns : 
+              // Wrap in an array if not already wrapped
+              [topic.excludePatterns.filter((p: any) => typeof p === 'string' && p.trim() !== '').map((p: any) => p.trim())]) : 
+            [],
+          // For createTopic, sampleArticleUrls should be WRAPPED for opt vec text
           sampleArticleUrls: topic.sampleArticleUrls && 
             topic.sampleArticleUrls.some((url: any) => typeof url === 'string' && url.trim() !== '')
-              ? [[topic.sampleArticleUrls
+              ? [topic.sampleArticleUrls
                   .filter((url: any) => typeof url === 'string' && url.trim() !== '')
-                  .map((url: any) => url.trim())]]
+                  .map((url: any) => url.trim())]
               : []
         };
 
