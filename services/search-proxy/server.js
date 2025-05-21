@@ -17,8 +17,24 @@ const PORT = process.env.PORT || 3002;
 // Apply security middleware
 app.use(helmet());
 
-// Disable CORS in the application since nginx is handling it
-// app.use(cors());
+// Enable CORS directly in the application for Chrome extension access
+app.use(cors({
+  origin: '*', // Allow all origins to ensure the extension can access it
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-device-id'],
+  exposedHeaders: ['Access-Control-Allow-Origin'],
+  credentials: false, // Set to false to avoid preflight issues
+  preflightContinue: false,
+  optionsSuccessStatus: 204
+}));
+
+// Add additional headers to ensure CORS works properly
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-device-id');
+  next();
+});
 
 
 app.use(express.json());

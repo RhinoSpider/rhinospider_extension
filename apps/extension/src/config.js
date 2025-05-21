@@ -1,43 +1,45 @@
-// Configuration for the extension
-export const config = {
-    // Canister IDs
-    canisters: {
-        // Use the consumer canister ID from environment
-        consumer: import.meta.env.VITE_CONSUMER_CANISTER_ID,
-        // Storage canister ID - same as used in the admin app
-        storage: import.meta.env.VITE_STORAGE_CANISTER_ID || 'hhaip-uiaaa-aaaao-a4khq-cai',
-    },
+/**
+ * Configuration
+ * 
+ * This file contains the configuration for the extension.
+ */
+
+const config = {
+  // IC Proxy configuration
+  icProxy: {
+    // IC Proxy URL (with fallback to HTTP if HTTPS fails)
+    url: import.meta.env.VITE_PROXY_URL || 'https://ic-proxy.rhinospider.com',
     
-    // Network configuration
-    network: {
-        local: {
-            host: 'http://localhost:8000',
-        },
-        ic: {
-            host: import.meta.env.VITE_IC_HOST || 'https://icp0.io',
-        }
-    },
+    // Alternative HTTP URL for fallback
+    httpFallbackUrl: 'http://ic-proxy.rhinospider.com',
     
-    // Internet Identity URL
-    ii_url: import.meta.env.VITE_II_URL || 'https://identity.ic0.app',
+    // API Key for the IC Proxy
+    apiKey: import.meta.env.VITE_PROXY_API_KEY || 'test-api-key'
+  },
+  
+  // Search Proxy configuration
+  searchProxy: {
+    // Search Proxy URL (with fallback to HTTP if HTTPS fails)
+    url: import.meta.env.VITE_SEARCH_PROXY_URL || 'https://search-proxy.rhinospider.com',
     
-    // Proxy server configuration
-    proxy: {
-        // Use the IC proxy URL for operations
-        url: import.meta.env.VITE_PROXY_URL || 'https://ic-proxy.rhinospider.com',
-        // No longer using API password
-    },
+    // Alternative HTTP URL for fallback
+    httpFallbackUrl: 'http://search-proxy.rhinospider.com',
     
-    // Direct storage server configuration
-    directStorage: {
-        // Use a specific URL for direct storage API
-        url: import.meta.env.VITE_DIRECT_STORAGE_URL || 'http://143.244.133.154:3002',
-        // No longer using API password
-    },
+    // API Key for the Search Proxy
+    apiKey: import.meta.env.VITE_SEARCH_PROXY_API_KEY || 'test-api-key'
+  },
+  
+  // Direct Storage configuration
+  directStorage: {
+    // Direct Storage URL (with fallback to HTTP if HTTPS fails)
+    url: import.meta.env.VITE_DIRECT_STORAGE_URL || 'https://ic-proxy.rhinospider.com',
     
-    // Network
-    dfx_network: import.meta.env.VITE_DFX_NETWORK || 'local',
+    // Alternative HTTP URL for fallback
+    httpFallbackUrl: 'http://ic-proxy.rhinospider.com',
     
-    // Scraper service
-    scraper_url: import.meta.env.VITE_SCRAPER_URL
+    // API Key for Direct Storage
+    apiKey: import.meta.env.VITE_DIRECT_STORAGE_API_KEY || 'test-api-key'
+  }
 };
+
+export default config;

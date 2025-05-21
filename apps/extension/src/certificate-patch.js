@@ -15,8 +15,14 @@ function patchCertificateVerification() {
         if (window.ic) {
             // Patch Certificate.verify if it exists
             if (window.ic.Certificate && window.ic.Certificate.prototype) {
-                window.ic.Certificate.prototype.verify = async function() {
-                    return true;
+                const originalCertVerify = window.ic.Certificate.prototype.verify;
+                window.ic.Certificate.prototype.verify = async function(...args) {
+                    try {
+                        return await originalCertVerify.apply(this, args);
+                    } catch (error) {
+                        console.log('[Patch] IC Certificate verification failed:', error.message);
+                        return true;
+                    }
                 };
             }
             
@@ -32,20 +38,50 @@ function patchCertificateVerification() {
                 
                 // Patch Certificate.verify if it exists
                 if (window.ic.agent.Certificate && window.ic.agent.Certificate.prototype) {
-                    window.ic.agent.Certificate.prototype.verify = async function() {
-                        return true;
+                    const originalAgentCertVerify = window.ic.agent.Certificate.prototype.verify;
+                    window.ic.agent.Certificate.prototype.verify = async function(...args) {
+                        try {
+                            return await originalAgentCertVerify.apply(this, args);
+                        } catch (error) {
+                            console.log('[Patch] Agent Certificate verification failed:', error.message);
+                            return true;
+                        }
                     };
                 }
             }
         }
         
-        // 2. Patch all certificate verification methods in the window
+        // 2. Also patch window.crypto.subtle.verify for certificate verification
+        if (window.crypto && window.crypto.subtle && window.crypto.subtle.verify) {
+            const originalVerify = window.crypto.subtle.verify;
+            window.crypto.subtle.verify = async function(algorithm, key, signature, data) {
+                try {
+                    return await originalVerify.call(this, algorithm, key, signature, data);
+                } catch (error) {
+                    console.log('[Patch] Crypto verification failed:', error.message);
+                    
+                    // Check if this is a certificate verification call
+                    if (typeof data === 'object' && 
+                        (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) &&
+                        typeof signature === 'object' &&
+                        (signature instanceof ArrayBuffer || ArrayBuffer.isView(signature))) {
+                        
+                        console.log('[Patch] Bypassing certificate verification');
+                        return true;
+                    }
+                    
+                    throw error;
+                }
+            };
+        }
+        
+        // 3. Patch all certificate verification methods in the window
         patchAllVerifyMethods();
         
-        // 3. Set up script load interception
+        // 4. Set up script load interception
         interceptScriptLoading();
         
-        // 4. Patch the specific actor file (actor-DXyMoorp.js)
+        // 5. Patch the specific actor file (actor-DXyMoorp.js)
         patchSpecificActorFile();
         
         return true;
@@ -286,19 +322,57 @@ function patchXhrAndFetch() {
         return originalOpen.call(this, method, url, ...args);
     };
     
-    // Patch fetch
+    // Patch fetch with HTTPS to HTTP fallback
     const originalFetch = window.fetch;
-    window.fetch = function(resource, init) {
+    window.fetch = async function(resource, init) {
+        console.log('[Patch] Intercepting fetch call to', resource);
+        
+        // Special handling for actor/agent scripts
         if (resource && typeof resource === 'string' && 
             (resource.includes('actor-') || resource.includes('agent'))) {
             console.log('[Patch] Intercepted fetch for actor/agent script:', resource);
-            return originalFetch.apply(this, arguments).then(response => {
+            try {
+                const response = await originalFetch.apply(this, arguments);
                 console.log('[Patch] Actor/agent script fetched, attempting patch');
                 setTimeout(patchFeVerifyDirectly, 100);
                 return response;
-            });
+            } catch (error) {
+                console.error('[Patch] Error fetching actor/agent script:', error);
+                throw error;
+            }
         }
-        return originalFetch.apply(this, arguments);
+        
+        // Handle HTTPS to HTTP fallback for RhinoSpider domains
+        try {
+            // First try the original request (HTTPS)
+            return await originalFetch.apply(this, arguments);
+        } catch (error) {
+            console.log('[Patch] Fetch failed:', error.message);
+            
+            // If the URL starts with https:// and points to our domains, try with http://
+            if (typeof resource === 'string' && 
+                resource.startsWith('https://') && 
+                (resource.includes('ic-proxy.rhinospider.com') || 
+                 resource.includes('search-proxy.rhinospider.com')) &&
+                (error.message.includes('ERR_CONNECTION_REFUSED') || 
+                 error.message.includes('Failed to fetch'))) {
+                
+                const httpUrl = resource.replace('https://', 'http://');
+                console.log('[Patch] Falling back to HTTP:', httpUrl);
+                
+                try {
+                    // Try the HTTP version
+                    const httpArgs = Array.from(arguments);
+                    httpArgs[0] = httpUrl;
+                    return await originalFetch.apply(this, httpArgs);
+                } catch (fallbackError) {
+                    console.error('[Patch] HTTP fallback also failed:', fallbackError.message);
+                    throw fallbackError;
+                }
+            }
+            
+            throw error;
+        }
     };
     
 

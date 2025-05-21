@@ -8,10 +8,23 @@
     "tabs",
     "downloads"
   ],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content-script.js"],
+      "run_at": "document_idle"
+    }
+  ],
   "host_permissions": [
     "https://*.ic0.app/*",
     "https://icp0.io/*",
-    "https://identity.ic0.app/*"
+    "https://identity.ic0.app/*",
+    "https://ic-proxy.rhinospider.com/*",
+    "http://ic-proxy.rhinospider.com/*",
+    "https://search-proxy.rhinospider.com/*",
+    "http://search-proxy.rhinospider.com/*",
+    "http://143.244.133.154:3001/*",
+    "http://143.244.133.154:3002/*"
   ],
   "background": {
     "service_worker": "background.js",
@@ -37,6 +50,7 @@
         "assets/*",
         "src/*",
         "certificate-patch.js",
+        "connection-test.html",
         "node_modules/@dfinity/*",
         "declarations/*"
       ],

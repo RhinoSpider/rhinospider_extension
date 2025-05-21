@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RhinoSpider Connection Test</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      line-height: 1.6;
+    }
+    h1 {
+      color: #333;
+      border-bottom: 2px solid #eee;
+      padding-bottom: 10px;
+    }
+    .card {
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .button {
+      background-color: #4CAF50;
+      border: none;
+      color: white;
+      padding: 10px 20px;
+      text-align: center;
+      text-decoration: none;
+      display: inline-block;
+      font-size: 16px;
+      margin: 4px 2px;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    .button:disabled {
+      background-color: #cccccc;
+      cursor: not-allowed;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 20px;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: left;
+    }
+    th {
+      background-color: #f2f2f2;
+    }
+    .success {
+      background-color: #e6ffe6;
+    }
+    .failure {
+      background-color: #ffe6e6;
+    }
+    .loading {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(0,0,0,0.3);
+      border-radius: 50%;
+      border-top-color: #4CAF50;
+      animation: spin 1s ease-in-out infinite;
+      margin-left: 10px;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .hidden {
+      display: none;
+    }
+    .error {
+      color: #ff0000;
+      background-color: #ffe6e6;
+      padding: 10px;
+      border-radius: 4px;
+      margin-bottom: 20px;
+    }
+    .info {
+      color: #0066cc;
+      background-color: #e6f2ff;
+      padding: 10px;
+      border-radius: 4px;
+      margin-bottom: 20px;
+    }
+    .recommended {
+      font-weight: bold;
+      color: #4CAF50;
+    }
+  </style>
+</head>
+<body>
+  <h1>RhinoSpider Connection Test</h1>
+  
+  <div class="card">
+    <h2>Connection Test Tool</h2>
+    <p>This tool tests connections to the RhinoSpider proxy servers using all available methods:</p>
+    <ul>
+      <li>HTTPS with domain name (preferred for Chrome Store compliance)</li>
+      <li>HTTP with domain name (fallback if HTTPS fails)</li>
+      <li>Direct IP connection (last resort fallback)</li>
+    </ul>
+    <button id="testButton" class="button">Run Connection Test</button>
+    <span id="loading" class="loading hidden"></span>
+  </div>
+  
+  <div id="results" class="card hidden">
+    <h2>Test Results</h2>
+    <div id="resultsContent"></div>
+  </div>
+  
+  <div class="card">
+    <h2>Connection Troubleshooting</h2>
+    <p>If you're experiencing connection issues, try the following:</p>
+    <ol>
+      <li>Check if your DNS is resolving the domains correctly</li>
+      <li>Verify that the proxy servers are running on the Digital Ocean server</li>
+      <li>Check if the SSL certificates are valid and properly installed</li>
+      <li>Ensure that the nginx configuration is correct</li>
+      <li>Verify that the CORS headers are properly set</li>
+    </ol>
+    <p>For more information, see the <a href="https://github.com/yourusername/rhinospider/blob/main/HTTPS-FIX-README.md">HTTPS Fix README</a>.</p>
+  </div>
+  
+  <script type="module">
+    import connectionTest from './src/connection-test.js';
+    
+    document.addEventListener('DOMContentLoaded', () => {
+      const testButton = document.getElementById('testButton');
+      const loading = document.getElementById('loading');
+      const results = document.getElementById('results');
+      const resultsContent = document.getElementById('resultsContent');
+      
+      testButton.addEventListener('click', async () => {
+        // Show loading indicator
+        testButton.disabled = true;
+        loading.classList.remove('hidden');
+        results.classList.add('hidden');
+        
+        try {
+          // Run the connection test
+          const testResults = await connectionTest.runConnectionTest();
+          
+          // Create HTML report
+          const htmlReport = connectionTest.createHtmlReport(testResults);
+          
+          // Show results
+          resultsContent.innerHTML = htmlReport;
+          results.classList.remove('hidden');
+        } catch (error) {
+          // Show error
+          resultsContent.innerHTML = `
+            <div class="error">
+              <h3>Error Running Connection Test</h3>
+              <p>${error.message}</p>
+            </div>
+          `;
+          results.classList.remove('hidden');
+        } finally {
+          // Hide loading indicator
+          testButton.disabled = false;
+          loading.classList.add('hidden');
+        }
+      });
+    });
+  </script>
+</body>
+</html>
