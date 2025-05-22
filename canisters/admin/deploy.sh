@@ -22,9 +22,9 @@ echo "Principal: $PRINCIPAL"
 TEMP_DIR=$(mktemp -d)
 echo "Created temporary directory: $TEMP_DIR"
 
-# Copy the final admin canister code
-cp /Users/ayanuali/development/rhinospider/canisters/admin/admin-final.mo $TEMP_DIR/main.mo
-echo "Copied final admin code to temp directory"
+# Copy the updated admin canister code
+cp /Users/ayanuali/development/rhinospider/canisters/admin/update.mo $TEMP_DIR/main.mo
+echo "Copied updated admin code to temp directory"
 
 # Create a dfx.json file
 cat > $TEMP_DIR/dfx.json << EOL
@@ -96,15 +96,15 @@ dfx canister --network $DFX_NETWORK install --wasm admin.wasm --mode=upgrade --y
 # Check if the deployment was successful
 if [ $? -eq 0 ]; then
   echo "Deployment successful!"
-  
+
   # Check if the caller is authorized
   echo "Checking if caller is authorized..."
   dfx canister --network $DFX_NETWORK call $ADMIN_CANISTER_ID isAuthorized
-  
+
   # Get topics to verify functionality
   echo "Getting topics to verify functionality..."
   dfx canister --network $DFX_NETWORK call $ADMIN_CANISTER_ID getTopics
-  
+
   # Check if getAIConfig method is available
   echo "Checking if getAIConfig method is available..."
   dfx canister --network $DFX_NETWORK call $ADMIN_CANISTER_ID getAIConfig
