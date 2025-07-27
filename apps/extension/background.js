@@ -1,4 +1,4 @@
-import { submitScrapedData } from './service-worker-adapter';
+
 // Logger utility
 const logger = {
     log: (msg) => console.log(`[Background] ${msg}`),

@@ -46,3 +46,9 @@ coverage/
 tsconfig.tsbuildinfo
 node_modules
 .aider*
+
+# Extension config file
+apps/extension/config.js
+
+# Extension config file
+apps/extension/config.js

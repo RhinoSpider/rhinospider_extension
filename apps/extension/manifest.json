@@ -47,12 +47,7 @@
     {
       "resources": [
         "pages/*",
-        "assets/*",
-        "src/*",
-        "certificate-patch.js",
-        "connection-test.html",
-        "node_modules/@dfinity/*",
-        "declarations/*"
+        "assets/*"
       ],
       "matches": [
         "<all_urls>"
