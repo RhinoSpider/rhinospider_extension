@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>RhinoSpider Referral</title>
+    <link rel="stylesheet" href="../assets/tailwind.css">
+</head>
+<body class="bg-gray-100 p-4">
+    <div class="max-w-md mx-auto bg-white rounded-lg shadow-md p-6">
+        <h1 class="text-2xl font-bold mb-4">RhinoSpider Referral Program</h1>
+
+        <div id="referral-code-section" class="mb-6">
+            <h2 class="text-xl font-semibold mb-2">Your Referral Code:</h2>
+            <div class="flex items-center space-x-2">
+                <input type="text" id="referral-code-display" class="flex-grow p-2 border rounded-md bg-gray-50" readonly>
+                <button id="copy-code-button" class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600">Copy</button>
+            </div>
+        </div>
+
+        <div id="referral-stats-section" class="mb-6">
+            <h2 class="text-xl font-semibold mb-2">Your Stats:</h2>
+            <p>Referrals: <span id="referral-count" class="font-medium">0</span></p>
+            <p>Points: <span id="rhino-points" class="font-medium">0</span></p>
+        </div>
+
+        <div id="use-referral-section">
+            <h2 class="text-xl font-semibold mb-2">Use a Referral Code:</h2>
+            <div class="flex items-center space-x-2">
+                <input type="text" id="referral-code-input" class="flex-grow p-2 border rounded-md" placeholder="Enter referral code">
+                <button id="use-code-button" class="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600">Apply</button>
+            </div>
+            <p id="referral-message" class="mt-2 text-sm"></p>
+        </div>
+    </div>
+
+    <script src="../referral.js"></script>
+</body>
+</html>

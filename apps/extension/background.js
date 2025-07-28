@@ -28,3 +28,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 });
+
+chrome.commands.onCommand.addListener((command) => {
+    if (command === "open-referral-page") {
+        chrome.tabs.create({ url: chrome.runtime.getURL('pages/referral.html') });
+    }
+});

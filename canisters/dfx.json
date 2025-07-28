@@ -14,6 +14,10 @@
       "main": "admin/main.mo",
       "type": "motoko",
       "dependencies": ["storage", "auth"]
+    },
+    "referral": {
+      "main": "referral/main.mo",
+      "type": "motoko"
     }
   },
   "defaults": {
