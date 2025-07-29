@@ -1,21 +1,15 @@
-type UserData = 
- record {
-   points: nat;
-   referralCode: text;
-   referralCount: nat;
-   referredBy: opt principal;
- };
-type Result_1 = 
- variant {
-   err: text;
-   ok: text;
- };
-type Result = 
- variant {
-   err: text;
-   ok: UserData;
- };
+type UserData = record {
+    referralCode: text;
+    referralCount: nat;
+    points: nat;
+    totalDataScraped: nat;
+    referredBy: opt principal;
+};
+
 service : {
-  getReferralCode: () -> (Result_1);
-  getUserData: () -> (Result);
+    awardPoints: (principal, nat) -> (variant { ok; err: text });
+    generateCode: () -> (text);
+    getReferralCode: () -> (variant { ok: text; err: text });
+    getUserData: () -> (variant { ok: UserData; err: text });
+    useReferralCode: (text) -> (variant { ok: text; err: text });
 }

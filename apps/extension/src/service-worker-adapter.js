@@ -5,12 +5,21 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import config from './config';
+import { config } from './config.js';
+import { Actor, HttpAgent } from '@dfinity/agent';
+import { idlFactory as referralIdl } from '../declarations/referral/referral.did.js';
 
 // Constants
-const IC_PROXY_URL = config.icProxy?.url || 'https://ic-proxy.rhinospider.com';
-const SEARCH_PROXY_URL = config.searchProxy?.url || 'https://search-proxy.rhinospider.com';
-const API_KEY = config.icProxy?.apiKey || 'test-api-key';
+const IC_PROXY_URL = config.icProxy.url;
+const SEARCH_PROXY_URL = config.searchProxy.url;
+const API_KEY = config.icProxy.apiKey;
+const REFERRAL_CANISTER_ID = config.referralCanisterId;
+
+const agent = new HttpAgent({ host: IC_PROXY_URL });
+const referralActor = Actor.createActor(referralIdl, {
+  agent,
+  canisterId: REFERRAL_CANISTER_ID,
+});
 
 /**
  * Service Worker Adapter
@@ -185,6 +194,41 @@ class ServiceWorkerAdapter {
       throw error;
     }
   }
+
+  /**
+   * Get referral code for the current user
+   * @returns {Promise<Object>} Referral code
+   */
+  async getReferralCode() {
+    return referralActor.getReferralCode();
+  }
+
+  /**
+   * Use a referral code
+   * @param {string} code Referral code
+   * @returns {Promise<Object>} Result
+   */
+  async useReferralCode(code) {
+    return referralActor.useReferralCode(code);
+  }
+
+  /**
+   * Get user data for referral program
+   * @returns {Promise<Object>} User data
+   */
+  async getUserData() {
+    return referralActor.getUserData();
+  }
+
+  /**
+   * Award points for content length
+   * @param {string} principalId Principal ID
+   * @param {number} contentLength Content length in characters
+   * @returns {Promise<Object>} Result
+   */
+  async awardPoints(principalId, contentLength) {
+    return referralActor.awardPoints(principalId, contentLength);
+  }
 }
 
 // Create an instance of the adapter
@@ -192,4 +236,4 @@ const serviceWorkerAdapter = new ServiceWorkerAdapter();
 
 // Export the adapter as default and also export the methods directly
 export default serviceWorkerAdapter;
-export const { submitScrapedData, getProfile, getTopics, search } = serviceWorkerAdapter;
+export const { submitScrapedData, getProfile, getTopics, search, getReferralCode, useReferralCode, getUserData, awardPoints } = serviceWorkerAdapter;

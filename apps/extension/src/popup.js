@@ -42,6 +42,20 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
     }
+
+    // Handle referral button
+    const referralButton = document.getElementById('openReferral');
+    if (referralButton) {
+        referralButton.addEventListener('click', async () => {
+            console.log('Referral button clicked');
+            try {
+                await chrome.runtime.sendMessage({ type: 'OPEN_REFERRAL_PAGE' });
+                window.close();
+            } catch (error) {
+                console.error('Error opening referral page:', error);
+            }
+        });
+    }
     
     // No test button needed anymore - we've fixed the core functionality
 });
