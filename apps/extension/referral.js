@@ -5,6 +5,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const copyCodeButton = document.getElementById('copy-code-button');
     const referralCountSpan = document.getElementById('referral-count');
     const rhinoPointsSpan = document.getElementById('rhino-points');
+    const totalDataScrapedSpan = document.getElementById('total-data-scraped');
     const referralCodeInput = document.getElementById('referral-code-input');
     const useCodeButton = document.getElementById('use-code-button');
     const referralMessage = document.getElementById('referral-message');
@@ -17,6 +18,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 referralCodeDisplay.value = userData.ok.referralCode;
                 referralCountSpan.textContent = userData.ok.referralCount;
                 rhinoPointsSpan.textContent = userData.ok.points;
+                totalDataScrapedSpan.textContent = `${(userData.ok.totalDataScraped / 1024).toFixed(2)} KB`;
                 if (userData.ok.referredBy) {
                     referralCodeInput.disabled = true;
                     useCodeButton.disabled = true;

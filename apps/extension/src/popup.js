@@ -56,6 +56,49 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
     }
-    
-    // No test button needed anymore - we've fixed the core functionality
+
+    // Authentication elements
+    const principalIdSpan = document.getElementById('principal-id');
+    const loginButton = document.getElementById('login-button');
+    const logoutButton = document.getElementById('logout-button');
+
+    // Function to update auth UI
+    const updateAuthUI = async () => {
+        const response = await chrome.runtime.sendMessage({ type: 'IS_AUTHENTICATED' });
+        if (response.authenticated) {
+            const principalResponse = await chrome.runtime.sendMessage({ type: 'GET_PRINCIPAL' });
+            principalIdSpan.textContent = principalResponse.principal;
+            loginButton.style.display = 'none';
+            logoutButton.style.display = 'block';
+        } else {
+            principalIdSpan.textContent = 'Not logged in';
+            loginButton.style.display = 'block';
+            logoutButton.style.display = 'none';
+        }
+    };
+
+    // Initial auth UI update
+    await updateAuthUI();
+
+    // Handle login button click
+    loginButton.addEventListener('click', async () => {
+        const response = await chrome.runtime.sendMessage({ type: 'LOGIN' });
+        if (response.success) {
+            await updateAuthUI();
+        } else {
+            console.error('Login failed:', response.error);
+            alert(`Login failed: ${response.error}`);
+        }
+    });
+
+    // Handle logout button click
+    logoutButton.addEventListener('click', async () => {
+        const response = await chrome.runtime.sendMessage({ type: 'LOGOUT' });
+        if (response.success) {
+            await updateAuthUI();
+        } else {
+            console.error('Logout failed:', response.error);
+            alert(`Logout failed: ${response.error}`);
+        }
+    });
 });

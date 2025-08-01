@@ -1,4 +1,3 @@
-
 // Logger utility
 const logger = {
     log: (msg) => console.log(`[Background] ${msg}`),
@@ -11,52 +10,18 @@ chrome.runtime.onInstalled.addListener((details) => {
     logger.log(`Extension installed/updated: ${details.reason}`);
 });
 
-// Handle messages from the extension
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    logger.log('Received message:', message.type);
+// Import authentication functions
+import { login, logout, getPrincipal, isAuthenticated } from './src/auth.js';
 
-    if (message.type === 'OPEN_DASHBOARD') {
-        chrome.tabs.query({ url: chrome.runtime.getURL('pages/dashboard.html') }, (tabs) => {
-            if (tabs.length > 0) {
-                chrome.tabs.update(tabs[0].id, { active: true });
-                logger.log('Focusing existing dashboard tab');
-            } else {
-                chrome.tabs.create({ url: 'pages/dashboard.html' });
-                logger.log('Opening new dashboard tab');
-            }
-        });
-        return true;
-    } else if (message.type === 'OPEN_REFERRAL_PAGE') {
-        chrome.tabs.query({ url: chrome.runtime.getURL('pages/referral.html') }, (tabs) => {
-            if (tabs.length > 0) {
-                chrome.tabs.update(tabs[0].id, { active: true });
-                logger.log('Focusing existing referral tab');
-            } else {
-                chrome.tabs.create({ url: chrome.runtime.getURL('pages/referral.html') });
-                logger.log('Opening new referral tab');
-            }
-        });
-        return true;
-    }
-});
-
-chrome.commands.onCommand.addListener((command) => {
-    if (command === "open-referral-page") {
-        chrome.tabs.create({ url: chrome.runtime.getURL('pages/referral.html') });
-    }
-});
-
-// Placeholder for getting principalId - replace with actual authentication logic
-// This should ideally come from an authenticated session or identity provider
-const getPrincipalId = async () => {
-    // For now, returning a hardcoded principal for testing purposes.
-    // In a real scenario, this would involve fetching the authenticated user's principal.
-    return "2vxsx-fae"; // Example principal ID
-};
-
-// Import performScrape from scraper.js
+// Import scraping functions
 import { submitScrapedData } from './service-worker-adapter';
 import { performScrape } from './src/scraper.js';
+
+// Function to get the current principal ID
+const getPrincipalId = async () => {
+    const principal = await getPrincipal();
+    return principal.toText();
+};
 
 // Example of how scraping might be triggered (replace with actual trigger)
 // This is a simplified example. In a real extension, this might be triggered by a timer,
@@ -79,3 +44,62 @@ const triggerScrape = async () => {
 
 // Call triggerScrape when appropriate, e.g., on extension startup or periodically
 // triggerScrape(); // Uncomment and adjust as needed for your scraping logic
+
+// Handle messages from the extension
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    logger.log('Received message:', message.type);
+
+    if (message.type === 'OPEN_DASHBOARD') {
+        chrome.tabs.query({ url: chrome.runtime.getURL('pages/dashboard.html') }, (tabs) => {
+            if (tabs.length > 0) {
+                chrome.tabs.update(tabs[0].id, { active: true });
+                logger.log('Focusing existing dashboard tab');
+            } else {
+                chrome.tabs.create({ url: chrome.runtime.getURL('pages/dashboard.html') });
+                logger.log('Opening new dashboard tab');
+            }
+        });
+        return true;
+    } else if (message.type === 'OPEN_REFERRAL_PAGE') {
+        chrome.tabs.query({ url: chrome.runtime.getURL('pages/referral.html') }, (tabs) => {
+            if (tabs.length > 0) {
+                chrome.tabs.update(tabs[0].id, { active: true });
+                logger.log('Focusing existing referral tab');
+            } else {
+                chrome.tabs.create({ url: chrome.runtime.getURL('pages/referral.html') });
+                logger.log('Opening new referral tab');
+            }
+        });
+        return true;
+    } else if (message.type === 'LOGIN') {
+        login().then(principal => {
+            sendResponse({ success: true, principal: principal.toText() });
+        }).catch(error => {
+            sendResponse({ success: false, error: error.message });
+        });
+        return true; // Indicate that sendResponse will be called asynchronously
+    } else if (message.type === 'LOGOUT') {
+        logout().then(() => {
+            sendResponse({ success: true });
+        }).catch(error => {
+            sendResponse({ success: false, error: error.message });
+        });
+        return true; // Indicate that sendResponse will be called asynchronously
+    } else if (message.type === 'GET_PRINCIPAL') {
+        getPrincipal().then(principal => {
+            sendResponse({ principal: principal.toText() });
+        });
+        return true; // Indicate that sendResponse will be called asynchronously
+    } else if (message.type === 'IS_AUTHENTICATED') {
+        isAuthenticated().then(authenticated => {
+            sendResponse({ authenticated });
+        });
+        return true; // Indicate that sendResponse will be called asynchronously
+    }
+});
+
+chrome.commands.onCommand.addListener((command) => {
+    if (command === "open-referral-page") {
+        chrome.tabs.create({ url: chrome.runtime.getURL('pages/referral.html') });
+    }
+});
