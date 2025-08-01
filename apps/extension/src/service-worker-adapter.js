@@ -15,6 +15,24 @@ const SEARCH_PROXY_URL = config.searchProxy.url;
 const API_KEY = config.icProxy.apiKey;
 const REFERRAL_CANISTER_ID = config.referralCanisterId;
 
+// Mock data for referral system
+let mockUserData = {};
+
+const getMockUserData = (principalId) => {
+  if (!mockUserData[principalId]) {
+    mockUserData[principalId] = {
+      referralCode: `MOCK-${principalId.substring(0, 8)}`,
+      referralCount: 0,
+      points: 0,
+      totalDataScraped: 0,
+      referredBy: null,
+    };
+  }
+  return mockUserData[principalId];
+};
+
+const mockReferralCodes = {}; // code -> principalId
+
 const agent = new HttpAgent({ host: IC_PROXY_URL });
 const referralActor = Actor.createActor(referralIdl, {
   agent,
@@ -196,38 +214,77 @@ class ServiceWorkerAdapter {
   }
 
   /**
-   * Get referral code for the current user
+   * Get referral code for the current user (MOCKED)
    * @returns {Promise<Object>} Referral code
    */
   async getReferralCode() {
-    return referralActor.getReferralCode();
+    const principalId = (await chrome.runtime.sendMessage({ type: 'GET_PRINCIPAL' })).principal;
+    const userData = getMockUserData(principalId);
+    return { ok: userData.referralCode };
   }
 
   /**
-   * Use a referral code
+   * Use a referral code (MOCKED)
    * @param {string} code Referral code
    * @returns {Promise<Object>} Result
    */
   async useReferralCode(code) {
-    return referralActor.useReferralCode(code);
+    const principalId = (await chrome.runtime.sendMessage({ type: 'GET_PRINCIPAL' })).principal;
+    if (mockUserData[principalId] && mockUserData[principalId].referredBy) {
+      return { err: "You have already been referred" };
+    }
+    const referrerPrincipalId = mockReferralCodes[code];
+    if (!referrerPrincipalId) {
+      return { err: "Invalid referral code" };
+    }
+    if (referrerPrincipalId === principalId) {
+      return { err: "You cannot refer yourself" };
+    }
+
+    const referrerData = getMockUserData(referrerPrincipalId);
+    referrerData.referralCount++;
+    // Mock points based on tiers
+    let pointsToAdd = 0;
+    if (referrerData.referralCount <= 10) pointsToAdd = 100;
+    else if (referrerData.referralCount <= 30) pointsToAdd = 50;
+    else if (referrerData.referralCount <= 70) pointsToAdd = 25;
+    else if (referrerData.referralCount <= 1000) pointsToAdd = 5;
+    referrerData.points += pointsToAdd;
+
+    const currentUserData = getMockUserData(principalId);
+    currentUserData.referredBy = referrerPrincipalId;
+
+    return { ok: "Referral successful (MOCKED)" };
   }
 
   /**
-   * Get user data for referral program
+   * Get user data for referral program (MOCKED)
    * @returns {Promise<Object>} User data
    */
   async getUserData() {
-    return referralActor.getUserData();
+    const principalId = (await chrome.runtime.sendMessage({ type: 'GET_PRINCIPAL' })).principal;
+    const userData = getMockUserData(principalId);
+    return { ok: userData };
   }
 
   /**
-   * Award points for content length
+   * Award points for content length (MOCKED)
    * @param {string} principalId Principal ID
    * @param {number} contentLength Content length in characters
    * @returns {Promise<Object>} Result
    */
   async awardPoints(principalId, contentLength) {
-    return referralActor.awardPoints(principalId, contentLength);
+    const userData = getMockUserData(principalId);
+    let pointsToAdd = 0;
+    if (contentLength >= 0 && contentLength <= 10000) pointsToAdd = 1;
+    else if (contentLength > 10000 && contentLength <= 50000) pointsToAdd = 5;
+    else if (contentLength > 50000 && contentLength <= 200000) pointsToAdd = 10;
+    else if (contentLength > 200000) pointsToAdd = 20;
+
+    userData.points += pointsToAdd;
+    userData.totalDataScraped += contentLength;
+
+    return { ok: "Points awarded (MOCKED)" };
   }
 }
 

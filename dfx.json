@@ -22,6 +22,10 @@
       "canister_id": {
         "ic": "tgyl5-yyaaa-aaaaj-az4wq-cai"
       }
+    },
+    "referral": {
+      "main": "canisters/referral/main.mo",
+      "type": "motoko"
     }
   },
   "defaults": {

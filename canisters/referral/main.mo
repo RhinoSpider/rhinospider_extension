@@ -1,5 +1,6 @@
 import Principal "mo:base/Principal";
 import Nat "mo:base/Nat";
+import Int "mo:base/Int";
 import Result "mo:base/Result";
 import Text "mo:base/Text";
 import HashMap "mo:base/HashMap";
@@ -46,23 +47,44 @@ actor Referral {
     ];
 
     // Generate a unique referral code based on timestamp and random data.
-    private update func generateCode(): async Text {
+    private func generateCode(): async Text {
         let randomBytes = await Random.blob();
-        let timestamp_nat = Time.now(); // Time.now() returns Int (nanoseconds)
+        let timestamp_int = Time.now(); // Time.now() returns Int (nanoseconds)
+        let timestamp_nat = Int.abs(timestamp_int);
         let timestamp_text = Nat.toText(timestamp_nat);
-        let principal_text = Principal.fromBlob(randomBytes).toText();
+        let principal_text = Principal.toText(Principal.fromBlob(randomBytes));
 
-        let hash_part = Text.substring(principal_text, 0, 8);
+        // Take first 8 chars from principal
+        var hash_part = "";
+        var i = 0;
+        for (char in principal_text.chars()) {
+            if (i < 8) {
+                hash_part #= Text.fromChar(char);
+                i += 1;
+            };
+        };
         
+        // Take last 4 chars from timestamp
         let ts_len = Text.size(timestamp_text);
-        let ts_start: Nat = if (ts_len >= 4) { ts_len - 4 } else { 0 };
-        let timestamp_part = Text.substring(timestamp_text, ts_start, ts_len - ts_start);
+        var timestamp_part = "";
+        if (ts_len >= 4) {
+            var j = 0;
+            for (char in timestamp_text.chars()) {
+                if (j >= ts_len - 4) {
+                    timestamp_part #= Text.fromChar(char);
+                };
+                j += 1;
+            };
+        } else {
+            timestamp_part := timestamp_text;
+        };
 
         return hash_part # timestamp_part;
     };
 
     // Return the caller's referral code, generating one if it doesn't exist.
-    public shared({ caller }) update func getReferralCode(): async Result.Result<Text, Text> {
+    public shared(msg) func getReferralCode(): async Result.Result<Text, Text> {
+        let caller = msg.caller;
         switch (users.get(caller)) {
             case (null) {
                 var newCode = await generateCode();
@@ -88,7 +110,8 @@ actor Referral {
 
     // Allow a new user to use a referral code, credit the referrer with points based on tiers,
     // and prevent self-referral or re-referral.
-    public shared({ caller }) update func useReferralCode(code: Text): async Result.Result<Text, Text> {
+    public shared(msg) func useReferralCode(code: Text): async Result.Result<Text, Text> {
+        let caller = msg.caller;
         switch (users.get(caller)) {
             case (null) {
                 switch (referralCodes.get(code)) {
@@ -140,14 +163,15 @@ actor Referral {
                     };
                 };
             };
-            case (?userData) {
+            case (?_userData) {
                 return #err("You have already been referred");
             };
         }
     };
 
     // Return the caller's referral data including code, count, points, and total data scraped.
-    public shared({ caller }) query func getUserData(): async Result.Result<UserData, Text> {
+    public shared(msg) func getUserData(): async Result.Result<UserData, Text> {
+        let caller = msg.caller;
         switch (users.get(caller)) {
             case (null) {
                 return #err("User not found");
@@ -159,7 +183,8 @@ actor Referral {
     };
 
     // Award points to a principal based on content length, updating their total points and total data scraped.
-    public shared({ caller }) update func awardPoints(principal: Principal, contentLength: Nat): async Result.Result<(), Text> {
+    public shared(msg) func awardPoints(principal: Principal, contentLength: Nat): async Result.Result<(), Text> {
+        let _caller = msg.caller;
         switch (users.get(principal)) {
             case (null) {
                 return #err("User not found");
