@@ -5,7 +5,7 @@ import Text "mo:base/Text";
 import HashMap "mo:base/HashMap";
 import Time "mo:base/Time";
 import Iter "mo:base/Iter";
-import Int "mo:base/Int";
+import Random "mo:base/Random";
 
 actor Referral {
 
@@ -45,16 +45,29 @@ actor Referral {
         { limit = 1000; points = 5 },
     ];
 
-    private func generateCode(): Text {
-        return "REFERRALCODE";
+    // Generate a unique referral code based on timestamp and random data.
+    private update func generateCode(): async Text {
+        let randomBytes = await Random.blob();
+        let timestamp_nat = Time.now(); // Time.now() returns Int (nanoseconds)
+        let timestamp_text = Nat.toText(timestamp_nat);
+        let principal_text = Principal.fromBlob(randomBytes).toText();
+
+        let hash_part = Text.substring(principal_text, 0, 8);
+        
+        let ts_len = Text.size(timestamp_text);
+        let ts_start: Nat = if (ts_len >= 4) { ts_len - 4 } else { 0 };
+        let timestamp_part = Text.substring(timestamp_text, ts_start, ts_len - ts_start);
+
+        return hash_part # timestamp_part;
     };
 
-    public shared({ caller }) func getReferralCode(): async Result.Result<Text, Text> {
+    // Return the caller's referral code, generating one if it doesn't exist.
+    public shared({ caller }) update func getReferralCode(): async Result.Result<Text, Text> {
         switch (users.get(caller)) {
             case (null) {
-                var newCode = generateCode();
+                var newCode = await generateCode();
                 while (referralCodes.get(newCode) != null) {
-                    newCode := generateCode();
+                    newCode := await generateCode();
                 };
                 let userData: UserData = {
                     referralCode = newCode;
@@ -73,7 +86,9 @@ actor Referral {
         }
     };
 
-    public shared({ caller }) func useReferralCode(code: Text): async Result.Result<Text, Text> {
+    // Allow a new user to use a referral code, credit the referrer with points based on tiers,
+    // and prevent self-referral or re-referral.
+    public shared({ caller }) update func useReferralCode(code: Text): async Result.Result<Text, Text> {
         switch (users.get(caller)) {
             case (null) {
                 switch (referralCodes.get(code)) {
@@ -94,9 +109,9 @@ actor Referral {
                         users.put(caller, userData);
 
                         // Update referrer's data
-                        switch (users.get(referrer)) { // Handle potential null case for referrer
+                        switch (users.get(referrer)) {
                             case (null) {
-                                return #err("Referrer not found after lookup"); // Should not happen if referralCodes is consistent
+                                return #err("Referrer not found after lookup");
                             };
                             case (?referrerData) {
                                 let newReferralCount = referrerData.referralCount + 1;
@@ -131,7 +146,8 @@ actor Referral {
         }
     };
 
-    public shared({ caller }) func getUserData(): async Result.Result<UserData, Text> {
+    // Return the caller's referral data including code, count, points, and total data scraped.
+    public shared({ caller }) query func getUserData(): async Result.Result<UserData, Text> {
         switch (users.get(caller)) {
             case (null) {
                 return #err("User not found");
@@ -142,7 +158,8 @@ actor Referral {
         }
     };
 
-    public shared({ caller }) func awardPoints(principal: Principal, contentLength: Nat): async Result.Result<(), Text> {
+    // Award points to a principal based on content length, updating their total points and total data scraped.
+    public shared({ caller }) update func awardPoints(principal: Principal, contentLength: Nat): async Result.Result<(), Text> {
         switch (users.get(principal)) {
             case (null) {
                 return #err("User not found");
