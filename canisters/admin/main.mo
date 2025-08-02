@@ -81,8 +81,37 @@ actor Admin {
         sampleArticleUrls: ?[Text];
         urlGenerationStrategy: ?Text;
         excludePatterns: ?[Text];
+        geolocationFilter: ?Text; // New field
+        percentageNodes: ?Nat; // New field
+        randomizationMode: ?Text; // New field
         createdAt: Int;
         lastScraped: Int;
+    };
+
+    
+
+    type NodeCharacteristics = {
+        ipAddress: Text;
+        region: Text;
+        percentageNodes: ?Nat;
+        randomizationMode: ?Text;
+    };
+
+    private stable var registeredNodes : HashMap.HashMap<Principal, NodeCharacteristics> = HashMap.HashMap<Principal, NodeCharacteristics>(0, Principal.equal, Principal.hash);
+
+    public shared({ caller }) func registerNode(nodePrincipal: Principal, characteristics: NodeCharacteristics) : async Result.Result<(), Text> {
+        if (not _isAuthorized(caller)) {
+            return #err("Unauthorized");
+        };
+        registeredNodes.put(nodePrincipal, characteristics);
+        #ok();
+    };
+
+    public query({ caller }) func getRegisteredNodes() : async Result.Result<[(Principal, NodeCharacteristics)], Text> {
+        if (not _isAuthorized(caller)) {
+            return #err("Unauthorized");
+        };
+        #ok(Iter.toArray(registeredNodes.entries()))
     };
 
     type ScrapedData = {
@@ -296,6 +325,98 @@ actor Admin {
         #ok(Iter.toArray(topics.vals()))
     };
 
+    public shared({ caller }) func getAssignedTopics(nodeCharacteristics: NodeCharacteristics) : async Result.Result<[ScrapingTopic], Text> {
+        if (not _isAuthorized(caller)) { // Assuming nodes will be authorized
+            return #err("Unauthorized");
+        };
+
+        let filteredTopics = Buffer.Buffer<ScrapingTopic>(0);
+        for ((_, topic) in topics.entries()) {
+            var includeTopic = true;
+
+            // Geolocation filtering
+            switch (topic.geolocationFilter) {
+                case (?filterRegion) {
+                    if (not Text.equal(filterRegion, nodeCharacteristics.region)) {
+                        includeTopic := false;
+                    };
+                };
+                case (null) {}; // No geolocation filter, so include by default
+            };
+
+            if (includeTopic) {
+                filteredTopics.add(topic);
+            };
+        };
+
+        var finalTopics = Iter.toArray(filteredTopics.vals());
+
+        // Percentage Nodes filtering
+        switch (nodeCharacteristics.percentageNodes) { // Assuming nodeCharacteristics can also have percentageNodes
+            case (?percentage) {
+                if (percentage >= 0 and percentage <= 100) {
+                    let numTopics = Array.size(finalTopics);
+                    let topicsToSelect = Nat.toNat(Float.round(Float.fromNat(numTopics) * (Float.fromNat(percentage) / 100.0)));
+                    
+                    // Simple pseudo-random selection for percentage
+                    // This is a very basic PRNG. For production, consider a more robust solution.
+                    var seed = Time.now();
+                    let nextRandom = func() : Nat {
+                        seed := (seed * 1103515245 + 12345) % 2147483647;
+                        return Nat.abs(seed);
+                    };
+
+                    let selectedTopics = Buffer.Buffer<ScrapingTopic>(0);
+                    var indices = Buffer.Buffer<Nat>(0);
+                    for (i in Iter.range(0, numTopics - 1)) {
+                        indices.add(i);
+                    };
+                    
+                    // Shuffle indices (Fisher-Yates-like)
+                    for (i in Iter.range(numTopics - 1, 1)) {
+                        let j = nextRandom() % (i + 1);
+                        let temp = indices.get(i);
+                        indices.set(i, indices.get(j));
+                        indices.set(j, temp);
+                    };
+
+                    for (i in Iter.range(0, topicsToSelect - 1)) {
+                        if (i < Array.size(Iter.toArray(indices.vals()))) { // Ensure index is within bounds
+                            selectedTopics.add(finalTopics[indices.get(i)]);
+                        };
+                    };
+                    finalTopics := Iter.toArray(selectedTopics.vals());
+                };
+            };
+            case (null) {};
+        };
+
+        // Randomization Mode
+        switch (nodeCharacteristics.randomizationMode) { // Assuming nodeCharacteristics can also have randomizationMode
+            case (?mode) {
+                if (Text.equal(mode, "shuffle")) {
+                    // Re-shuffle the finalTopics array
+                    var seed = Time.now();
+                    let nextRandom = func() : Nat {
+                        seed := (seed * 1103515245 + 12345) % 2147483647;
+                        return Nat.abs(seed);
+                    };
+
+                    let numTopics = Array.size(finalTopics);
+                    for (i in Iter.range(numTopics - 1, 1)) {
+                        let j = nextRandom() % (i + 1);
+                        let temp = finalTopics[i];
+                        finalTopics[i] := finalTopics[j];
+                        finalTopics[j] := temp;
+                    };
+                };
+            };
+            case (null) {};
+        };
+
+        #ok(finalTopics)
+    };
+
     public shared({ caller }) func addTopic(topic: ScrapingTopic) : async Result.Result<(), Text> {
         if (not _isAuthorized(caller)) {
             return #err("Unauthorized");
@@ -364,6 +485,9 @@ actor Admin {
                     paginationPatterns = topic.paginationPatterns;
                     sampleArticleUrls = topic.sampleArticleUrls;
                     excludePatterns = topic.excludePatterns;
+                    geolocationFilter = topic.geolocationFilter;
+                    percentageNodes = topic.percentageNodes;
+                    randomizationMode = topic.randomizationMode;
                 };
                 topics.put(id, updatedTopic);
                 #ok()
@@ -402,6 +526,9 @@ actor Admin {
                     paginationPatterns = topic.paginationPatterns;
                     sampleArticleUrls = topic.sampleArticleUrls;
                     excludePatterns = topic.excludePatterns;
+                    geolocationFilter = topic.geolocationFilter;
+                    percentageNodes = topic.percentageNodes;
+                    randomizationMode = topic.randomizationMode;
                 };
                 topics.put(id, updatedTopic);
                 #ok()
@@ -456,6 +583,9 @@ actor Admin {
         paginationPatterns: ?[Text];
         sampleArticleUrls: ?[Text];
         excludePatterns: ?[Text];
+        geolocationFilter: ?Text;
+        percentageNodes: ?Nat;
+        randomizationMode: ?Text;
     };
 
     public shared({ caller }) func createTopic(request: CreateTopicRequest): async Result.Result<ScrapingTopic, Text> {
@@ -485,6 +615,9 @@ actor Admin {
             paginationPatterns = request.paginationPatterns;
             sampleArticleUrls = request.sampleArticleUrls;
             excludePatterns = request.excludePatterns;
+            geolocationFilter = request.geolocationFilter;
+            percentageNodes = request.percentageNodes;
+            randomizationMode = request.randomizationMode;
         };
         
         topics.put(id, topic);

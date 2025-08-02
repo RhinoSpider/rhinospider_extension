@@ -54,6 +54,9 @@ export interface ScrapingTopic {
   sampleArticleUrls?: string[];
   urlGenerationStrategy?: string;
   excludePatterns?: string[];
+  geolocationFilter?: string;
+  percentageNodes?: number;
+  randomizationMode?: string;
 }
 
 export type UserRole = 'Admin' | 'User' | 'None';
@@ -94,6 +97,9 @@ export interface CreateTopicRequest {
   sampleArticleUrls?: string[];
   urlGenerationStrategy?: string;
   excludePatterns?: string[];
+  geolocationFilter?: string;
+  percentageNodes?: number;
+  randomizationMode?: string;
 }
 
 export interface UpdateTopicRequest {
@@ -110,4 +116,14 @@ export interface UpdateTopicRequest {
   sampleArticleUrls?: string[][];
   urlGenerationStrategy?: string[];
   excludePatterns?: string[][];
+  geolocationFilter?: string[];
+  percentageNodes?: number[];
+  randomizationMode?: string[];
+}
+
+export interface NodeCharacteristics {
+  ipAddress: string;
+  region: string;
+  percentageNodes?: number;
+  randomizationMode?: string;
 }

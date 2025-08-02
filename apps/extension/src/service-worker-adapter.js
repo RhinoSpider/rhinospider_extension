@@ -5,7 +5,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import { config } from './config.js';
+import config from './config.js';
 import { Actor, HttpAgent } from '@dfinity/agent';
 import { idlFactory as referralIdl } from '../declarations/referral/referral.did.js';
 
@@ -231,6 +231,48 @@ class ServiceWorkerAdapter {
   async awardPoints(principalId, contentLength) {
     return referralActor.awardPoints(principalId, BigInt(contentLength));
   }
+
+  /**
+   * Make a direct search proxy call
+   * @param {Object} topic The scraping topic object
+   * @returns {Promise<string|null>} The URL or null if not found
+   */
+  async directSearchProxyCall(topic) {
+    try {
+      const body = {
+        topicId: topic.id,
+        urlPatterns: topic.urlPatterns,
+        articleUrlPatterns: topic.articleUrlPatterns,
+        siteTypeClassification: topic.siteTypeClassification,
+        contentIdentifiers: topic.contentIdentifiers,
+        paginationPatterns: topic.paginationPatterns,
+        sampleArticleUrls: topic.sampleArticleUrls,
+        urlGenerationStrategy: topic.urlGenerationStrategy,
+        excludePatterns: topic.excludePatterns,
+      };
+
+      const response = await fetch(`${SEARCH_PROXY_URL}/api/direct-search`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-device-id': this.deviceId,
+          'Authorization': `Bearer ${API_KEY}`
+        },
+        body: JSON.stringify(body)
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        return result.url || null;
+      } else {
+        console.error('Direct search proxy error:', response.status, response.statusText);
+        return null;
+      }
+    } catch (error) {
+      console.error('Error in directSearchProxyCall:', error);
+      return null;
+    }
+  }
 }
 
 // Create an instance of the adapter
@@ -238,4 +280,4 @@ const serviceWorkerAdapter = new ServiceWorkerAdapter();
 
 // Export the adapter as default and also export the methods directly
 export default serviceWorkerAdapter;
-export const { submitScrapedData, getProfile, getTopics, search, getReferralCode, useReferralCode, getUserData, awardPoints } = serviceWorkerAdapter;
+export const { submitScrapedData, getProfile, getTopics, search, getReferralCode, useReferralCode, getUserData, awardPoints, directSearchProxyCall } = serviceWorkerAdapter;

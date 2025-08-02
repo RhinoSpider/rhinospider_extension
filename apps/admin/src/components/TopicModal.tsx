@@ -64,7 +64,10 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
     paginationPatterns: topic?.paginationPatterns || [''],
     sampleArticleUrls: topic?.sampleArticleUrls || [''],
     urlGenerationStrategy: topic?.urlGenerationStrategy || 'pattern_based',
-    excludePatterns: topic?.excludePatterns || ['']
+    excludePatterns: topic?.excludePatterns || [''],
+        geolocationFilter: topic?.geolocationFilter || '',
+        percentageNodes: topic?.percentageNodes || 0,
+        randomizationMode: topic?.randomizationMode || 'none'
   });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -182,7 +185,10 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
         paginationPatterns: paginationPatterns,
         sampleArticleUrls: topic.sampleArticleUrls || [''],
         urlGenerationStrategy: topic.urlGenerationStrategy || 'pattern_based',
-        excludePatterns: excludePatterns
+        excludePatterns: excludePatterns,
+        geolocationFilter: topic.geolocationFilter || '',
+        percentageNodes: topic.percentageNodes || 0,
+        randomizationMode: topic.randomizationMode || 'none'
       });
     } else {
       setFormData({
@@ -362,7 +368,10 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
         paginationPatterns: wrappedPaginationPatterns,
         sampleArticleUrls: formData.sampleArticleUrls,
         urlGenerationStrategy: formData.urlGenerationStrategy,
-        excludePatterns: wrappedExcludePatterns
+        excludePatterns: wrappedExcludePatterns,
+        geolocationFilter: formData.geolocationFilter,
+        percentageNodes: formData.percentageNodes,
+        randomizationMode: formData.randomizationMode,
       };
 
       await onSave?.(newTopic);
@@ -965,6 +974,54 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
                     )}
                   </div>
                 ))}
+              </div>
+
+              {/* Geolocation Filter */}
+              <div className="mb-4">
+                <label className="block text-xs text-gray-400 mb-1">Geolocation Filter</label>
+                <input
+                  type="text"
+                  value={formData.geolocationFilter}
+                  onChange={(e) => setFormData({ ...formData, geolocationFilter: e.target.value })}
+                  className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
+                  placeholder="e.g., US, Europe, Asia"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Specify a region to filter nodes for this topic (e.g., "US", "Europe").
+                </p>
+              </div>
+
+              {/* Percentage Nodes */}
+              <div className="mb-4">
+                <label className="block text-xs text-gray-400 mb-1">Percentage of Nodes</label>
+                <input
+                  type="number"
+                  value={formData.percentageNodes}
+                  onChange={(e) => setFormData({ ...formData, percentageNodes: parseInt(e.target.value) })}
+                  className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
+                  placeholder="e.g., 50"
+                  min="0"
+                  max="100"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Percentage of available nodes to assign this topic to (0-100).
+                </p>
+              </div>
+
+              {/* Randomization Mode */}
+              <div className="mb-4">
+                <label className="block text-xs text-gray-400 mb-1">Randomization Mode</label>
+                <select
+                  value={formData.randomizationMode}
+                  onChange={(e) => setFormData({ ...formData, randomizationMode: e.target.value })}
+                  className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
+                >
+                  <option value="none">None</option>
+                  <option value="shuffle">Shuffle</option>
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  How to randomize topic assignment among selected nodes.
+                </p>
               </div>
             </div>
 

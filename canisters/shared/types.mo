@@ -14,6 +14,9 @@ module {
         urlPatterns: [Text];
         extractionRules: ExtractionRules;
         aiConfig: AIConfig;
+        geolocationFilter: ?Text;
+        percentageNodes: ?Nat;
+        randomizationMode: ?Text;
         createdAt: Int;
     };
 
@@ -59,5 +62,12 @@ module {
         #NotAuthorized;
         #InvalidInput: Text;
         #SystemError: Text;
+    };
+
+    public type NodeCharacteristics = {
+        ipAddress: Text;
+        region: Text;
+        percentageNodes: ?Nat;
+        randomizationMode: ?Text;
     };
 }

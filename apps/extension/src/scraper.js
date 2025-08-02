@@ -2,7 +2,7 @@ import { submitScrapedData, awardPoints } from './service-worker-adapter';
 // Scraper module for RhinoSpider extension
 // This module handles the actual scraping functionality
 
-import * as urlSelector from './url-selector.js';
+import * as urlSelector from './simplified-url-selector.js';
 
 // Logger utility
 const logger = {

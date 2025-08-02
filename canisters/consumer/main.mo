@@ -22,6 +22,7 @@ actor ConsumerBackend {
     type AdminActor = actor {
         getTopics : () -> async Result.Result<[SharedTypes.ScrapingTopic], Text>;
         getTopics_with_caller : (Principal) -> async Result.Result<[SharedTypes.ScrapingTopic], Text>;
+        getAssignedTopics : (SharedTypes.NodeCharacteristics) -> async Result.Result<[SharedTypes.ScrapingTopic], Text>;
         getAIConfig : () -> async Result.Result<SharedTypes.AIConfig, Text>;
         add_user : (Principal, { #SuperAdmin; #Admin; #Operator }) -> async Result.Result<(), Text>;
     };
@@ -89,36 +90,28 @@ actor ConsumerBackend {
             let selfPrincipal = Principal.fromActor(ConsumerBackend);
             Debug.print("Consumer getTopics: Self principal: " # Principal.toText(selfPrincipal));
             
-            // Try direct getTopics call first - this should work if admin recognizes our principal
-            Debug.print("Consumer getTopics: Trying direct getTopics call");
-            let directResult = await admin.getTopics();
-            
-            switch(directResult) {
-                case (#ok(topics)) {
-                    Debug.print("Consumer getTopics: Direct call successful, got " # Nat.toText(topics.size()) # " topics");
-                    return #ok(topics);
-                };
-                case (#err(msg)) {
-                    Debug.print("Consumer getTopics: Direct call failed with error: " # msg);
-                    // Fall back to getTopics_with_caller
-                };
+            // Define node characteristics (placeholder values for now)
+            let consumerNodeCharacteristics : SharedTypes.NodeCharacteristics = {
+                ipAddress = "127.0.0.1"; // Placeholder
+                region = "us-east-1"; // Placeholder
+                percentageNodes = ?100; // Placeholder
+                randomizationMode = ?"none"; // Placeholder
             };
-            
-            // Fall back to getTopics_with_caller method
-            Debug.print("Consumer getTopics: Falling back to getTopics_with_caller");
-            let result = await admin.getTopics_with_caller(selfPrincipal);
+
+            Debug.print("Consumer getTopics: Calling admin.getAssignedTopics");
+            let result = await admin.getAssignedTopics(consumerNodeCharacteristics);
             
             switch(result) {
                 case (#ok(topics)) {
-                    Debug.print("Consumer getTopics: Successfully got " # Nat.toText(topics.size()) # " topics via getTopics_with_caller");
+                    Debug.print("Consumer getTopics: Successfully got " # Nat.toText(topics.size()) # " topics via getAssignedTopics");
                     for (topic in topics.vals()) {
                         Debug.print("Consumer getTopics: Topic ID: " # topic.id # ", Name: " # topic.name);
                     };
                     #ok(topics)
                 };
                 case (#err(msg)) {
-                    Debug.print("Consumer getTopics: Both methods failed. Last error: " # msg);
-                    #err(#SystemError("Failed to get topics from admin canister. Please check authorization."))
+                    Debug.print("Consumer getTopics: Failed to get assigned topics: " # msg);
+                    #err(#SystemError("Failed to get assigned topics from admin canister."))
                 };
             }
         } catch (error) {

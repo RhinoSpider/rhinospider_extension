@@ -1,83 +1,51 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
-import { writeFileSync, copyFileSync, mkdirSync, existsSync, rmSync } from 'fs';
+import { nodePolyfills } from 'vite-plugin-node-polyfills';
+import { crx } from '@crxjs/vite-plugin';
+import manifest from './manifest.json';
 
-// Custom plugin to copy files after build
-const copyManifestPlugin = () => ({
-  name: 'copy-manifest',
-  configResolved(config) {
-    // Remove existing build directory if it exists
-    if (existsSync(config.build.outDir)) {
-      rmSync(config.build.outDir, { recursive: true });
-    }
-
-    // Create all required directories
-    const dirs = [
-      config.build.outDir,
-      resolve(config.build.outDir, 'icons'),
-      resolve(config.build.outDir, 'assets')
-    ];
-
-    dirs.forEach(dir => mkdirSync(dir, { recursive: true }));
-  },
-  generateBundle() {
-    // Copy manifest
-    copyFileSync(
-      resolve(__dirname, 'manifest.json'),
-      resolve(__dirname, 'build/manifest.json')
-    );
-    
-    // Copy popup.html
-    copyFileSync(
-      resolve(__dirname, 'popup.html'),
-      resolve(__dirname, 'build/popup.html')
-    );
-    
-    // Copy icons
-    ['icon16.png', 'icon48.png', 'icon128.png'].forEach(icon => {
-      copyFileSync(
-        resolve(__dirname, 'public/icons', icon),
-        resolve(__dirname, 'build/icons', icon)
-      );
-    });
-  }
-});
-
-export default defineConfig({
-  plugins: [copyManifestPlugin()],
-  build: {
-    rollupOptions: {
-      input: {
-        popup: resolve(__dirname, 'src/popup/index.jsx'),
-        background: resolve(__dirname, 'src/background.js'),
-        content: resolve(__dirname, 'src/content.js')
+export default defineConfig(({ mode }) => {
+  return {
+    plugins: [
+      nodePolyfills({
+        globals: {
+          Buffer: true,
+          global: true,
+          process: true,
+        },
+      }),
+      crx({ manifest }),
+    ],
+    build: {
+      outDir: 'dist',
+      emptyOutDir: true,
+      rollupOptions: {
+        input: {
+          popup: resolve(__dirname, 'pages/popup.html'),
+          background: resolve(__dirname, 'src/background.js'),
+          'content': resolve(__dirname, 'src/content.ts'),
+        },
+        output: {
+          entryFileNames: '[name].js',
+          chunkFileNames: '[name].js',
+          assetFileNames: '[name].[ext]',
+        },
+        external: ['chrome'],
       },
-      output: {
-        entryFileNames: '[name].js',
-        chunkFileNames: 'assets/[name].js',
-        assetFileNames: 'assets/[name].[ext]'
-      }
     },
-    outDir: 'build',
-    target: 'es2020',
-    minify: false, // Helps with debugging
-    sourcemap: true,
-    modulePreload: false,
-    cssCodeSplit: false,
-    assetsInlineLimit: 0,
-    emptyOutDir: false // We'll handle directory cleanup ourselves
-  },
-  resolve: {
-    alias: {
-      '@': resolve(__dirname, 'src')
-    }
-  },
-  define: {
-    'process.env.NODE_ENV': JSON.stringify('production'),
-    'process.env.ADMIN_CANISTER_ID': JSON.stringify('s6r66-wyaaa-aaaaj-az4sq-cai'),
-    'process.env.STORAGE_CANISTER_ID': JSON.stringify('hhaip-uiaaa-aaaao-a4khq-cai'),
-    'process.env.AUTH_CANISTER_ID': JSON.stringify('slwpt-xqaaa-aaaaj-az4ra-cai'),
-    'process.env.II_URL': JSON.stringify('https://identity.ic0.app'),
-    'process.env.IC_HOST': JSON.stringify('https://icp0.io')
-  }
+    resolve: {
+      alias: {
+        '@': resolve(__dirname, 'src'),
+        './service-worker-adapter': resolve(__dirname, 'src/service-worker-adapter.js'),
+      },
+    },
+    define: {
+      'process.env.NODE_ENV': JSON.stringify(mode === 'production' ? 'production' : 'development'),
+      'process.env.ADMIN_CANISTER_ID': JSON.stringify('s6r66-wyaaa-aaaaj-az4sq-cai'),
+      'process.env.STORAGE_CANISTER_ID': JSON.stringify('hhaip-uiaaa-aaaao-a4khq-cai'),
+      'process.env.AUTH_CANISTER_ID': JSON.stringify('slwpt-xqaaa-aaaaj-az4ra-cai'),
+      'process.env.II_URL': JSON.stringify('https://identity.ic0.app'),
+      'process.env.IC_HOST': JSON.stringify('https://icp0.io'),
+    },
+  };
 });
