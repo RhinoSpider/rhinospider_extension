@@ -12,7 +12,7 @@ export const idlFactory = ({ IDL }) => {
   return IDL.Service({
     'awardPoints' : IDL.Func([IDL.Principal, IDL.Nat], [Result_2], []),
     'getReferralCode' : IDL.Func([], [Result], []),
-    'getUserData' : IDL.Func([], [Result_1], ['query']),
+    'getUserData' : IDL.Func([], [Result_1], []),
     'useReferralCode' : IDL.Func([IDL.Text], [Result], []),
   });
 };
