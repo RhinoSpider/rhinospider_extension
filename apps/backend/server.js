@@ -19,8 +19,11 @@ const JSONBig = {
 };
 
 // Local canister IDs - these should match your dfx.json
-const STORAGE_CANISTER_ID = 'bkyz2-fmaaa-aaaaa-qaaaq-cai';
-const ADMIN_CANISTER_ID = 'br5f7-7uaaa-aaaaa-qaaca-cai';
+const STORAGE_CANISTER_ID = process.env.STORAGE_CANISTER_ID || 'bkyz2-fmaaa-aaaaa-qaaaq-cai';
+const ADMIN_CANISTER_ID = process.env.ADMIN_CANISTER_ID || 'br5f7-7uaaa-aaaaa-qaaca-cai';
+
+// Import the admin canister interface
+const adminIdlFactory = require('../../../src/declarations/admin/admin.did.js').idlFactory;
 
 // Create an agent for local development
 const agent = new HttpAgent({
@@ -34,54 +37,15 @@ agent.fetchRootKey().catch(err => {
     console.error(err);
 });
 
-// Storage canister interface
-const storageInterface = ({ IDL }) => {
-    const ScrapedContent = IDL.Record({
-        'id': IDL.Text,
-        'source': IDL.Text,
-        'url': IDL.Text,
-        'title': IDL.Text,
-        'author': IDL.Text,
-        'publishDate': IDL.Int,
-        'updateDate': IDL.Int,
-        'content': IDL.Text,
-        'summary': IDL.Text,
-        'topics': IDL.Vec(IDL.Text),
-        'engagement': IDL.Record({
-            'stars': IDL.Opt(IDL.Nat),
-            'reactions': IDL.Opt(IDL.Nat),
-            'claps': IDL.Opt(IDL.Nat),
-            'comments': IDL.Nat,
-        }),
-        'metadata': IDL.Record({
-            'readingTime': IDL.Opt(IDL.Nat),
-            'language': IDL.Opt(IDL.Text),
-            'license': IDL.Opt(IDL.Text),
-            'techStack': IDL.Vec(IDL.Text),
-        }),
-        'aiAnalysis': IDL.Record({
-            'relevanceScore': IDL.Nat,
-            'keyPoints': IDL.Vec(IDL.Text),
-            'codeSnippets': IDL.Vec(IDL.Record({
-                'language': IDL.Text,
-                'code': IDL.Text,
-            })),
-        }),
-    });
-
-    return IDL.Service({
-        'getContentByTopic': IDL.Func(
-            [IDL.Text, IDL.Nat],
-            [IDL.Vec(ScrapedContent)],
-            ['query'],
-        ),
-    });
-};
-
 // Create actor instances
 const storageActor = Actor.createActor(storageInterface, {
     agent,
     canisterId: STORAGE_CANISTER_ID,
+});
+
+const adminActor = Actor.createActor(adminIdlFactory, {
+    agent,
+    canisterId: ADMIN_CANISTER_ID,
 });
 
 // API Routes
@@ -94,6 +58,25 @@ app.get('/api/content/topic/:topic', async (req, res) => {
         res.send(JSONBig.stringify(content));
     } catch (error) {
         console.error('Error fetching content:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/topics', async (req, res) => {
+    try {
+        const { nodeCharacteristics } = req.body;
+        console.log('Received request for /api/topics with nodeCharacteristics:', nodeCharacteristics);
+
+        const result = await adminActor.getAssignedTopics(nodeCharacteristics);
+
+        if ('ok' in result) {
+            res.json(result.ok);
+        } else {
+            console.error('Error from adminActor.getAssignedTopics:', result.err);
+            res.status(500).json({ error: result.err });
+        }
+    } catch (error) {
+        console.error('Error in /api/topics:', error);
         res.status(500).json({ error: error.message });
     }
 });

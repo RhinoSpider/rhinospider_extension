@@ -90,12 +90,14 @@ actor ConsumerBackend {
             let selfPrincipal = Principal.fromActor(ConsumerBackend);
             Debug.print("Consumer getTopics: Self principal: " # Principal.toText(selfPrincipal));
             
-            // Define node characteristics (placeholder values for now)
+            // Define node characteristics (placeholder values for now).
+            // In a real-world scenario, these values (ipAddress, region, etc.)
+            // would be dynamically determined by the consumer node itself.
             let consumerNodeCharacteristics : SharedTypes.NodeCharacteristics = {
-                ipAddress = "127.0.0.1"; // Placeholder
-                region = "us-east-1"; // Placeholder
-                percentageNodes = ?100; // Placeholder
-                randomizationMode = ?"none"; // Placeholder
+                ipAddress = "127.0.0.1"; // Placeholder: Replace with dynamic IP detection
+                region = "us-east-1"; // Placeholder: Replace with dynamic region detection
+                percentageNodes = ?100; // Placeholder: This might be configurable by the node operator
+                randomizationMode = ?"none"; // Placeholder: This might be configurable by the node operator
             };
 
             Debug.print("Consumer getTopics: Calling admin.getAssignedTopics");

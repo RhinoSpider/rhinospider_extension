@@ -513,7 +513,15 @@ export async function getUsers(): Promise<ExtensionUser[]> {
     throw new Error(result.err);
   }
   return (result.ok || []).map((user: any) => ({
+    principal: user.principal,
     role: user.role._type,
+    createdAt: user.addedAt,
+    lastLogin: user.addedAt, // Assuming lastLogin is not explicitly tracked in Motoko yet, using addedAt for now
+    devices: [], // Assuming devices are not part of the User type in Motoko yet
+    preferences: {
+      notificationsEnabled: true,
+      theme: "dark",
+    },
   }));
 }
 

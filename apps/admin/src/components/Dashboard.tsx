@@ -3,7 +3,7 @@ import { Navbar } from './Navbar';
 import { Sidebar } from './Sidebar';
 import { Overview } from './Overview';
 import { ScrapingConfig } from './ScrapingConfig';
-import { Nodes } from './Nodes';
+import { ExtensionUsers } from './ExtensionUsers';
 import { ScrapedData } from './ScrapedData';
 
 const CURRENT_VIEW_KEY = 'admin_current_view';
@@ -25,7 +25,7 @@ export const Dashboard: React.FC = () => {
       case 'config':
         return <ScrapingConfig />;
       case 'users':
-        return <Nodes />;
+        return <ExtensionUsers />;
       case 'data':
         return <ScrapedData />;
       default:

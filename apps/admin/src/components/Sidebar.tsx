@@ -9,7 +9,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange }) =
   const menuItems = [
     { id: 'overview', label: 'Overview', icon: '📊' },
     { id: 'config', label: 'Scraping Config', icon: '⚙️' },
-    { id: 'users', label: 'Nodes', icon: '👥' },
+    { id: 'users', label: 'Extension Users', icon: '👥' },
     { id: 'data', label: 'Scraped Data', icon: '📑' },
   ];
 

@@ -102,7 +102,7 @@ class ServiceWorkerAdapter {
         url: data.url,
         content: data.content,
         topic: data.topic,
-        principalId: data.principalId,
+        client_id: data.principalId, // Changed from principalId to client_id
         status: data.status || 'completed',
         source: data.source || 'extension',
         scraping_time: data.scraping_time || 0
@@ -172,7 +172,15 @@ class ServiceWorkerAdapter {
    */
   async getTopics(principalId) {
     try {
-      // Make the request
+      // Placeholder NodeCharacteristics for the extension
+      const nodeCharacteristics = {
+        ipAddress: "0.0.0.0", // Placeholder
+        region: "unknown",    // Placeholder
+        percentageNodes: 100, // Placeholder
+        randomizationMode: "none", // Placeholder
+      };
+
+      // Make the request to the backend proxy
       const response = await fetch(`${IC_PROXY_URL}/api/topics`, {
         method: 'POST',
         headers: {
@@ -180,13 +188,13 @@ class ServiceWorkerAdapter {
           'x-device-id': this.deviceId,
           'Authorization': `Bearer ${API_KEY}`
         },
-        body: JSON.stringify({ principalId })
+        body: JSON.stringify({ nodeCharacteristics })
       });
 
       // Handle the response
       if (response.ok) {
         const result = await response.json();
-        return result.ok || [];
+        return result || [];
       } else {
         console.error('Get topics error:', response.status, response.statusText);
         throw new Error(`Get topics error: ${response.status} ${response.statusText}`);

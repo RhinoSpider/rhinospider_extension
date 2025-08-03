@@ -62,7 +62,15 @@ export interface ScrapingTopic {
 export type UserRole = 'Admin' | 'User' | 'None';
 
 export interface ExtensionUser {
+  principal: Principal;
   role: UserRole;
+  createdAt: bigint;
+  lastLogin: bigint;
+  devices: string[];
+  preferences: {
+    notificationsEnabled: boolean;
+    theme: string;
+  };
 }
 
 export interface ScrapedData {

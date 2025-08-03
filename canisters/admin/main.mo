@@ -359,7 +359,10 @@ actor Admin {
                     let topicsToSelect = Nat.toNat(Float.round(Float.fromNat(numTopics) * (Float.fromNat(percentage) / 100.0)));
                     
                     // Simple pseudo-random selection for percentage
-                    // This is a very basic PRNG. For production, consider a more robust solution.
+                    // NOTE: This is a very basic PRNG. For production environments requiring
+                    // strong randomness or cryptographic security, a more robust solution
+                    // (e.g., integration with a randomness oracle or a more sophisticated
+                    // state-based PRNG) would be necessary.
                     var seed = Time.now();
                     let nextRandom = func() : Nat {
                         seed := (seed * 1103515245 + 12345) % 2147483647;

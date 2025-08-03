@@ -59,68 +59,26 @@ const authenticateRequest = (req, res, next) => {
 
 // Load consumer canister interface
 const consumerIdlFactory = ({ IDL }) => {
+  const ScrapedData = IDL.Record({
+    'id': IDL.Text,
+    'url': IDL.Text,
+    'topic': IDL.Text,
+    'content': IDL.Text,
+    'source': IDL.Text,
+    'timestamp': IDL.Int,
+    'client_id': IDL.Principal,
+    'status': IDL.Text,
+    'scraping_time': IDL.Int,
+  });
+
   return IDL.Service({
-    'submitScrapedContent': IDL.Func(
-      [
-        IDL.Record({
-          'url': IDL.Text,
-          'topicId': IDL.Text,
-          'content': IDL.Record({
-            'title': IDL.Text,
-            'content': IDL.Text,
-            'author': IDL.Text,
-            'date': IDL.Text,
-          }),
-          'timestamp': IDL.Nat64,
-        })
-      ],
-      [
-        IDL.Variant({
-          'ok': IDL.Text,
-          'err': IDL.Text,
-        })
-      ],
-      []
-    ),
-    'getTopics': IDL.Func(
+    'submitScrapedData': IDL.Func(
+      [ScrapedData],
+      [IDL.Variant({
+        'ok': IDL.Null,
+        'err': IDL.Text,
+      })],
       [],
-      [
-        IDL.Variant({
-          'ok': IDL.Vec(
-            IDL.Record({
-              'id': IDL.Text,
-              'name': IDL.Text,
-              'urlPatterns': IDL.Vec(IDL.Text),
-              'extractionRules': IDL.Record({
-                'title': IDL.Record({
-                  'selector': IDL.Text,
-                  'attribute': IDL.Text,
-                }),
-                'content': IDL.Record({
-                  'selector': IDL.Text,
-                  'attribute': IDL.Text,
-                }),
-                'author': IDL.Record({
-                  'selector': IDL.Text,
-                  'attribute': IDL.Text,
-                }),
-                'date': IDL.Record({
-                  'selector': IDL.Text,
-                  'attribute': IDL.Text,
-                }),
-              }),
-              'aiConfig': IDL.Record({
-                'model': IDL.Text,
-                'apiKey': IDL.Text,
-                'costLimitMonthly': IDL.Nat64,
-                'promptTemplate': IDL.Text,
-              }),
-            })
-          ),
-          'err': IDL.Text,
-        })
-      ],
-      ['query']
     ),
   });
 };
@@ -308,11 +266,16 @@ app.post('/api/submit', authenticateRequest, async (req, res) => {
     }
     
     // Submit to consumer canister
-    const result = await actor.submitScrapedContent({
-      topicId,
+    const result = await actor.submitScrapedData({
+      id: `${topicId}-${url}-${timestamp}`,
       url,
-      content: processedContent,
-      timestamp: BigInt(timestamp)
+      topic: topicId,
+      content: processedContent.content,
+      source: 'extension',
+      timestamp: BigInt(timestamp),
+      client_id: req.principal, // Use the principal from authentication
+      status: 'completed',
+      scraping_time: BigInt(0), // Placeholder, actual scraping time should come from client
     });
     
     if ('ok' in result) {
