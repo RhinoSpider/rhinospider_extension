@@ -10,7 +10,7 @@ const cors = require('cors');
 const { Actor, HttpAgent, AnonymousIdentity } = require('@dfinity/agent');
 const { Ed25519KeyIdentity } = require('@dfinity/identity');
 const { Principal } = require('@dfinity/principal');
-const { idlFactory: consumerIdlFactory } = require('./declarations/consumer/consumer.did.fixed.js');
+const { idlFactory: consumerIdlFactory } = require('./declarations/consumer/consumer.did.js');
 const { idlFactory: storageIdlFactory } = require('./declarations/storage/storage.did.js');
 const { idlFactory: adminIdlFactory } = require('./declarations/admin/admin.did.js');
 const fetch = require('node-fetch');
@@ -24,7 +24,7 @@ const fs = require('fs');
 // Environment variables
 const IC_HOST = process.env.IC_HOST || 'https://icp0.io';
 const CONSUMER_CANISTER_ID = process.env.CONSUMER_CANISTER_ID || 'tgyl5-yyaaa-aaaaj-az4wq-cai';
-const ADMIN_CANISTER_ID = process.env.ADMIN_CANISTER_ID || '444wf-gyaaa-aaaaj-az5sq-cai'; // Admin backend canister ID
+const ADMIN_CANISTER_ID = process.env.ADMIN_CANISTER_ID || 'szqyk-3aaaa-aaaaj-az4sa-cai'; // Admin backend canister ID
 const ADMIN_FRONTEND_CANISTER_ID = process.env.ADMIN_FRONTEND_CANISTER_ID || 'sxsvc-aqaaa-aaaaj-az4ta-cai'; // Admin frontend canister ID
 const STORAGE_CANISTER_ID = process.env.STORAGE_CANISTER_ID || 'hhaip-uiaaa-aaaao-a4khq-cai'; // Production storage canister ID
 const PORT = process.env.PORT || 3001;
@@ -244,6 +244,16 @@ app.post('/api/register-device', authenticateApiKey, async (req, res) => {
       return res.status(400).json({ err: { message: 'Device ID is required' } });
     }
 
+    // Capture the client's IP address
+    const clientIP = req.headers['x-forwarded-for']?.split(',')[0] || 
+                     req.headers['x-real-ip'] || 
+                     req.connection.remoteAddress || 
+                     req.socket.remoteAddress || 
+                     (req.connection.socket ? req.connection.socket.remoteAddress : null) ||
+                     req.ip;
+
+    console.log(`[/api/register-device] Client IP captured: ${clientIP}`);
+
     // Create an anonymous identity for consumer canister access
     const anonymousIdentity = new AnonymousIdentity();
     const anonymousAgent = new HttpAgent({
@@ -258,9 +268,18 @@ app.post('/api/register-device', authenticateApiKey, async (req, res) => {
       canisterId: CONSUMER_CANISTER_ID
     });
 
-    // Register the device with the consumer canister
-    console.log(`[/api/register-device] Registering device ${deviceId} with consumer canister...`);
-    const registrationResult = await consumerActor.registerDevice(deviceId);
+    // Register the device with IP address using the new function
+    console.log(`[/api/register-device] Registering device ${deviceId} with IP ${clientIP} to consumer canister...`);
+    let registrationResult;
+    
+    try {
+      // Try the new function with IP address first
+      registrationResult = await consumerActor.registerDeviceWithIP(deviceId, clientIP ? [clientIP] : []);
+    } catch (error) {
+      console.log(`[/api/register-device] New function failed, falling back to old function:`, error.message);
+      // Fall back to the old function without IP address if the new one doesn't exist
+      registrationResult = await consumerActor.registerDevice(deviceId);
+    }
 
     console.log(`[/api/register-device] Registration result:`,
       JSON.stringify(registrationResult, (key, value) => typeof value === 'bigint' ? value.toString() : value));

@@ -27,6 +27,7 @@ actor Admin {
         role: UserRole;
         addedBy: Principal;
         addedAt: Time.Time;
+        ipAddress: ?Text;
     };
 
     type ExtractionField = {
@@ -179,6 +180,7 @@ actor Admin {
             role = #SuperAdmin;
             addedBy = userPrincipal;
             addedAt = Time.now();
+            ipAddress = null;
         };
         users.put(userPrincipal, user);
         
@@ -276,6 +278,24 @@ actor Admin {
             role = role;
             addedBy = caller;
             addedAt = Time.now();
+            ipAddress = null;
+        };
+        users.put(p, user);
+        #ok()
+    };
+
+    // User management with IP address
+    public shared({ caller }) func add_user_with_ip(p: Principal, role: UserRole, ipAddress: ?Text) : async Result.Result<(), Text> {
+        if (not _isAuthorized(caller)) {
+            return #err("Unauthorized");
+        };
+        
+        let user : User = {
+            principal = p;
+            role = role;
+            addedBy = caller;
+            addedAt = Time.now();
+            ipAddress = ipAddress;
         };
         users.put(p, user);
         #ok()

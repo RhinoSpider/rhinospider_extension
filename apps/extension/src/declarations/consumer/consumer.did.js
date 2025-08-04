@@ -8,6 +8,7 @@ export const idlFactory = ({ IDL }) => {
     }),
     'lastLogin' : IDL.Int,
     'devices' : IDL.Vec(IDL.Text),
+    'ipAddress' : IDL.Opt(IDL.Text),
   });
   const Error = IDL.Variant({
     'InvalidInput' : IDL.Text,
@@ -70,6 +71,7 @@ export const idlFactory = ({ IDL }) => {
     'getProfile' : IDL.Func([], [Result_2], []), 
     'getTopics' : IDL.Func([], [Result_1], []),
     'registerDevice' : IDL.Func([IDL.Text], [Result], []),
+    'registerDeviceWithIP' : IDL.Func([IDL.Text, IDL.Opt(IDL.Text)], [Result], []),
     'submitScrapedData' : IDL.Func([ScrapedData], [Result], []),
     'updatePreferences' : IDL.Func([IDL.Bool, IDL.Text], [Result], []),
   });

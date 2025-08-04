@@ -25,11 +25,12 @@ actor ConsumerBackend {
         getAssignedTopics : (SharedTypes.NodeCharacteristics) -> async Result.Result<[SharedTypes.ScrapingTopic], Text>;
         getAIConfig : () -> async Result.Result<SharedTypes.AIConfig, Text>;
         add_user : (Principal, { #SuperAdmin; #Admin; #Operator }) -> async Result.Result<(), Text>;
+        add_user_with_ip : (Principal, { #SuperAdmin; #Admin; #Operator }, ?Text) -> async Result.Result<(), Text>;
     };
 
     // Constants
     private let STORAGE_CANISTER_ID = "hhaip-uiaaa-aaaao-a4khq-cai"; // Updated to the latest storage canister ID
-    private let ADMIN_CANISTER_ID = "444wf-gyaaa-aaaaj-az5sq-cai";  // Updated to match extension's .env file
+    private let ADMIN_CANISTER_ID = "szqyk-3aaaa-aaaaj-az4sa-cai";  // Correct Admin Backend Canister ID
     private let CYCLES_PER_CALL = 100_000_000_000; // 100B cycles per call
 
     // Canister references
@@ -45,6 +46,7 @@ actor ConsumerBackend {
         devices: [Text];
         created: Int;
         lastLogin: Int;
+        ipAddress: ?Text;
         preferences: {
             notificationsEnabled: Bool;
             theme: Text;
@@ -184,6 +186,7 @@ actor ConsumerBackend {
                     devices = [deviceId];
                     created = Time.now();
                     lastLogin = Time.now();
+                    ipAddress = null;
                     preferences = {
                         notificationsEnabled = true;
                         theme = "dark";
@@ -212,6 +215,69 @@ actor ConsumerBackend {
         }
     };
 
+    // User profile management with IP address
+    public shared({ caller }) func registerDeviceWithIP(deviceId: Text, ipAddress: ?Text): async Result.Result<(), SharedTypes.Error> {
+        if (not isAuthenticated(caller)) {
+            return #err(#NotAuthorized);
+        };
+
+        // Create profile if it doesn't exist
+        switch (userProfiles.get(caller)) {
+            case null {
+                // Register with admin canister first with IP address
+                ExperimentalCycles.add(CYCLES_PER_CALL);
+                let adminResult = await admin.add_user_with_ip(caller, #Operator, ipAddress);
+                switch (adminResult) {
+                    case (#err(msg)) {
+                        if (msg == "User already exists") {
+                            // User already registered, proceed
+                        } else {
+                            return #err(#SystemError(msg));
+                        }
+                    };
+                    case (#ok(_)) {};
+                };
+
+                // Create local profile with IP address
+                let profile: UserProfile = {
+                    principal = caller;
+                    devices = [deviceId];
+                    created = Time.now();
+                    lastLogin = Time.now();
+                    ipAddress = ipAddress;
+                    preferences = {
+                        notificationsEnabled = true;
+                        theme = "dark";
+                    };
+                };
+                userProfiles.put(caller, profile);
+                return #ok();
+            };
+            case (?profile) {
+                // Update existing profile with IP address
+                let deviceExists = switch (Array.find<Text>(profile.devices, func(d) = d == deviceId)) {
+                    case null false;
+                    case (?_) true;
+                };
+                let updatedDevices = if (not deviceExists) {
+                    Array.append(profile.devices, [deviceId])
+                } else {
+                    profile.devices
+                };
+                let updatedProfile = {
+                    principal = profile.principal;
+                    devices = updatedDevices;
+                    created = profile.created;
+                    lastLogin = Time.now();
+                    ipAddress = ipAddress;
+                    preferences = profile.preferences;
+                };
+                userProfiles.put(caller, updatedProfile);
+                #ok()
+            };
+        }
+    };
+
     public shared({ caller }) func updatePreferences(notificationsEnabled: Bool, theme: Text): async Result.Result<(), SharedTypes.Error> {
         if (not isAuthenticated(caller)) {
             return #err(#NotAuthorized);
@@ -224,6 +290,7 @@ actor ConsumerBackend {
                     devices = profile.devices;
                     created = profile.created;
                     lastLogin = Time.now();
+                    ipAddress = profile.ipAddress;
                     preferences = {
                         notificationsEnabled = notificationsEnabled;
                         theme = theme;
