@@ -10,20 +10,34 @@ class ProxyClient {
     this.proxyUrl = config.icProxy?.url || 'https://ic-proxy.rhinospider.com';
     this.httpFallbackUrl = config.icProxy?.httpFallbackUrl || 'http://ic-proxy.rhinospider.com';
     this.apiKey = config.icProxy?.apiKey || 'test-api-key';
-    this.deviceId = this.getOrCreateDeviceId();
+    this.deviceId = null;
+    this.initializeDeviceId();
+  }
+
+  /**
+   * Initialize device ID
+   */
+  async initializeDeviceId() {
+    this.deviceId = await this.getOrCreateDeviceId();
   }
 
   /**
    * Get or create a device ID
-   * @returns {string} Device ID
+   * @returns {Promise<string>} Device ID
    */
-  getOrCreateDeviceId() {
-    let deviceId = localStorage.getItem('deviceId');
-    if (!deviceId) {
-      deviceId = crypto.randomUUID();
-      localStorage.setItem('deviceId', deviceId);
-    }
-    return deviceId;
+  async getOrCreateDeviceId() {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(['deviceId'], (result) => {
+        if (result.deviceId) {
+          resolve(result.deviceId);
+        } else {
+          const deviceId = crypto.randomUUID();
+          chrome.storage.local.set({ deviceId }, () => {
+            resolve(deviceId);
+          });
+        }
+      });
+    });
   }
 
   /**
@@ -40,8 +54,8 @@ class ProxyClient {
       const response = await connectionHandler.makeRequest('icProxy', endpoint, options);
 
       // Track the connection attempt if logging is enabled
-      if (window.rhinoSpiderLogging) {
-        window.rhinoSpiderLogging.logConnectionAttempt(
+      if (globalThis.rhinoSpiderLogging) {
+        globalThis.rhinoSpiderLogging.logConnectionAttempt(
           connectionHandler.getBestUrl('icProxy', endpoint),
           true
         );
@@ -52,8 +66,8 @@ class ProxyClient {
       console.error('[ProxyClient] Request error:', error);
 
       // Track the failed attempt if logging is enabled
-      if (window.rhinoSpiderLogging) {
-        window.rhinoSpiderLogging.logConnectionAttempt(
+      if (globalThis.rhinoSpiderLogging) {
+        globalThis.rhinoSpiderLogging.logConnectionAttempt(
           connectionHandler.getBestUrl('icProxy', endpoint),
           false,
           error
@@ -75,7 +89,7 @@ class ProxyClient {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-device-id': this.deviceId,
+          'x-device-id': this.deviceId || await this.getOrCreateDeviceId(),
           'Authorization': `Bearer ${this.apiKey}`
         },
         body: JSON.stringify({ principalId })
@@ -107,7 +121,7 @@ class ProxyClient {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-device-id': this.deviceId,
+          'x-device-id': this.deviceId || await this.getOrCreateDeviceId(),
           'Authorization': `Bearer ${this.apiKey}`
         },
         body: JSON.stringify({ principalId })
@@ -139,7 +153,7 @@ class ProxyClient {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-device-id': this.deviceId,
+          'x-device-id': this.deviceId || await this.getOrCreateDeviceId(),
           'Authorization': `Bearer ${this.apiKey}`
         },
         body: JSON.stringify(data)

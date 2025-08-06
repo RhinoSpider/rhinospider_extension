@@ -60,17 +60,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             }
         });
         return true;
-    } else if (message.type === 'OPEN_REFERRAL_PAGE') {
-        chrome.tabs.query({ url: chrome.runtime.getURL('pages/referral.html') }, (tabs) => {
-            if (tabs.length > 0) {
-                chrome.tabs.update(tabs[0].id, { active: true });
-                logger.log('Focusing existing referral tab');
-            } else {
-                chrome.tabs.create({ url: chrome.runtime.getURL('pages/referral.html') });
-                logger.log('Opening new referral tab');
-            }
-        });
-        return true;
     } else if (message.type === 'LOGIN') {
         login().then(principal => {
             sendResponse({ success: true, principal: principal.toText() });
@@ -98,8 +87,3 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 });
 
-chrome.commands.onCommand.addListener((command) => {
-    if (command === "open-referral-page") {
-        chrome.tabs.create({ url: chrome.runtime.getURL('pages/referral.html') });
-    }
-});

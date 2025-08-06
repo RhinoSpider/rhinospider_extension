@@ -1,7 +1,7 @@
 {
   "name": "@rhinospider/extension",
   "private": true,
-  "version": "3.2.19",
+  "version": "5.1.1",
   "type": "module",
   "main": "index.js",
   "scripts": {

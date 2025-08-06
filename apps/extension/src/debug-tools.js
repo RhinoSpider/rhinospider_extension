@@ -5,10 +5,10 @@
  */
 
 // Create global object for debug tools
-window.rhinoSpiderDebug = window.rhinoSpiderDebug || {};
+globalThis.rhinoSpiderDebug = globalThis.rhinoSpiderDebug || {};
 
 // Initialize connection logging
-window.rhinoSpiderLogging = window.rhinoSpiderLogging || {
+globalThis.rhinoSpiderLogging = globalThis.rhinoSpiderLogging || {
   connections: [],
 
   // Log a connection attempt
@@ -45,7 +45,7 @@ window.rhinoSpiderLogging = window.rhinoSpiderLogging || {
 };
 
 // Test connections to both proxy servers via HTTP and HTTPS
-window.rhinoSpiderDebug.testAllConnections = async function() {
+globalThis.rhinoSpiderDebug.testAllConnections = async function() {
   const results = {
     icProxy: {
       https: { success: false, error: null },
@@ -72,7 +72,11 @@ window.rhinoSpiderDebug.testAllConnections = async function() {
   console.log('===== Testing all connections =====');
 
   // Create device ID header
-  const deviceId = localStorage.getItem('deviceId') || 'test-device';
+  const deviceId = await new Promise((resolve) => {
+    chrome.storage.local.get(['deviceId'], (result) => {
+      resolve(result.deviceId || 'test-device');
+    });
+  });
   const headers = {
     'x-device-id': deviceId
   };
@@ -155,13 +159,11 @@ window.rhinoSpiderDebug.testAllConnections = async function() {
 };
 
 // Initialize debug tools when the extension loads
-document.addEventListener('DOMContentLoaded', () => {
-  console.log('RhinoSpider Debug Tools loaded');
-});
+console.log('RhinoSpider Debug Tools loaded');
 
 // Export functions for console access
-window.rhinoSpiderDebug.logConnections = () => console.table(window.rhinoSpiderLogging.getConnections());
-window.rhinoSpiderDebug.clearConnectionLogs = () => window.rhinoSpiderLogging.clearConnections();
+globalThis.rhinoSpiderDebug.logConnections = () => console.table(globalThis.rhinoSpiderLogging.getConnections());
+globalThis.rhinoSpiderDebug.clearConnectionLogs = () => globalThis.rhinoSpiderLogging.clearConnections();
 
 // Export the debug tools object for importing in other modules
-export default window.rhinoSpiderDebug;
+export default globalThis.rhinoSpiderDebug;

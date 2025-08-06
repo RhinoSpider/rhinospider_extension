@@ -94,7 +94,7 @@ const enhancedLogging = {
 };
 
 // Expose for debugging
-window.rhinoSpiderLogging = enhancedLogging;
+globalThis.rhinoSpiderLogging = enhancedLogging;
 
 // Add connection testing to debug tools
 debugTools.testConnections = () => connectionHandler.testConnections();
@@ -106,7 +106,7 @@ debugTools.runConnectionTest = () => {
 
 // Development mode toggle
 debugTools.setDevelopmentMode = (enabled) => {
-    localStorage.setItem('developmentMode', enabled ? 'true' : 'false');
+    chrome.storage.local.set({ developmentMode: enabled });
     console.log(`[RhinoSpider] Development mode ${enabled ? 'enabled' : 'disabled'}`);
 
     // Reload extension pages to apply changes
@@ -2193,6 +2193,54 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 }
             })();
 
+            return true;
+
+        case 'LOGIN':
+            // Handle login request from popup
+            (async () => {
+                try {
+                    // Open the dashboard in login mode
+                    const tab = await chrome.tabs.create({
+                        url: chrome.runtime.getURL('pages/dashboard.html')
+                    });
+                    // The dashboard will handle the actual login process
+                    sendResponse({ success: true });
+                } catch (error) {
+                    logger.error('Error opening dashboard for login:', error);
+                    sendResponse({ success: false, error: error.message });
+                }
+            })();
+            return true;
+        
+        case 'LOGOUT':
+            // Handle logout request from popup
+            (async () => {
+                try {
+                    isAuthenticated = false;
+                    await chrome.storage.local.remove(['principalId', 'isAuthenticated']);
+                    await stopScraping();
+                    chrome.action.setBadgeText({ text: 'OFF' });
+                    chrome.action.setBadgeBackgroundColor({ color: '#9E9E9E' });
+                    sendResponse({ success: true });
+                } catch (error) {
+                    logger.error('Error during logout:', error);
+                    sendResponse({ success: false, error: error.message });
+                }
+            })();
+            return true;
+        
+        case 'IS_AUTHENTICATED':
+            // Check authentication status
+            chrome.storage.local.get(['principalId'], (result) => {
+                sendResponse({ authenticated: !!result.principalId });
+            });
+            return true;
+        
+        case 'GET_PRINCIPAL':
+            // Get the current principal ID
+            chrome.storage.local.get(['principalId'], (result) => {
+                sendResponse({ principal: result.principalId || 'Not logged in' });
+            });
             return true;
 
         case 'LOGIN_COMPLETE':

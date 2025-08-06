@@ -4,7 +4,8 @@
  * This client handles communication with the search proxy service.
  */
 
-import { v4 as uuidv4 } from 'uuid';
+// Use crypto.randomUUID() instead of uuid package for better browser compatibility
+const uuidv4 = () => crypto.randomUUID();
 import config from './config';
 import connectionHandler from './connection-handler';
 
@@ -16,20 +17,26 @@ const API_KEY = config.searchProxy?.apiKey || 'test-api-key';
  */
 class SearchProxyClient {
   constructor() {
-    this.deviceId = this.getOrCreateDeviceId();
+    this.getOrCreateDeviceId().then(deviceId => {
+      this.deviceId = deviceId;
+    });
   }
 
   /**
    * Get or create a device ID
-   * @returns {string} Device ID
+   * @returns {Promise<string>} Device ID
    */
-  getOrCreateDeviceId() {
-    let deviceId = localStorage.getItem('deviceId');
-    if (!deviceId) {
-      deviceId = uuidv4();
-      localStorage.setItem('deviceId', deviceId);
-    }
-    return deviceId;
+  async getOrCreateDeviceId() {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(['deviceId'], (result) => {
+        let deviceId = result.deviceId;
+        if (!deviceId) {
+          deviceId = uuidv4();
+          chrome.storage.local.set({ deviceId });
+        }
+        resolve(deviceId);
+      });
+    });
   }
 
   /**
@@ -46,8 +53,8 @@ class SearchProxyClient {
       const response = await connectionHandler.makeRequest('searchProxy', endpoint, options);
 
       // Track the connection attempt if logging is enabled
-      if (window.rhinoSpiderLogging) {
-        window.rhinoSpiderLogging.logConnectionAttempt(
+      if (globalThis.rhinoSpiderLogging) {
+        globalThis.rhinoSpiderLogging.logConnectionAttempt(
           connectionHandler.getBestUrl('searchProxy', endpoint),
           true
         );
@@ -58,8 +65,8 @@ class SearchProxyClient {
       console.error('[SearchProxyClient] Request error:', error);
 
       // Track the failed attempt if logging is enabled
-      if (window.rhinoSpiderLogging) {
-        window.rhinoSpiderLogging.logConnectionAttempt(
+      if (globalThis.rhinoSpiderLogging) {
+        globalThis.rhinoSpiderLogging.logConnectionAttempt(
           connectionHandler.getBestUrl('searchProxy', endpoint),
           false,
           error

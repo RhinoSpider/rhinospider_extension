@@ -1,200 +1,136 @@
-// Content script to handle page scraping and IC agent
-import { Actor, HttpAgent } from '@dfinity/agent';
-import { idlFactory } from './declarations/consumer';
+// import { ScrapingTopic } from '../../admin/src/types';
+import { apiConfig } from './utils/apiConfig';
 
-// Constants from environment
-const IC_HOST = import.meta.env.VITE_IC_HOST || 'https://icp0.io';
-const CONSUMER_CANISTER_ID = import.meta.env.VITE_CONSUMER_CANISTER_ID;
-
-// Initialize IC connection
-let agent = null;
-let actor = null;
-
-// Logger utility
-const logger = {
-    log: (msg) => {
-        console.log(`✅ [Content] ${msg}`);
-    },
-    error: (msg, error) => {
-        console.error(`❌ [Content] ${msg}`, error);
-    }
-};
-
-// Initialize IC connection with identity
-async function initializeIC(identity) {
-    try {
-        logger.log('Initializing IC Connection');
-        
-        // Create agent
-        agent = new HttpAgent({
-            host: IC_HOST,
-            identity
-        });
-
-        // Always fetch root key in extension context
-        logger.log('Fetching root key');
-        await agent.fetchRootKey();
-        logger.log('Root key fetched successfully');
-
-        // Create actor
-        actor = Actor.createActor(idlFactory, {
-            agent,
-            canisterId: CONSUMER_CANISTER_ID
-        });
-        logger.log('Actor initialized successfully');
-
-        return actor;
-    } catch (error) {
-        logger.error('Failed to initialize IC connection:', error);
-        throw error;
-    }
+// Helper to clean HTML string
+function cleanHTML(html) {
+  return html
+    .replace(/\s+/g, ' ')
+    .replace(/<!--.*?-->/g, '')
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+    .trim();
 }
 
-// Get current actor
-function getCurrentActor() {
-    if (!actor) {
-        throw new Error('Actor not initialized');
-    }
-    return actor;
-}
-
-// Clear session
-function clearSession() {
-    agent = null;
-    actor = null;
-}
-
-// Export functions to window
-window.rhinoSpiderIC = {
-    initializeIC,
-    getCurrentActor,
-    clearSession
-};
-
-// Content script to handle page scraping
-console.log('RhinoSpider content script loaded');
-
-let isActive = false;
-
-// Initialize state
-chrome.storage.local.get(['isActive'], (result) => {
-    isActive = result.isActive;
-});
-
-// Listen for state changes
-chrome.storage.onChanged.addListener((changes) => {
-    if (changes.isActive) {
-        isActive = changes.isActive.newValue;
-    }
-});
-
-// Extract content based on topic rules
-function extractContent(topic) {
-    console.log('Extracting content with topic rules:', topic);
-    const content = {
-        url: window.location.href,
-        title: document.title,
-        timestamp: new Date().toISOString(),
-        content: '',
-        metadata: {}
+// Extract only relevant HTML based on topic rules
+function extractRelevantHTML(topic) {
+  const relevantElements = new Set();
+  
+  // For each extraction field in the topic
+  topic.extractionRules.fields.forEach(field => {
+    // Common selectors for different field types
+    const selectors = {
+      text: ['p', 'article', '.post-content', '.article-content', '.entry-content'],
+      title: ['h1', '[class*="title"]', '[id*="title"]', '[class*="headline"]'],
+      date: ['time', '[class*="date"]', '[class*="time"]', '[itemprop="datePublished"]'],
+      author: ['[class*="author"]', '[rel="author"]', '[itemprop="author"]'],
+      votes: ['[class*="vote"]', '[class*="score"]', '[class*="points"]'],
+      price: ['[class*="price"]', '[id*="price"]', '.amount', '[itemprop="price"]'],
+      description: ['meta[name="description"]', '[class*="description"]', '[id*="description"]']
     };
 
-    try {
-        // Extract content using topic's extraction rules
-        if (topic.extractionRules && topic.extractionRules.fields) {
-            console.log('Found extraction rules with fields:', topic.extractionRules.fields);
-            const extractedFields = {};
-            
-            for (const field of topic.extractionRules.fields) {
-                try {
-                    const selector = `.${field.name}, #${field.name}, [name="${field.name}"]`;
-                    const elements = document.querySelectorAll(selector);
-                    
-                    if (elements.length > 0) {
-                        let fieldValue = '';
-                        
-                        switch (field.fieldType.toLowerCase()) {
-                            case 'text':
-                                fieldValue = Array.from(elements)
-                                    .map(el => el.textContent.trim())
-                                    .filter(text => text.length > 0)
-                                    .join(' ');
-                                break;
-                            
-                            case 'html':
-                                fieldValue = Array.from(elements)
-                                    .map(el => el.innerHTML.trim())
-                                    .filter(html => html.length > 0)
-                                    .join(' ');
-                                break;
-                            
-                            case 'attribute':
-                                if (field.attributeName) {
-                                    fieldValue = Array.from(elements)
-                                        .map(el => el.getAttribute(field.attributeName))
-                                        .filter(attr => attr && attr.length > 0)
-                                        .join(' ');
-                                }
-                                break;
-                        }
-                        
-                        if (fieldValue) {
-                            extractedFields[field.name] = fieldValue;
-                        }
-                    }
-                } catch (fieldError) {
-                    console.error(`Error extracting field ${field.name}:`, fieldError);
-                }
-            }
-            
-            content.metadata = extractedFields;
+    // Get relevant selectors for this field type
+    const fieldSelectors = selectors[field.fieldType] || ['*'];
+    
+    // Find elements matching selectors
+    fieldSelectors.forEach(selector => {
+      document.querySelectorAll(selector).forEach(el => {
+        relevantElements.add(el);
+        // Also add parent elements for context
+        let parent = el.parentElement;
+        while (parent && parent !== document.body) {
+          relevantElements.add(parent);
+          parent = parent.parentElement;
         }
-        
-        // Get main content
-        content.content = document.body.textContent;
-        return content;
-    } catch (error) {
-        console.error('Error extracting content:', error);
-        return content;
-    }
+      });
+    });
+  });
+
+  // Convert elements to array and get their HTML
+  const html = Array.from(relevantElements)
+    .map(el => el.outerHTML)
+    .join('\n');
+
+  return cleanHTML(html);
 }
 
-// Listen for messages from dashboard
-chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
-    logger.log('Received message:', message.type);
-    
-    switch (message.type) {
-        case 'INIT_IC_AGENT':
-            try {
-                await initializeIC(message.identity);
-                sendResponse({ success: true });
-            } catch (error) {
-                logger.error('Failed to initialize IC agent:', error);
-                sendResponse({ success: false, error: error.message });
-            }
-            break;
-        case 'EXTRACT_CONTENT':
-            if (!isActive) {
-                sendResponse({ success: false, error: 'Extension is not active' });
-                return;
-            }
-            
-            const content = extractContent(message.topic);
-            sendResponse({ success: true, content });
-            break;
-            
-        case 'GET_PAGE_INFO':
-            sendResponse({
-                success: true,
-                info: {
-                    url: window.location.href,
-                    title: document.title
-                }
-            });
-            break;
+// Send data to DO scraper service
+async function sendToScraper(url, html, topic) {
+  try {
+    const scraperUrl = await apiConfig.getScraperUrl();
+    const response = await fetch(`${scraperUrl}/scrape`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        url,
+        html,
+        extractionRules: topic.extractionRules
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Scraper service error: ${response.statusText}`);
     }
+
+    const result = await response.json();
+    return { success: true, jobId: result.jobId };
+  } catch (error) {
+    console.error('Error sending to scraper:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// Listen for scraping requests
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'SCRAPE_PAGE') {
+    const { topic } = message;
     
-    return true; // Keep message channel open for async response
+    // Get relevant HTML
+    const html = extractRelevantHTML(topic);
+    
+    // Send to scraper service
+    sendToScraper(window.location.href, html, topic)
+      .then(result => {
+        if (result.success) {
+          // Notify extension popup of success
+          chrome.runtime.sendMessage({ 
+            type: 'SCRAPE_SUCCESS',
+            jobId: result.jobId
+          });
+        } else {
+          // Notify extension popup of failure
+          chrome.runtime.sendMessage({ 
+            type: 'SCRAPE_ERROR',
+            error: result.error
+          });
+        }
+      });
+
+    // Indicate we'll respond asynchronously
+    return true;
+  }
 });
 
-logger.log('Content script loaded');
+// Listen for II login status
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'CHECK_II_STATUS') {
+    if (document.readyState === 'complete') {
+      sendResponse({ status: 'ready' });
+    }
+  }
+});
+
+// Watch for II login success
+const observer = new MutationObserver((mutations) => {
+  for (const mutation of mutations) {
+    if (mutation.type === 'childList' && document.querySelector('.success-message')) {
+      chrome.runtime.sendMessage({ type: 'II_LOGIN_SUCCESS' });
+    }
+  }
+});
+
+observer.observe(document.body, {
+  childList: true,
+  subtree: true
+});

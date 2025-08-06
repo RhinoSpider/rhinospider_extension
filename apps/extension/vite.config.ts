@@ -1,19 +1,11 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
-import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import { crx } from '@crxjs/vite-plugin';
 import manifest from './manifest.json';
 
 export default defineConfig(({ mode }) => {
   return {
     plugins: [
-      nodePolyfills({
-        globals: {
-          Buffer: true,
-          global: true,
-          process: true,
-        },
-      }),
       crx({ manifest }),
     ],
     build: {
@@ -23,7 +15,9 @@ export default defineConfig(({ mode }) => {
         input: {
           popup: resolve(__dirname, 'pages/popup.html'),
           background: resolve(__dirname, 'src/background.js'),
-          'content': resolve(__dirname, 'src/content.ts'),
+          content: resolve(__dirname, 'src/content.js'),
+          dashboard: resolve(__dirname, 'pages/dashboard.html'),
+          'popup-script': resolve(__dirname, 'src/popup.js'),
         },
         output: {
           entryFileNames: '[name].js',

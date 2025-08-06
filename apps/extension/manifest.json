@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "RhinoSpider",
-  "version": "3.2.19",
+  "version": "5.1.1",
   "description": "RhinoSpider Chrome Extension",
   "permissions": [
     "storage",
@@ -11,7 +11,7 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content-script.js"],
+      "js": ["content.js"],
       "run_at": "document_idle"
     }
   ],
@@ -22,12 +22,10 @@
     "https://ic-proxy.rhinospider.com/*",
     "http://ic-proxy.rhinospider.com/*",
     "https://search-proxy.rhinospider.com/*",
-    "http://search-proxy.rhinospider.com/*",
-    "http://143.244.133.154:3001/*",
-    "http://143.244.133.154:3002/*"
+    "http://search-proxy.rhinospider.com/*"
   ],
   "background": {
-    "service_worker": "background.js",
+    "service_worker": "src/background.js",
     "type": "module"
   },
   "action": {
@@ -45,13 +43,6 @@
         "default": "Ctrl+Shift+F",
         "mac": "Command+Shift+F"
       }
-    },
-    "open-referral-page": {
-      "suggested_key": {
-        "default": "Ctrl+Shift+R",
-        "mac": "Command+Shift+R"
-      },
-      "description": "Open the RhinoSpider Referral Page."
     }
   },
   "icons": {
@@ -63,8 +54,7 @@
     {
       "resources": [
         "pages/*",
-        "assets/*",
-        "referral.js"
+        "assets/*"
       ],
       "matches": [
         "<all_urls>"

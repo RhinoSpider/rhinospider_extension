@@ -28,20 +28,34 @@ const referralActor = Actor.createActor(referralIdl, {
  */
 class ServiceWorkerAdapter {
   constructor() {
-    this.deviceId = this.getOrCreateDeviceId();
+    this.deviceId = null;
+    this.initializeDeviceId();
+  }
+
+  /**
+   * Initialize device ID
+   */
+  async initializeDeviceId() {
+    this.deviceId = await this.getOrCreateDeviceId();
   }
 
   /**
    * Get or create a device ID
-   * @returns {string} Device ID
+   * @returns {Promise<string>} Device ID
    */
-  getOrCreateDeviceId() {
-    let deviceId = localStorage.getItem('deviceId');
-    if (!deviceId) {
-      deviceId = uuidv4();
-      localStorage.setItem('deviceId', deviceId);
-    }
-    return deviceId;
+  async getOrCreateDeviceId() {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(['deviceId'], (result) => {
+        if (result.deviceId) {
+          resolve(result.deviceId);
+        } else {
+          const deviceId = uuidv4();
+          chrome.storage.local.set({ deviceId }, () => {
+            resolve(deviceId);
+          });
+        }
+      });
+    });
   }
 
   /**
@@ -70,7 +84,7 @@ class ServiceWorkerAdapter {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-device-id': this.deviceId,
+          'x-device-id': this.deviceId || await this.getOrCreateDeviceId(),
           'Authorization': `Bearer ${API_KEY}`
         },
         body: JSON.stringify(body)
@@ -113,7 +127,7 @@ class ServiceWorkerAdapter {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-device-id': this.deviceId,
+          'x-device-id': this.deviceId || await this.getOrCreateDeviceId(),
           'Authorization': `Bearer ${API_KEY}`
         },
         body: JSON.stringify(body)
@@ -145,7 +159,7 @@ class ServiceWorkerAdapter {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-device-id': this.deviceId,
+          'x-device-id': this.deviceId || await this.getOrCreateDeviceId(),
           'Authorization': `Bearer ${API_KEY}`
         },
         body: JSON.stringify({ principalId })
@@ -185,7 +199,7 @@ class ServiceWorkerAdapter {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-device-id': this.deviceId,
+          'x-device-id': this.deviceId || await this.getOrCreateDeviceId(),
           'Authorization': `Bearer ${API_KEY}`
         },
         body: JSON.stringify({ nodeCharacteristics })
@@ -263,7 +277,7 @@ class ServiceWorkerAdapter {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-device-id': this.deviceId,
+          'x-device-id': this.deviceId || await this.getOrCreateDeviceId(),
           'Authorization': `Bearer ${API_KEY}`
         },
         body: JSON.stringify(body)
