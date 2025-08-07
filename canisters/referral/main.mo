@@ -1,5 +1,7 @@
 import Principal "mo:base/Principal";
 import Nat "mo:base/Nat";
+import Nat8 "mo:base/Nat8";
+import Nat32 "mo:base/Nat32";
 import Int "mo:base/Int";
 import Result "mo:base/Result";
 import Text "mo:base/Text";
@@ -7,6 +9,7 @@ import HashMap "mo:base/HashMap";
 import Time "mo:base/Time";
 import Iter "mo:base/Iter";
 import Random "mo:base/Random";
+import Char "mo:base/Char";
 
 actor Referral {
 
@@ -54,15 +57,18 @@ actor Referral {
         let timestamp_int = Time.now(); // Time.now() returns Int (nanoseconds)
         let timestamp_nat = Int.abs(timestamp_int);
         let timestamp_text = Nat.toText(timestamp_nat);
-        let principal_text = Principal.toText(Principal.fromBlob(randomBytes));
-
-        // Take first 8 chars from principal
-        var hash_part = "";
-        var i = 0;
-        for (char in principal_text.chars()) {
-            if (i < 8) {
-                hash_part #= Text.fromChar(char);
-                i += 1;
+        
+        // Convert random bytes to hex string for uniqueness
+        var hex_part = "";
+        var byte_count = 0;
+        for (byte in randomBytes.vals()) {
+            if (byte_count < 4) { // Use only first 4 bytes
+                let nat_byte = Nat8.toNat(byte);
+                let hex_digit1 = nat_byte / 16;
+                let hex_digit2 = nat_byte % 16;
+                hex_part #= Text.fromChar(Char.fromNat32(Nat32.fromNat(if (hex_digit1 < 10) { 48 + hex_digit1 } else { 87 + hex_digit1 })));
+                hex_part #= Text.fromChar(Char.fromNat32(Nat32.fromNat(if (hex_digit2 < 10) { 48 + hex_digit2 } else { 87 + hex_digit2 })));
+                byte_count += 1;
             };
         };
         
@@ -81,7 +87,7 @@ actor Referral {
             timestamp_part := timestamp_text;
         };
 
-        return hash_part # timestamp_part;
+        return hex_part # timestamp_part;
     };
 
     // Return the caller's referral code, generating one if it doesn't exist.
