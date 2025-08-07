@@ -7,6 +7,7 @@ import connectionTest from './connection-test.js';
 const { getUrlsForTopics, prefetchUrlsForAllTopics, checkProxyHealth, getUrlForTopic } = searchProxyClient;
 import config from './config.js';
 import debugTools from './debug-tools.js';
+import ServiceWorkerAdapter from './service-worker-adapter.js';
 
 // Enhanced logging for connection tracking
 const enhancedLogging = {
@@ -279,6 +280,9 @@ const TOPICS_CACHE_DURATION = 30 * 60 * 1000; // 30 minutes in milliseconds
 
 // Authentication state
 let isAuthenticated = false;
+
+// Service worker adapter instance
+let serviceWorkerAdapter = null;
 
 // Load last scraped URLs from storage
 async function loadLastScrapedUrls() {
@@ -2254,6 +2258,61 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     // Enable extension by default after login and set scraping as active
                     chrome.storage.local.set({ enabled: true, isScrapingActive: true }, async () => {
                         logger.log('Extension is enabled by default after login, loading topics');
+                        
+                        // Create user profile in referral canister
+                        try {
+                            logger.log('Creating user profile in referral canister...');
+                            
+                            // Get IP address
+                            const ipAddress = await getIPAddress();
+                            logger.log('User IP address:', ipAddress);
+                            
+                            // Initialize service worker adapter if needed
+                            if (!serviceWorkerAdapter) {
+                                serviceWorkerAdapter = new ServiceWorkerAdapter();
+                                await serviceWorkerAdapter.init();
+                            }
+                            
+                            // Create user by getting referral code (this creates the user if not exists)
+                            try {
+                                const result = await serviceWorkerAdapter.getReferralCode();
+                                if (result && result.ok) {
+                                    logger.log('User profile created/retrieved in referral canister:', result.ok);
+                                    
+                                    // Store referral code and IP in local storage for quick access
+                                    chrome.storage.local.set({ 
+                                        userReferralCode: result.ok,
+                                        userIpAddress: ipAddress 
+                                    });
+                                    
+                                    // Update user's IP address in the canister
+                                    if (ipAddress && serviceWorkerAdapter.updateUserLogin) {
+                                        try {
+                                            const updateResult = await serviceWorkerAdapter.updateUserLogin(ipAddress);
+                                            if (updateResult && updateResult.ok) {
+                                                logger.log('User IP address updated in canister:', ipAddress);
+                                            } else {
+                                                logger.warn('Failed to update IP address in canister:', updateResult?.err);
+                                            }
+                                        } catch (updateError) {
+                                            logger.error('Error updating user login info:', updateError);
+                                        }
+                                    }
+                                    
+                                    logger.log('User referral code:', result.ok);
+                                    logger.log('User IP stored locally:', ipAddress);
+                                } else if (result && result.err) {
+                                    logger.error('Failed to create user profile in referral canister:', result.err);
+                                } else {
+                                    logger.warn('Unexpected response from referral canister');
+                                }
+                            } catch (canisterError) {
+                                logger.error('Error calling referral canister:', canisterError);
+                            }
+                        } catch (error) {
+                            logger.error('Error creating user profile during login:', error);
+                            // Don't fail the login process if referral creation fails
+                        }
 
                         // Load topics if they're not already loaded
                         if (!topics || topics.length === 0) {

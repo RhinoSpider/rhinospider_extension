@@ -245,6 +245,15 @@ class ServiceWorkerAdapter {
   }
 
   /**
+   * Update user login with IP address
+   * @param {string} ipAddress User's IP address
+   * @returns {Promise<Object>} Result
+   */
+  async updateUserLogin(ipAddress) {
+    return referralActor.updateUserLogin(ipAddress);
+  }
+
+  /**
    * Award points for content length
    * @param {string} principalId Principal ID
    * @param {number} contentLength Content length in characters

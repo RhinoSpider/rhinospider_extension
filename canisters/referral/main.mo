@@ -16,6 +16,8 @@ actor Referral {
         points: Nat;
         totalDataScraped: Nat;
         referredBy: ?Principal;
+        ipAddress: ?Text;
+        lastLogin: ?Time.Time;
     };
 
     type ReferralTier = {
@@ -97,6 +99,8 @@ actor Referral {
                     points = 0;
                     totalDataScraped = 0;
                     referredBy = null;
+                    ipAddress = null;
+                    lastLogin = ?Time.now();
                 };
                 users.put(caller, userData);
                 referralCodes.put(newCode, caller);
@@ -128,6 +132,8 @@ actor Referral {
                             points = 0;
                             totalDataScraped = 0;
                             referredBy = ?referrer;
+                            ipAddress = null;
+                            lastLogin = ?Time.now();
                         };
                         users.put(caller, userData);
 
@@ -155,6 +161,8 @@ actor Referral {
                                     points = referrerData.points + pointsToAdd;
                                     totalDataScraped = referrerData.totalDataScraped;
                                     referredBy = referrerData.referredBy;
+                                    ipAddress = referrerData.ipAddress;
+                                    lastLogin = referrerData.lastLogin;
                                 });
 
                                 return #ok("Referral successful");
@@ -207,6 +215,30 @@ actor Referral {
                     points = userData.points + pointsToAdd;
                     totalDataScraped = userData.totalDataScraped + contentLength;
                     referredBy = userData.referredBy;
+                    ipAddress = userData.ipAddress;
+                    lastLogin = userData.lastLogin;
+                });
+                return #ok();
+            };
+        }
+    };
+
+    // Update user's IP address and last login time
+    public shared(msg) func updateUserLogin(ipAddress: Text) : async Result.Result<(), Text> {
+        let caller = msg.caller;
+        switch (users.get(caller)) {
+            case (null) {
+                return #err("User not found");
+            };
+            case (?userData) {
+                users.put(caller, {
+                    referralCode = userData.referralCode;
+                    referralCount = userData.referralCount;
+                    points = userData.points;
+                    totalDataScraped = userData.totalDataScraped;
+                    referredBy = userData.referredBy;
+                    ipAddress = ?ipAddress;
+                    lastLogin = ?Time.now();
                 });
                 return #ok();
             };
