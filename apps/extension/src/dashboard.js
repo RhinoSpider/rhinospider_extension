@@ -4,6 +4,7 @@ import { Principal } from '@dfinity/principal';
 
 // Configuration
 const II_URL = 'https://identity.ic0.app';
+const LOCAL_II_CANISTER = 'http://127.0.0.1:4943/?canisterId=rdmx6-jaaaa-aaaaa-aaadq-cai';
 
 // DOM Elements
 let loginContainer;
@@ -106,6 +107,11 @@ async function handleLogin() {
         
         await authClient.login({
             identityProvider: II_URL,
+            windowOpenerFeatures: `
+                left=${window.screen.width / 2 - 400},
+                top=${window.screen.height / 2 - 300},
+                toolbar=0,location=0,menubar=0,width=800,height=600
+            `,
             onSuccess: async () => {
                 const identity = authClient.getIdentity();
                 currentPrincipal = identity.getPrincipal().toString();

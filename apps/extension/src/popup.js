@@ -1,16 +1,8 @@
-// Consolidated popup for RhinoSpider extension
-import { AuthClient } from '@dfinity/auth-client';
-
-// Configuration
-const II_URL = 'https://identity.ic0.app';
+// Simplified popup for RhinoSpider extension
+document.addEventListener('DOMContentLoaded', initialize);
 
 // DOM Elements
 let elements = {};
-let authClient = null;
-let isAuthenticated = false;
-
-// Initialize on DOM load
-document.addEventListener('DOMContentLoaded', initialize);
 
 async function initialize() {
     // Get all DOM elements
@@ -34,10 +26,7 @@ async function initialize() {
     showLoading(true);
     
     try {
-        // Initialize auth client
-        authClient = await AuthClient.create();
-        
-        // Check authentication status
+        // Check authentication status from storage
         await checkAuthStatus();
         
         // Set up event listeners
@@ -55,7 +44,7 @@ async function initialize() {
 }
 
 function setupEventListeners() {
-    // Login button
+    // Login button - opens dashboard for auth
     elements.loginButton?.addEventListener('click', handleLogin);
     
     // Logout button
@@ -67,92 +56,42 @@ function setupEventListeners() {
 
 async function checkAuthStatus() {
     try {
-        // First check if authenticated with Internet Identity
-        const iiAuthenticated = await authClient.isAuthenticated();
+        // Check Chrome storage for existing auth
+        const stored = await chrome.storage.local.get(['principalId', 'isAuthenticated']);
         
-        if (iiAuthenticated) {
-            const identity = authClient.getIdentity();
-            const principal = identity.getPrincipal().toString();
-            
-            // Store in Chrome storage
-            await chrome.storage.local.set({ 
-                principalId: principal,
-                isAuthenticated: true 
-            });
-            
-            isAuthenticated = true;
+        if (stored.principalId && stored.isAuthenticated) {
             showAuthenticatedView();
         } else {
-            // Check Chrome storage for existing auth
-            const stored = await chrome.storage.local.get(['principalId', 'isAuthenticated']);
-            
-            if (stored.principalId && stored.isAuthenticated) {
-                isAuthenticated = true;
-                showAuthenticatedView();
-            } else {
-                isAuthenticated = false;
-                showLoginView();
-            }
+            showLoginView();
         }
     } catch (error) {
         console.error('Error checking auth status:', error);
-        isAuthenticated = false;
         showLoginView();
     }
 }
 
 async function handleLogin() {
     try {
-        elements.loginButton.disabled = true;
-        elements.loginButton.textContent = 'Logging in...';
-        hideError();
-        
-        await authClient.login({
-            identityProvider: II_URL,
-            onSuccess: async () => {
-                const identity = authClient.getIdentity();
-                const principal = identity.getPrincipal().toString();
-                
-                // Store in Chrome storage
-                await chrome.storage.local.set({ 
-                    principalId: principal,
-                    isAuthenticated: true 
-                });
-                
-                // Notify background script
-                await chrome.runtime.sendMessage({
-                    type: 'LOGIN_COMPLETE',
-                    principalId: principal
-                });
-                
-                isAuthenticated = true;
-                showAuthenticatedView();
-                await loadState();
-            },
-            onError: (error) => {
-                console.error('Login error:', error);
-                showError('Login failed. Please try again.');
-                elements.loginButton.disabled = false;
-                elements.loginButton.textContent = 'Login with Internet Identity';
-            }
+        // Open dashboard for proper Internet Identity authentication
+        await chrome.tabs.create({
+            url: chrome.runtime.getURL('pages/dashboard.html')
         });
+        
+        // Close popup to let user complete auth in dashboard
+        window.close();
     } catch (error) {
-        console.error('Login error:', error);
-        showError('Login failed. Please try again.');
-        elements.loginButton.disabled = false;
-        elements.loginButton.textContent = 'Login with Internet Identity';
+        console.error('Error opening dashboard:', error);
+        showError('Failed to open login page');
     }
 }
 
 async function handleLogout() {
     try {
-        await authClient.logout();
         await chrome.storage.local.remove(['principalId', 'isAuthenticated']);
         
         // Notify background script
         await chrome.runtime.sendMessage({ type: 'LOGOUT' });
         
-        isAuthenticated = false;
         showLoginView();
         
         // Reset stats display
@@ -204,7 +143,7 @@ async function loadState() {
         ]);
         
         // Update principal display
-        if (state.principalId && isAuthenticated) {
+        if (state.principalId) {
             elements.principalId.textContent = state.principalId;
         }
         
@@ -275,6 +214,13 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
         if (changes.enabled) {
             elements.scrapingToggle.checked = changes.enabled.newValue !== false;
             updateStatusBadge(changes.enabled.newValue !== false);
+        }
+        // Update auth state if it changed
+        if (changes.isAuthenticated || changes.principalId) {
+            checkAuthStatus();
+            if (changes.principalId?.newValue) {
+                elements.principalId.textContent = changes.principalId.newValue;
+            }
         }
     }
 });
