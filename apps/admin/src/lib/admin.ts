@@ -102,11 +102,71 @@ const fixEmptyContentIdentifiers = (topic: any) => {
 
 // Topic Management
 export async function getTopics(): Promise<ScrapingTopic[]> {
-  const adminActor = await getAdminActor();
+  // Use storage canister for topics instead of admin canister
   try {
-    const result = await adminActor.getTopics();
+    const identity = await getIdentity();
+    if (!identity) {
+      throw new Error('No identity found');
+    }
+
+    const agent = new HttpAgent({ 
+      identity,
+      host: import.meta.env.VITE_IC_HOST || 'https://icp0.io'
+    });
+
+    const storageCanisterId = 'hhaip-uiaaa-aaaao-a4khq-cai';
+    
+    // Create IDL factory for storage canister getTopics
+    const storageIdlFactory = ({ IDL }: any) => {
+      const ScrapingTopic = IDL.Record({
+        id: IDL.Text,
+        name: IDL.Text,
+        description: IDL.Text,
+        urlPatterns: IDL.Vec(IDL.Text),
+        status: IDL.Text,
+        extractionRules: IDL.Record({
+          fields: IDL.Vec(IDL.Record({
+            name: IDL.Text,
+            fieldType: IDL.Text,
+            required: IDL.Bool,
+            aiPrompt: IDL.Opt(IDL.Text),
+          })),
+          customPrompt: IDL.Opt(IDL.Text),
+        }),
+        scrapingInterval: IDL.Nat,
+        activeHours: IDL.Record({
+          start: IDL.Nat,
+          end: IDL.Nat,
+        }),
+        maxRetries: IDL.Nat,
+        createdAt: IDL.Int,
+        lastScraped: IDL.Int,
+        aiConfig: IDL.Record({
+          apiKey: IDL.Text,
+          model: IDL.Text,
+          costLimits: IDL.Record({
+            maxDailyCost: IDL.Float64,
+            maxMonthlyCost: IDL.Float64,
+            maxConcurrent: IDL.Nat,
+          }),
+        }),
+      });
+
+      return IDL.Service({
+        getTopics: IDL.Func([], [IDL.Variant({ ok: IDL.Vec(ScrapingTopic), err: IDL.Variant({ NotAuthorized: IDL.Null }) })], ['query']),
+      });
+    };
+
+    const storageActor = Actor.createActor(storageIdlFactory, {
+      agent,
+      canisterId: storageCanisterId,
+    });
+
+    const result = await storageActor.getTopics();
     if ('err' in result) {
-      throw new Error(result.err);
+      // If storage fails, return empty array
+      console.warn('Storage canister getTopics failed:', result.err);
+      return [];
     }
     
     // Convert the result to a plain object with BigInt values converted to numbers

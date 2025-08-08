@@ -177,25 +177,23 @@ export const Overview: React.FC = () => {
       let todayScrapedCount = 0;
       
       try {
-        // Try getDataCount first
-        dataCount = await storageActor.getDataCount();
+        // Try getAllData since getDataCount doesn't exist
+        const allData = await storageActor.getAllData();
+        dataCount = BigInt(allData.length);
+        
+        // Calculate today's scraped pages
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayTimestamp = today.getTime() * 1000000; // Convert to nanoseconds
+        
+        todayScrapedCount = allData.filter(([_, data]: any) => 
+          Number(data.timestamp) >= todayTimestamp
+        ).length;
       } catch (e) {
-        // If getDataCount doesn't exist, try getAllData
-        try {
-          const allData = await storageActor.getAllData();
-          dataCount = BigInt(allData.length);
-          
-          // Calculate today's scraped pages
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          const todayTimestamp = today.getTime() * 1000000; // Convert to nanoseconds
-          
-          todayScrapedCount = allData.filter(([_, data]: any) => 
-            Number(data.timestamp) >= todayTimestamp
-          ).length;
-        } catch (e2) {
-          console.warn('Could not fetch storage data:', e2);
-        }
+        // Storage canister might not have data or method might not exist
+        console.warn('Could not fetch storage data:', e);
+        dataCount = BigInt(0);
+        todayScrapedCount = 0;
       }
 
       // Calculate active extensions (users active in last 24 hours)
