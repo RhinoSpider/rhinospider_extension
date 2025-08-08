@@ -2,23 +2,62 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { useAuth } from '@rhinospider/web3-client';
+import { Actor, HttpAgent } from '@dfinity/agent';
+import { AuthClient } from '@dfinity/auth-client';
+import { idlFactory } from '../declarations/consumer/consumer.did.js';
+
+const CONSUMER_CANISTER_ID = import.meta.env.VITE_CONSUMER_CANISTER_ID;
+const IC_HOST = import.meta.env.VITE_IC_HOST;
 
 const Referrals = () => {
   const navigate = useNavigate();
   const { logout } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [showCopyNotification, setShowCopyNotification] = useState(false);
+  const [referralCode, setReferralCode] = useState('');
   const [referralStats, setReferralStats] = useState({
-    totalReferrals: 12,
-    activeReferrals: 8,
-    pointsEarned: 450,
+    totalReferrals: 0,
+    activeReferrals: 0,
+    pointsEarned: 0,
   });
 
   useEffect(() => {
     const loadReferrals = async () => {
       try {
         setIsLoading(true);
-        // Load referral data here
+        
+        // Get auth client and identity
+        const authClient = await AuthClient.create();
+        const identity = authClient.getIdentity();
+        
+        // Create agent and actor
+        const agent = new HttpAgent({
+          host: IC_HOST,
+          identity
+        });
+        
+        const actor = Actor.createActor(idlFactory, {
+          agent,
+          canisterId: CONSUMER_CANISTER_ID
+        });
+        
+        // Get user's referral code
+        const codeResult = await actor.getReferralCode();
+        if ('ok' in codeResult) {
+          setReferralCode(codeResult.ok);
+        }
+        
+        // Get user profile to get referral stats
+        const principal = identity.getPrincipal();
+        const userResult = await actor.getUserByPrincipal(principal);
+        if (userResult && userResult.length > 0) {
+          const user = userResult[0];
+          setReferralStats({
+            totalReferrals: Number(user.referralCount || 0),
+            activeReferrals: Number(user.referralCount || 0), // All referrals are considered active for now
+            pointsEarned: Number(user.points || 0),
+          });
+        }
       } catch (error) {
         console.error('Error loading referrals:', error);
       } finally {
@@ -30,7 +69,8 @@ const Referrals = () => {
   }, []);
 
   const handleCopyReferral = () => {
-    navigator.clipboard.writeText('your-referral-link');
+    const referralLink = `https://rhinospider.io/ref/${referralCode}`;
+    navigator.clipboard.writeText(referralLink);
     setShowCopyNotification(true);
     setTimeout(() => setShowCopyNotification(false), 2000);
   };
@@ -84,11 +124,14 @@ const Referrals = () => {
 
         <div className="space-y-4">
           <h3 className="text-lg font-medium text-white">Your Referral Link</h3>
+          <p className="text-sm text-gray-400">
+            Share your referral link to earn bonus points! You'll receive points when your referrals contribute data.
+          </p>
           <div className="bg-white/5 rounded-lg p-4">
             <div className="flex space-x-2">
               <input
                 type="text"
-                value="https://rhinospider.io/ref/your-code"
+                value={referralCode ? `https://rhinospider.io/ref/${referralCode}` : 'Loading...'}
                 readOnly
                 className="flex-1 bg-white/10 rounded px-3 py-2 text-sm font-mono text-gray-300"
               />

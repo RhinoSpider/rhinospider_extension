@@ -252,7 +252,14 @@ export const RhinoScan = () => {
         <div className="map-header">
           <h2>Geographic Distribution</h2>
         </div>
-        <div ref={mapContainerRef} className="map-view" />
+        {geoData.length > 0 ? (
+          <div ref={mapContainerRef} className="map-view" />
+        ) : (
+          <div className="map-empty-state">
+            <p>No geographic data available yet</p>
+            <span>Node locations will appear here once users start contributing</span>
+          </div>
+        )}
       </div>
 
       {/* Country Leaderboard */}

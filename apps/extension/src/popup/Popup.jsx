@@ -46,11 +46,11 @@ const Popup = () => {
 
   // UI states
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-  const [points, setPoints] = useState(9130);
-  const [uptime, setUptime] = useState('2 hrs 45 mins');
-  const [isPluginActive, setIsPluginActive] = useState(true);
-  const [bandwidthSpeed, setBandwidthSpeed] = useState('medium');
-  const [currentSpeed, setCurrentSpeed] = useState('2.5 MB/s');
+  const [points, setPoints] = useState(0);
+  const [uptime, setUptime] = useState('0 mins');
+  const [isPluginActive, setIsPluginActive] = useState(false);
+  const [bandwidthSpeed, setBandwidthSpeed] = useState('off');
+  const [currentSpeed, setCurrentSpeed] = useState('0 MB/s');
   const [avatar, setAvatar] = useState(null);
   const [activeTab, setActiveTab] = useState('home');
   const userMenuRef = useRef(null);
@@ -115,6 +115,35 @@ const Popup = () => {
     console.log('Current speed:', currentSpeed);
     console.log('Current bandwidth level:', bandwidthSpeed);
   }, [currentSpeed, bandwidthSpeed]);
+
+  const loadUserData = async (principalId) => {
+    try {
+      // Get user data from consumer canister
+      const agent = new HttpAgent({
+        host: IC_HOST,
+        identity: authClient?.getIdentity()
+      });
+
+      const actor = Actor.createActor(idlFactory, {
+        agent,
+        canisterId: CONSUMER_CANISTER_ID
+      });
+
+      // Try to get user profile
+      try {
+        const userResult = await actor.getUserByPrincipal(Principal.fromText(principalId));
+        if (userResult && userResult.length > 0) {
+          const user = userResult[0];
+          setPoints(Number(user.points || 0));
+          // Update other user data if available
+        }
+      } catch (err) {
+        console.log('User not found, will be created on first contribution');
+      }
+    } catch (error) {
+      console.error('Error loading user data:', error);
+    }
+  };
 
   const handleAuthenticated = async (client) => {
     try {
@@ -218,6 +247,10 @@ const Popup = () => {
       setPrincipal(principal);
       setError(null);
       setIsLoading(false);
+      
+      // Activate plugin and load user data after successful authentication
+      setIsPluginActive(true);
+      await loadUserData(principal);
     } catch (error) {
       console.error('Error in handleAuthenticated:', {
         name: error?.name,
@@ -255,6 +288,9 @@ const Popup = () => {
       setIsAuthenticated(false);
       setPrincipal(null);
       setError(null);
+      setIsPluginActive(false);
+      setPoints(0);
+      setUptime('0 mins');
 
       // Clear delegation chain
       await chrome.storage.local.remove(['identityInfo']);
