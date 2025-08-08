@@ -5,6 +5,7 @@ import { Overview } from './Overview';
 import { ScrapingConfig } from './ScrapingConfig';
 import { ExtensionUsers } from './ExtensionUsers';
 import { ScrapedData } from './ScrapedData';
+import { RhinoScan } from './RhinoScan';
 
 const CURRENT_VIEW_KEY = 'admin_current_view';
 
@@ -28,6 +29,8 @@ export const Dashboard: React.FC = () => {
         return <ExtensionUsers />;
       case 'data':
         return <ScrapedData />;
+      case 'rhinoscan':
+        return <RhinoScan />;
       default:
         return <Overview />;
     }

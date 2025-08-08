@@ -1,6 +1,9 @@
 // Simple dashboard implementation for RhinoSpider extension
 import { AuthClient } from '@dfinity/auth-client';
 import { Principal } from '@dfinity/principal';
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import { RhinoScan } from './pages/RhinoScan.jsx';
 
 // Configuration
 const II_URL = 'https://identity.ic0.app';
@@ -163,6 +166,8 @@ async function handleLogout() {
     }
 }
 
+let rhinoscanRoot = null;
+
 function handleNavigation(target) {
     // Update active states
     navItems.forEach(item => {
@@ -176,6 +181,13 @@ function handleNavigation(target) {
     // Load specific section data if needed
     if (target === 'referrals') {
         loadReferralData();
+    } else if (target === 'rhinoscan') {
+        // Mount RhinoScan React component when selected
+        const rhinoscanContainer = document.getElementById('rhinoscan-content');
+        if (rhinoscanContainer && !rhinoscanRoot) {
+            rhinoscanRoot = ReactDOM.createRoot(rhinoscanContainer);
+            rhinoscanRoot.render(React.createElement(RhinoScan));
+        }
     }
 }
 

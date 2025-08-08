@@ -8,6 +8,7 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange }) => {
   const menuItems = [
     { id: 'overview', label: 'Overview', icon: '📊' },
+    { id: 'rhinoscan', label: 'RhinoScan', icon: '🗺️' },
     { id: 'config', label: 'Scraping Config', icon: '⚙️' },
     { id: 'users', label: 'Extension Users', icon: '👥' },
     { id: 'data', label: 'Scraped Data', icon: '📑' },

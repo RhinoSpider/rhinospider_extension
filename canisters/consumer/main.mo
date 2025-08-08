@@ -16,6 +16,9 @@ import Random "mo:base/Random";
 import Nat8 "mo:base/Nat8";
 import Nat32 "mo:base/Nat32";
 import Char "mo:base/Char";
+import Float "mo:base/Float";
+import Blob "mo:base/Blob";
+import Nat64 "mo:base/Nat64";
 
 actor ConsumerBackend {
     // Types
@@ -32,6 +35,33 @@ actor ConsumerBackend {
         add_user : (Principal, { #SuperAdmin; #Admin; #Operator }) -> async Result.Result<(), Text>;
     };
 
+    // HTTP outcall types for GeoIP
+    type HttpMethod = { #get; #post; #head };
+    type HttpHeader = { name: Text; value: Text };
+    type HttpResponse = {
+        status: Nat;
+        headers: [HttpHeader];
+        body: Blob;
+    };
+    type TransformContext = {
+        function: shared query TransformArgs -> async HttpResponse;
+        context: Blob;
+    };
+    type TransformArgs = {
+        response: HttpResponse;
+        context: Blob;
+    };
+    type ICManagement = actor {
+        http_request: shared {
+            url: Text;
+            max_response_bytes: ?Nat64;
+            headers: [HttpHeader];
+            body: ?Blob;
+            method: HttpMethod;
+            transform: ?TransformContext;
+        } -> async HttpResponse;
+    };
+
     // Constants
     private let STORAGE_CANISTER_ID = "hhaip-uiaaa-aaaao-a4khq-cai"; // Updated to the latest storage canister ID
     private let ADMIN_CANISTER_ID = "444wf-gyaaa-aaaaj-az5sq-cai";  // Updated to match extension's .env file
@@ -41,8 +71,8 @@ actor ConsumerBackend {
     private let storage: StorageActor = actor(STORAGE_CANISTER_ID);
     private let admin: AdminActor = actor(ADMIN_CANISTER_ID);
 
-    // User profiles with stable storage
-    private stable var stableUserProfiles: [(Principal, UserProfile)] = [];
+    // User profiles with stable storage - v2 with geographic data
+    private stable var stableUserProfilesV2: [(Principal, UserProfile)] = [];
     private var userProfiles = HashMap.HashMap<Principal, UserProfile>(10, Principal.equal, Principal.hash);
     
     // Referral system storage
@@ -55,6 +85,14 @@ actor ConsumerBackend {
         created: Int;
         lastLogin: Int;
         ipAddress: ?Text;
+        country: ?Text;
+        region: ?Text;
+        city: ?Text;
+        latitude: ?Float;
+        longitude: ?Float;
+        lastActive: Int;
+        isActive: Bool;
+        dataVolumeKB: Nat;
         referralCode: Text;
         referralCount: Nat;
         points: Nat;
@@ -86,12 +124,12 @@ actor ConsumerBackend {
 
     // Upgrade hooks
     system func preupgrade() {
-        stableUserProfiles := Iter.toArray(userProfiles.entries());
+        stableUserProfilesV2 := Iter.toArray(userProfiles.entries());
         stableReferralCodes := Iter.toArray(referralCodes.entries());
     };
 
     system func postupgrade() {
-        userProfiles := HashMap.fromIter<Principal, UserProfile>(stableUserProfiles.vals(), 10, Principal.equal, Principal.hash);
+        userProfiles := HashMap.fromIter<Principal, UserProfile>(stableUserProfilesV2.vals(), 10, Principal.equal, Principal.hash);
         referralCodes := HashMap.fromIter<Text, Principal>(stableReferralCodes.vals(), 10, Text.equal, Text.hash);
     };
 
@@ -214,6 +252,140 @@ actor ConsumerBackend {
         return 5; // Default minimum bonus
     };
 
+    // GeoIP lookup function
+    private func getLocationFromIP(ip: Text): async ?{country: Text; region: Text; city: Text; lat: Float; lon: Float} {
+        try {
+            Debug.print("Getting location for IP: " # ip);
+            
+            // Using ip-api.com for free GeoIP lookup (no API key required)
+            let url = "http://ip-api.com/json/" # ip # "?fields=status,country,regionName,city,lat,lon,countryCode";
+            
+            let ic : ICManagement = actor("aaaaa-aa");
+            let request = {
+                url = url;
+                max_response_bytes = ?10000 : ?Nat64;
+                headers = [{ name = "User-Agent"; value = "RhinoSpider/1.0" }];
+                body = null : ?Blob;
+                method = #get;
+                transform = null : ?TransformContext;
+            };
+            
+            ExperimentalCycles.add(20_949_972_000);
+            let response = await ic.http_request(request);
+            
+            if (response.status == 200) {
+                let responseText = Text.decodeUtf8(response.body);
+                switch (responseText) {
+                    case (?text) {
+                        Debug.print("GeoIP response: " # text);
+                        // Parse JSON response manually
+                        if (Text.contains(text, #text "\"status\":\"success\"")) {
+                            let country = extractJsonField(text, "country");
+                            let region = extractJsonField(text, "regionName");
+                            let city = extractJsonField(text, "city");
+                            let latText = extractJsonField(text, "lat");
+                            let lonText = extractJsonField(text, "lon");
+                            
+                            switch (country, region, city, latText, lonText) {
+                                case (?c, ?r, ?ct, ?la, ?lo) {
+                                    let lat = textToFloat(la);
+                                    let lon = textToFloat(lo);
+                                    switch (lat, lon) {
+                                        case (?latitude, ?longitude) {
+                                            return ?{
+                                                country = c;
+                                                region = r;
+                                                city = ct;
+                                                lat = latitude;
+                                                lon = longitude;
+                                            };
+                                        };
+                                        case _ return null;
+                                    };
+                                };
+                                case _ return null;
+                            };
+                        };
+                    };
+                    case null {};
+                };
+            };
+            
+            return null;
+        } catch (e) {
+            Debug.print("GeoIP lookup failed: " # Error.message(e));
+            return null;
+        };
+    };
+
+    // Helper function to extract field from JSON string
+    private func extractJsonField(json: Text, field: Text): ?Text {
+        let pattern = "\"" # field # "\":";
+        let parts = Iter.toArray(Text.split(json, #text pattern));
+        
+        if (parts.size() > 1) {
+            let valuePart = parts[1];
+            // Handle string values
+            if (Text.startsWith(valuePart, #text "\"")) {
+                let trimmed = Text.trimStart(valuePart, #text "\"");
+                let valueParts = Iter.toArray(Text.split(trimmed, #text "\""));
+                if (valueParts.size() > 0) {
+                    return ?valueParts[0];
+                };
+            } else {
+                // Handle numeric values
+                let valueParts = Iter.toArray(Text.split(valuePart, #text ","));
+                if (valueParts.size() > 0) {
+                    let value = Text.trim(valueParts[0], #text " ");
+                    let cleaned = Text.trim(value, #text "}");
+                    return ?cleaned;
+                };
+            };
+        };
+        
+        return null;
+    };
+
+    // Convert text to float
+    private func textToFloat(t: Text): ?Float {
+        // Simple float parsing - handle negative numbers
+        var isNegative = false;
+        var text = t;
+        if (Text.startsWith(t, #text "-")) {
+            isNegative := true;
+            text := Text.trimStart(t, #text "-");
+        };
+        
+        let parts = Iter.toArray(Text.split(text, #text "."));
+        
+        if (parts.size() == 2) {
+            switch (Nat.fromText(parts[0]), Nat.fromText(parts[1])) {
+                case (?intPart, ?decPart) {
+                    let decDigits = Text.size(parts[1]);
+                    var divisor = 1.0;
+                    var i = 0;
+                    while (i < decDigits) {
+                        divisor := divisor * 10.0;
+                        i += 1;
+                    };
+                    let result = Float.fromInt(intPart) + (Float.fromInt(decPart) / divisor);
+                    return if (isNegative) ?(-result) else ?result;
+                };
+                case _ return null;
+            };
+        } else if (parts.size() == 1) {
+            switch (Nat.fromText(parts[0])) {
+                case (?intPart) {
+                    let result = Float.fromInt(intPart);
+                    return if (isNegative) ?(-result) else ?result;
+                };
+                case null return null;
+            };
+        } else {
+            return null;
+        };
+    };
+
     // Scraped data management with points
     public shared({ caller }) func submitScrapedData(data: SharedTypes.ScrapedData): async Result.Result<(), SharedTypes.Error> {
         if (not isAuthenticated(caller)) {
@@ -227,13 +399,17 @@ actor ConsumerBackend {
                 // Calculate points for this submission
                 let contentLength = Text.size(data.content);
                 let points = calculatePoints(contentLength);
+                let dataKB = contentLength / 1024;
                 
                 // Update profile with new points and data scraped
                 let updatedProfile = {
                     profile with
                     points = profile.points + points;
                     totalDataScraped = profile.totalDataScraped + contentLength;
+                    dataVolumeKB = profile.dataVolumeKB + dataKB;
                     lastLogin = Time.now();
+                    lastActive = Time.now();
+                    isActive = true;
                 };
                 userProfiles.put(caller, updatedProfile);
                 
@@ -315,6 +491,14 @@ actor ConsumerBackend {
                     created = Time.now();
                     lastLogin = Time.now();
                     ipAddress = null;
+                    country = null;
+                    region = null;
+                    city = null;
+                    latitude = null;
+                    longitude = null;
+                    lastActive = Time.now();
+                    isActive = true;
+                    dataVolumeKB = 0;
                     referralCode = newCode;
                     referralCount = 0;
                     points = 0;
@@ -410,6 +594,14 @@ actor ConsumerBackend {
                     created = Time.now();
                     lastLogin = Time.now();
                     ipAddress = null;
+                    country = null;
+                    region = null;
+                    city = null;
+                    latitude = null;
+                    longitude = null;
+                    lastActive = Time.now();
+                    isActive = true;
+                    dataVolumeKB = 0;
                     referralCode = newCode;
                     referralCount = 0;
                     points = 0;
@@ -479,6 +671,14 @@ actor ConsumerBackend {
                             created = Time.now();
                             lastLogin = Time.now();
                             ipAddress = null;
+                            country = null;
+                            region = null;
+                            city = null;
+                            latitude = null;
+                            longitude = null;
+                            lastActive = Time.now();
+                            isActive = true;
+                            dataVolumeKB = 0;
                             referralCode = newCode;
                             referralCount = 0;
                             points = 0;
@@ -542,11 +742,36 @@ actor ConsumerBackend {
                 return #err("User not found");
             };
             case (?profile) {
-                let updatedProfile = {
-                    profile with
-                    ipAddress = ?ipAddress;
-                    lastLogin = Time.now();
+                // Perform GeoIP lookup
+                let location = await getLocationFromIP(ipAddress);
+                
+                let updatedProfile = switch (location) {
+                    case (?loc) {
+                        {
+                            profile with
+                            ipAddress = ?ipAddress;
+                            country = ?loc.country;
+                            region = ?loc.region;
+                            city = ?loc.city;
+                            latitude = ?loc.lat;
+                            longitude = ?loc.lon;
+                            lastLogin = Time.now();
+                            lastActive = Time.now();
+                            isActive = true;
+                        }
+                    };
+                    case null {
+                        {
+                            profile with
+                            ipAddress = ?ipAddress;
+                            country = ?"United States"; // Default to USA if lookup fails
+                            lastLogin = Time.now();
+                            lastActive = Time.now();
+                            isActive = true;
+                        }
+                    };
                 };
+                
                 userProfiles.put(caller, updatedProfile);
                 return #ok();
             };
@@ -572,6 +797,196 @@ actor ConsumerBackend {
             case null {
                 return #err("User not found");
             };
+        }
+    };
+
+    // RhinoScan Statistics APIs
+    
+    // Type definitions for RhinoScan
+    type NodeActivity = {
+        principal: Principal;
+        country: ?Text;
+        region: ?Text;
+        city: ?Text;
+        lastActive: Int;
+        dataVolumeKB: Nat;
+    };
+    
+    type RhinoScanStats = {
+        totalNodes: Nat;
+        activeNodes: Nat;
+        totalDataVolumeKB: Nat;
+        countriesCount: Nat;
+        nodesByCountry: [(Text, Nat)];
+        recentActivity: [NodeActivity];
+    };
+    
+    type GeographicDistribution = {
+        country: Text;
+        region: ?Text;
+        nodeCount: Nat;
+        dataVolumeKB: Nat;
+        coordinates: ?{lat: Float; lng: Float};
+    };
+    
+    // Get aggregated RhinoScan statistics
+    public query func getRhinoScanStats(): async RhinoScanStats {
+        var totalNodes = 0;
+        var activeNodes = 0;
+        var totalDataVolumeKB : Nat = 0;
+        var countriesMap = HashMap.HashMap<Text, Nat>(10, Text.equal, Text.hash);
+        var recentActivityBuffer = Buffer.Buffer<NodeActivity>(20);
+        
+        let now = Time.now();
+        let dayInNanos = 86_400_000_000_000; // 24 hours in nanoseconds
+        
+        for ((principal, profile) in userProfiles.entries()) {
+            totalNodes += 1;
+            totalDataVolumeKB += profile.dataVolumeKB;
+            
+            // Check if node is active (active in last 24 hours)
+            if ((now - profile.lastActive) < dayInNanos) {
+                activeNodes += 1;
+            };
+            
+            // Count nodes by country
+            switch (profile.country) {
+                case (?country) {
+                    switch (countriesMap.get(country)) {
+                        case (?count) countriesMap.put(country, count + 1);
+                        case null countriesMap.put(country, 1);
+                    };
+                };
+                case null {};
+            };
+            
+            // Add to recent activity (last 20 active nodes)
+            if (recentActivityBuffer.size() < 20) {
+                recentActivityBuffer.add({
+                    principal = principal;
+                    country = profile.country;
+                    region = profile.region;
+                    city = profile.city;
+                    lastActive = profile.lastActive;
+                    dataVolumeKB = profile.dataVolumeKB;
+                });
+            };
+        };
+        
+        // Convert countries map to array
+        let nodesByCountry = Iter.toArray(
+            Iter.map<(Text, Nat), (Text, Nat)>(
+                countriesMap.entries(),
+                func ((country, count)) = (country, count)
+            )
+        );
+        
+        {
+            totalNodes = totalNodes;
+            activeNodes = activeNodes;
+            totalDataVolumeKB = totalDataVolumeKB;
+            countriesCount = countriesMap.size();
+            nodesByCountry = nodesByCountry;
+            recentActivity = Buffer.toArray(recentActivityBuffer);
+        }
+    };
+    
+    // Get geographic distribution of nodes
+    public query func getNodeGeography(): async [GeographicDistribution] {
+        var geoMap = HashMap.HashMap<Text, {
+            var nodeCount: Nat;
+            var dataVolumeKB: Nat;
+            region: ?Text;
+            lat: ?Float;
+            lng: ?Float;
+        }>(10, Text.equal, Text.hash);
+        
+        // Aggregate data by country
+        for ((_, profile) in userProfiles.entries()) {
+            switch (profile.country) {
+                case (?country) {
+                    switch (geoMap.get(country)) {
+                        case (?existing) {
+                            existing.nodeCount += 1;
+                            existing.dataVolumeKB += profile.dataVolumeKB;
+                        };
+                        case null {
+                            geoMap.put(country, {
+                                var nodeCount = 1;
+                                var dataVolumeKB = profile.dataVolumeKB;
+                                region = profile.region;
+                                lat = profile.latitude;
+                                lng = profile.longitude;
+                            });
+                        };
+                    };
+                };
+                case null {};
+            };
+        };
+        
+        // Convert to output format
+        let buffer = Buffer.Buffer<GeographicDistribution>(geoMap.size());
+        for ((country, data) in geoMap.entries()) {
+            let coords = switch (data.lat, data.lng) {
+                case (?lat, ?lng) ?{lat = lat; lng = lng};
+                case _ null;
+            };
+            
+            buffer.add({
+                country = country;
+                region = data.region;
+                nodeCount = data.nodeCount;
+                dataVolumeKB = data.dataVolumeKB;
+                coordinates = coords;
+            });
+        };
+        
+        Buffer.toArray(buffer)
+    };
+    
+    // Get top contributing nodes
+    public query func getTopContributors(limit: Nat): async [(Principal, Nat)] {
+        // Create array of (principal, dataVolume) pairs
+        let contributors = Buffer.Buffer<(Principal, Nat)>(userProfiles.size());
+        for ((principal, profile) in userProfiles.entries()) {
+            contributors.add((principal, profile.dataVolumeKB));
+        };
+        
+        // Sort by data volume (descending)
+        let sorted = Array.sort<(Principal, Nat)>(
+            Buffer.toArray(contributors),
+            func (a, b) = Nat.compare(b.1, a.1)
+        );
+        
+        // Return top N contributors
+        let resultSize = Nat.min(limit, sorted.size());
+        Array.tabulate<(Principal, Nat)>(resultSize, func(i) = sorted[i])
+    };
+    
+    // Get node status by principal
+    public query func getNodeStatus(principal: Principal): async ?{
+        isActive: Bool;
+        country: ?Text;
+        dataVolumeKB: Nat;
+        lastActive: Int;
+        points: Nat;
+    } {
+        switch (userProfiles.get(principal)) {
+            case (?profile) {
+                let now = Time.now();
+                let dayInNanos = 86_400_000_000_000;
+                let isActive = (now - profile.lastActive) < dayInNanos;
+                
+                ?{
+                    isActive = isActive;
+                    country = profile.country;
+                    dataVolumeKB = profile.dataVolumeKB;
+                    lastActive = profile.lastActive;
+                    points = profile.points;
+                }
+            };
+            case null null;
         }
     };
 }
