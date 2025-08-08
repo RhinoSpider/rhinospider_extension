@@ -79,7 +79,8 @@ export const RhinoScan: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (geoData.length > 0 && mapContainerRef.current && !mapRef.current) {
+    // Initialize map even without data to show the world
+    if (mapContainerRef.current && !mapRef.current) {
       initializeMap();
     }
   }, [geoData]);
@@ -274,6 +275,36 @@ export const RhinoScan: React.FC = () => {
     `;
     document.head.appendChild(style);
 
+    // Add legend control
+    const legend = L.control({ position: 'bottomright' });
+    legend.onAdd = function () {
+      const div = L.DomUtil.create('div', 'info legend');
+      div.style.background = 'rgba(30, 30, 46, 0.9)';
+      div.style.padding = '10px';
+      div.style.borderRadius = '5px';
+      div.style.color = 'white';
+      div.style.fontSize = '12px';
+      
+      if (geoData.length === 0) {
+        div.innerHTML = `
+          <div style="margin-bottom: 5px; font-weight: bold;">Activity Levels</div>
+          <div><span style="display:inline-block;width:12px;height:12px;background:#FFD700;border-radius:50%;margin-right:5px;"></span>High (>100 nodes)</div>
+          <div><span style="display:inline-block;width:12px;height:12px;background:#00FF88;border-radius:50%;margin-right:5px;"></span>Medium (>50 nodes)</div>
+          <div><span style="display:inline-block;width:12px;height:12px;background:#B692F6;border-radius:50%;margin-right:5px;"></span>Low (>10 nodes)</div>
+        `;
+      } else {
+        div.innerHTML = `
+          <div style="margin-bottom: 5px; font-weight: bold;">Activity Levels</div>
+          <div><span style="display:inline-block;width:12px;height:12px;background:#FFD700;border-radius:50%;margin-right:5px;"></span>High Activity</div>
+          <div><span style="display:inline-block;width:12px;height:12px;background:#00FF88;border-radius:50%;margin-right:5px;"></span>Medium Activity</div>
+          <div><span style="display:inline-block;width:12px;height:12px;background:#B692F6;border-radius:50%;margin-right:5px;"></span>Low Activity</div>
+        `;
+      }
+      
+      return div;
+    };
+    legend.addTo(map);
+
     mapRef.current = map;
   };
 
@@ -356,17 +387,11 @@ export const RhinoScan: React.FC = () => {
       <div className="bg-[#1E1E2E] rounded-lg overflow-hidden">
         <div className="p-4 border-b border-gray-700">
           <h2 className="text-xl font-semibold text-white">Geographic Distribution</h2>
+          {geoData.length === 0 && (
+            <p className="text-sm text-gray-400 mt-1">Waiting for nodes to come online...</p>
+          )}
         </div>
-        {geoData.length > 0 ? (
-          <div ref={mapContainerRef} style={{ height: '500px', width: '100%' }} />
-        ) : (
-          <div className="flex items-center justify-center h-64 text-gray-400">
-            <div className="text-center">
-              <p className="mb-2">No geographic data available yet</p>
-              <p className="text-sm">Node locations will appear here once users start contributing</p>
-            </div>
-          </div>
-        )}
+        <div ref={mapContainerRef} style={{ height: '500px', width: '100%' }} />
       </div>
 
       {/* Country Leaderboard */}
