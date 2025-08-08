@@ -80,8 +80,20 @@ const Popup = () => {
         if (isAuthed) {
           console.log('User is already authenticated, getting identity...');
           await handleAuthenticated(client);
+          
+          // Load scraping state from background
+          const response = await chrome.runtime.sendMessage({ type: 'GET_SCRAPING_CONFIG' });
+          if (response.success && response.data) {
+            setIsPluginActive(response.data.enabled || false);
+          }
         } else {
           console.log('User is not authenticated');
+          // Ensure plugin is off when not authenticated
+          setIsPluginActive(false);
+          await chrome.runtime.sendMessage({ 
+            type: 'UPDATE_SCRAPING_CONFIG',
+            data: { enabled: false }
+          });
           setIsLoading(false);
         }
       } catch (err) {
@@ -248,8 +260,8 @@ const Popup = () => {
       setError(null);
       setIsLoading(false);
       
-      // Activate plugin and load user data after successful authentication
-      setIsPluginActive(true);
+      // Don't automatically activate plugin - let user control it
+      // Load user data after successful authentication
       await loadUserData(principal);
     } catch (error) {
       console.error('Error in handleAuthenticated:', {
@@ -399,19 +411,29 @@ const Popup = () => {
 
   const togglePlugin = async () => {
     try {
+      // Only allow toggling if authenticated
+      if (!isAuthenticated) {
+        console.warn('Cannot toggle plugin when not authenticated');
+        return;
+      }
+      
       // Toggle the plugin state
       const newState = !isPluginActive;
       setIsPluginActive(newState);
       
       // Send message to background script to update scraping state
       const response = await chrome.runtime.sendMessage({ 
-        type: newState ? 'START_SCRAPING' : 'STOP_SCRAPING' 
+        type: 'UPDATE_SCRAPING_CONFIG',
+        data: { enabled: newState }
       });
       
       console.log('Background script response:', response);
       
       // Also update the storage state
-      await chrome.storage.local.set({ isActive: newState });
+      await chrome.storage.local.set({ 
+        isActive: newState,
+        scrapingEnabled: newState 
+      });
       
       // If we want to trigger an immediate scrape when activated
       if (newState) {
@@ -420,7 +442,7 @@ const Popup = () => {
     } catch (error) {
       console.error('Error toggling plugin state:', error);
       // Revert UI state if there was an error
-      setIsPluginActive(!newState);
+      setIsPluginActive(isPluginActive);
     }
   };
 

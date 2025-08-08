@@ -129,16 +129,16 @@ export const RhinoScan = () => {
   const initializeMap = () => {
     if (!mapContainerRef.current || mapRef.current) return;
 
-    // Initialize map
+    // Initialize map with dark theme
     const map = L.map(mapContainerRef.current).setView([20, 0], 2);
     
-    // Add tile layer
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors',
+    // Add dark tile layer for better contrast
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '© OpenStreetMap contributors © CARTO',
       maxZoom: 18,
     }).addTo(map);
 
-    // Add markers for each country
+    // Create markers with dynamic sizing and glowing effects
     geoData.forEach((geo) => {
       let coords = null;
       
@@ -149,27 +149,84 @@ export const RhinoScan = () => {
       }
 
       if (coords) {
+        const nodeCount = Number(geo.nodeCount);
+        const dataVolume = Number(geo.dataVolumeKB);
+        
+        // Calculate radius based on node count (5-30 pixels)
+        const radius = Math.min(30, Math.max(5, Math.sqrt(nodeCount) * 3));
+        
+        // Determine color and glow intensity based on activity
+        let fillColor = '#B692F6';
+        let glowClass = '';
+        
+        if (nodeCount > 100) {
+          fillColor = '#FFD700'; // Gold for high activity
+          glowClass = 'marker-glow-high';
+        } else if (nodeCount > 50) {
+          fillColor = '#00FF88'; // Green for medium activity
+          glowClass = 'marker-glow-medium';
+        } else if (nodeCount > 10) {
+          fillColor = '#B692F6'; // Purple for low activity
+          glowClass = 'marker-glow-low';
+        }
+
+        // Create pulsing circle marker
         const marker = L.circleMarker(coords, {
-          radius: Math.min(20, Math.max(5, Number(geo.nodeCount) * 2)),
-          fillColor: '#B692F6',
-          color: '#360D68',
+          radius: radius,
+          fillColor: fillColor,
+          color: '#fff',
           weight: 2,
-          opacity: 1,
-          fillOpacity: 0.7,
+          opacity: 0.9,
+          fillOpacity: 0.6,
+          className: glowClass
         });
 
+        // Enhanced popup with activity indicators
         marker.bindPopup(`
-          <div class="rhinoscan-popup">
-            <h3>${geo.country}</h3>
-            ${geo.region ? `<p>Region: ${geo.region}</p>` : ''}
-            <p>Nodes: <strong>${geo.nodeCount}</strong></p>
-            <p>Data: <strong>${formatDataSize(Number(geo.dataVolumeKB))}</strong></p>
+          <div class="rhinoscan-popup" style="min-width: 250px;">
+            <h3 style="color: #B692F6;">${geo.country}</h3>
+            ${geo.region ? `<p style="color: #888;">📍 ${geo.region}</p>` : ''}
+            <div style="margin: 10px 0; padding: 10px; background: rgba(182, 146, 246, 0.1); border-radius: 5px;">
+              <p>Active Nodes: <strong style="color: #B692F6; font-size: 18px;">${nodeCount.toLocaleString()}</strong></p>
+              <p>Data Volume: <strong style="color: #00FF88;">${formatDataSize(dataVolume)}</strong></p>
+            </div>
+            ${nodeCount > 50 ? '<p style="color: #FFD700;">⚡ High Activity Zone</p>' : ''}
           </div>
         `);
 
         marker.addTo(map);
       }
     });
+
+    // Add CSS for glowing animations
+    const style = document.createElement('style');
+    style.textContent = `
+      .marker-glow-high {
+        animation: pulse-high 2s infinite;
+      }
+      .marker-glow-medium {
+        animation: pulse-medium 3s infinite;
+      }
+      .marker-glow-low {
+        animation: pulse-low 4s infinite;
+      }
+      @keyframes pulse-high {
+        0% { fill-opacity: 0.6; stroke-width: 2; }
+        50% { fill-opacity: 0.9; stroke-width: 4; }
+        100% { fill-opacity: 0.6; stroke-width: 2; }
+      }
+      @keyframes pulse-medium {
+        0% { fill-opacity: 0.5; }
+        50% { fill-opacity: 0.8; }
+        100% { fill-opacity: 0.5; }
+      }
+      @keyframes pulse-low {
+        0% { fill-opacity: 0.4; }
+        50% { fill-opacity: 0.7; }
+        100% { fill-opacity: 0.4; }
+      }
+    `;
+    document.head.appendChild(style);
 
     mapRef.current = map;
   };
