@@ -923,7 +923,7 @@ app.get('/api/topics', async (req, res) => {
             maxDailyCost: 10,
             maxMonthlyCost: 100
           },
-          apiKey: "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"
+          apiKey: ""
         },
         paginationPatterns: [
           "page=*",
@@ -1330,7 +1330,7 @@ app.post('/api/topics', async (req, res) => {
             maxDailyCost: 10,
             maxMonthlyCost: 100
           },
-          apiKey: "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"
+          apiKey: ""
         },
         paginationPatterns: [
           "page=*",

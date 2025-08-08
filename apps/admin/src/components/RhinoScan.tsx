@@ -292,7 +292,16 @@ export const RhinoScan: React.FC = () => {
         <div className="p-4 border-b border-gray-700">
           <h2 className="text-xl font-semibold text-white">Geographic Distribution</h2>
         </div>
-        <div ref={mapContainerRef} style={{ height: '500px', width: '100%' }} />
+        {geoData.length > 0 ? (
+          <div ref={mapContainerRef} style={{ height: '500px', width: '100%' }} />
+        ) : (
+          <div className="flex items-center justify-center h-64 text-gray-400">
+            <div className="text-center">
+              <p className="mb-2">No geographic data available yet</p>
+              <p className="text-sm">Node locations will appear here once users start contributing</p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Country Leaderboard */}
