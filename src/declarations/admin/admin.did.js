@@ -5,10 +5,6 @@ export const idlFactory = ({ IDL }) => {
     'Admin' : IDL.Null,
   });
   const Result_3 = IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text });
-  const ContentIdentifiers = IDL.Record({
-    'keywords' : IDL.Vec(IDL.Text),
-    'selectors' : IDL.Vec(IDL.Text),
-  });
   const ScrapingField = IDL.Record({
     'name' : IDL.Text,
     'aiPrompt' : IDL.Opt(IDL.Text),
@@ -18,6 +14,14 @@ export const idlFactory = ({ IDL }) => {
   const ExtractionRules = IDL.Record({
     'fields' : IDL.Vec(ScrapingField),
     'customPrompt' : IDL.Opt(IDL.Text),
+  });
+  const CreateTopicRequest = IDL.Record({
+    'id' : IDL.Text,
+    'status' : IDL.Text,
+    'name' : IDL.Text,
+    'description' : IDL.Text,
+    'urlPatterns' : IDL.Vec(IDL.Text),
+    'extractionRules' : ExtractionRules,
   });
   const CostLimits = IDL.Record({
     'maxConcurrent' : IDL.Nat,
@@ -29,43 +33,19 @@ export const idlFactory = ({ IDL }) => {
     'costLimits' : CostLimits,
     'apiKey' : IDL.Text,
   });
-  const CreateTopicRequest = IDL.Record({
-    'id' : IDL.Text,
-    'status' : IDL.Text,
-    'excludePatterns' : IDL.Opt(IDL.Vec(IDL.Text)),
-    'contentIdentifiers' : IDL.Opt(ContentIdentifiers),
-    'name' : IDL.Text,
-    'scrapingInterval' : IDL.Nat,
-    'description' : IDL.Text,
-    'maxRetries' : IDL.Nat,
-    'urlGenerationStrategy' : IDL.Text,
-    'activeHours' : IDL.Record({ 'end' : IDL.Nat, 'start' : IDL.Nat }),
-    'urlPatterns' : IDL.Vec(IDL.Text),
-    'extractionRules' : ExtractionRules,
-    'aiConfig' : AIConfig,
-    'paginationPatterns' : IDL.Opt(IDL.Vec(IDL.Text)),
-    'articleUrlPatterns' : IDL.Opt(IDL.Vec(IDL.Text)),
-    'siteTypeClassification' : IDL.Text,
-  });
   const ScrapingTopic = IDL.Record({
     'id' : IDL.Text,
     'status' : IDL.Text,
-    'excludePatterns' : IDL.Opt(IDL.Vec(IDL.Text)),
-    'contentIdentifiers' : IDL.Opt(ContentIdentifiers),
     'name' : IDL.Text,
     'createdAt' : IDL.Int,
     'scrapingInterval' : IDL.Nat,
     'description' : IDL.Text,
     'maxRetries' : IDL.Nat,
-    'urlGenerationStrategy' : IDL.Text,
     'activeHours' : IDL.Record({ 'end' : IDL.Nat, 'start' : IDL.Nat }),
     'urlPatterns' : IDL.Vec(IDL.Text),
     'extractionRules' : ExtractionRules,
     'aiConfig' : AIConfig,
-    'paginationPatterns' : IDL.Opt(IDL.Vec(IDL.Text)),
-    'articleUrlPatterns' : IDL.Opt(IDL.Vec(IDL.Text)),
     'lastScraped' : IDL.Int,
-    'siteTypeClassification' : IDL.Text,
   });
   const Result = IDL.Variant({ 'ok' : ScrapingTopic, 'err' : IDL.Text });
   const AIConfig__1 = IDL.Record({
@@ -133,16 +113,10 @@ export const idlFactory = ({ IDL }) => {
           IDL.Text,
           IDL.Record({
             'status' : IDL.Opt(IDL.Text),
-            'excludePatterns' : IDL.Opt(IDL.Vec(IDL.Text)),
-            'contentIdentifiers' : IDL.Opt(ContentIdentifiers),
             'name' : IDL.Opt(IDL.Text),
             'description' : IDL.Opt(IDL.Text),
-            'urlGenerationStrategy' : IDL.Opt(IDL.Text),
             'urlPatterns' : IDL.Opt(IDL.Vec(IDL.Text)),
             'extractionRules' : IDL.Opt(ExtractionRules),
-            'paginationPatterns' : IDL.Opt(IDL.Vec(IDL.Text)),
-            'articleUrlPatterns' : IDL.Opt(IDL.Vec(IDL.Text)),
-            'siteTypeClassification' : IDL.Opt(IDL.Text),
           }),
         ],
         [Result],

@@ -136,6 +136,10 @@ actor Admin {
     private let CONSUMER_CANISTER_ID: Text = "tgyl5-yyaaa-aaaaj-az4wq-cai";
     private let USER_PRINCIPAL_ID: Text = "p6gaf-qjt3x-6q6ci-ro7nd-aklhp-6hgfo-4dljo-busl6-3ftgp-iliyi-zqe";
     
+    // Admin principals
+    private let ADMIN_PRINCIPAL_1: Text = "b6ra7-utydr-wzyka-ifr5h-jndpw-ugopd-q2qkc-oq4ju-7rbey-prkus-mqe"; // Your principal
+    private let ADMIN_PRINCIPAL_2: Text = "m2x6b-rijrs-nmddl-i4o4z-x2ymi-5equa-cgtmd-y5pag-6f6p4-plfjj-vae"; // Atharva's principal
+    
 
     // Stable storage
     private stable var stableUsers : [(Principal, User)] = [];
@@ -171,7 +175,27 @@ actor Admin {
         let userPrincipal = Principal.fromText(USER_PRINCIPAL_ID);
         admins.put(userPrincipal, true);
         
+        // Add admin principal 1
+        let adminPrincipal1 = Principal.fromText(ADMIN_PRINCIPAL_1);
+        admins.put(adminPrincipal1, true);
+        let admin1 : User = {
+            principal = adminPrincipal1;
+            role = #SuperAdmin;
+            addedBy = userPrincipal;
+            addedAt = Time.now();
+        };
+        users.put(adminPrincipal1, admin1);
         
+        // Add admin principal 2
+        let adminPrincipal2 = Principal.fromText(ADMIN_PRINCIPAL_2);
+        admins.put(adminPrincipal2, true);
+        let admin2 : User = {
+            principal = adminPrincipal2;
+            role = #SuperAdmin;
+            addedBy = userPrincipal;
+            addedAt = Time.now();
+        };
+        users.put(adminPrincipal2, admin2);
         
         // Add the user as a SuperAdmin
         let user : User = {
@@ -182,9 +206,9 @@ actor Admin {
         };
         users.put(userPrincipal, user);
         
-        
-        
         Debug.print("Added user principal to admins: " # USER_PRINCIPAL_ID);
+        Debug.print("Added admin principal 1: " # ADMIN_PRINCIPAL_1);
+        Debug.print("Added admin principal 2: " # ADMIN_PRINCIPAL_2);
         
         initialized := true;
     };
@@ -230,6 +254,18 @@ actor Admin {
         // Explicitly allow the user principal
         if (Text.equal(callerStr, USER_PRINCIPAL_ID)) {
             Debug.print("User principal explicitly authorized");
+            return true;
+        };
+        
+        // Explicitly allow admin principal 1
+        if (Text.equal(callerStr, ADMIN_PRINCIPAL_1)) {
+            Debug.print("Admin principal 1 explicitly authorized");
+            return true;
+        };
+        
+        // Explicitly allow admin principal 2
+        if (Text.equal(callerStr, ADMIN_PRINCIPAL_2)) {
+            Debug.print("Admin principal 2 explicitly authorized");
             return true;
         };
         
@@ -309,6 +345,11 @@ actor Admin {
         
         Debug.print("getTopics: Authorized, returning topics");
         #ok(Iter.toArray(topics.vals()))
+    };
+
+    // Public method to get all topics (simplified for frontend)
+    public query func getAllTopics() : async [ScrapingTopic] {
+        Iter.toArray(topics.vals())
     };
 
     public shared({ caller }) func getTopics_with_caller(user_principal: Principal) : async Result.Result<[ScrapingTopic], Text> {

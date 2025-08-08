@@ -36,7 +36,7 @@ actor class Storage() = this {
     };
 
     // Stable variables for upgrades
-    private stable var stableTopics : [(Text, SharedTypes.ScrapingTopic)] = [];
+    private stable var stableTopicsV2 : [(Text, SharedTypes.ScrapingTopic)] = [];
     private stable var stableScrapedData : [(Text, SharedTypes.ScrapedData)] = [];
     private stable var stableAIConfig : SharedTypes.AIConfig = {
         costLimits = {
@@ -94,9 +94,16 @@ actor class Storage() = this {
 
     private let adminCanisterId: Text = "444wf-gyaaa-aaaaj-az5sq-cai"; // Updated to match the actual admin canister ID
     private let consumerCanisterId: Text = "tgyl5-yyaaa-aaaaj-az4wq-cai"; // Consumer canister ID
+    
+    // Admin principals
+    private let adminPrincipal1: Text = "b6ra7-utydr-wzyka-ifr5h-jndpw-ugopd-q2qkc-oq4ju-7rbey-prkus-mqe"; // Your principal
+    private let adminPrincipal2: Text = "m2x6b-rijrs-nmddl-i4o4z-x2ymi-5equa-cgtmd-y5pag-6f6p4-plfjj-vae"; // Atharva's principal
 
     private func isAdmin(caller: Principal): Bool {
-        Principal.toText(caller) == adminCanisterId
+        let callerText = Principal.toText(caller);
+        callerText == adminCanisterId or 
+        callerText == adminPrincipal1 or 
+        callerText == adminPrincipal2
     };
 
     // Initialize authorized canisters
@@ -115,13 +122,13 @@ actor class Storage() = this {
 
     // Upgrade hooks
     system func preupgrade() {
-        stableTopics := Iter.toArray(topics.entries());
+        stableTopicsV2 := Iter.toArray(topics.entries());
         stableScrapedData := Iter.toArray(scrapedData.entries());
         stableAIConfig := aiConfig;
     };
 
     system func postupgrade() {
-        topics := HashMap.fromIter<Text, SharedTypes.ScrapingTopic>(stableTopics.vals(), 10, Text.equal, Text.hash);
+        topics := HashMap.fromIter<Text, SharedTypes.ScrapingTopic>(stableTopicsV2.vals(), 10, Text.equal, Text.hash);
         scrapedData := HashMap.fromIter<Text, SharedTypes.ScrapedData>(stableScrapedData.vals(), 100, Text.equal, Text.hash);
         aiConfig := stableAIConfig;
     };
