@@ -4,6 +4,8 @@ import type { ScrapingTopic, AIConfig, ScrapedData } from '../types';
 import { TopicModal } from './TopicModal';
 import { AIConfigModal } from './AIConfigModal';
 import { getAdminActor, getScrapedDataDirect, getTopics } from '../lib/admin';
+import { getIdentity } from '../lib/auth';
+import { Actor, HttpAgent } from '@dfinity/agent';
 import StorageAuthorization from './StorageAuthorization';
 
 export const ScrapingConfig: React.FC = () => {
@@ -125,8 +127,76 @@ export const ScrapingConfig: React.FC = () => {
     const loadAIConfig = async () => {
       try {
         setAIConfigLoading(true);
-        // AI config is stored in storage canister, but for now use defaults
-        // TODO: Implement getAIConfig in storage canister
+        
+        // Get AI config from storage canister
+        const identity = await getIdentity();
+        if (!identity) {
+          throw new Error('No identity found');
+        }
+
+        const agent = new HttpAgent({ 
+          identity,
+          host: import.meta.env.VITE_IC_HOST || 'https://icp0.io'
+        });
+
+        const storageCanisterId = 'hhaip-uiaaa-aaaao-a4khq-cai';
+        
+        const storageIdlFactory = ({ IDL }: any) => {
+          const AIConfig = IDL.Record({
+            apiKey: IDL.Text,
+            model: IDL.Text,
+            costLimits: IDL.Record({
+              maxDailyCost: IDL.Float64,
+              maxMonthlyCost: IDL.Float64,
+              maxConcurrent: IDL.Nat,
+            }),
+          });
+
+          return IDL.Service({
+            getAIConfig: IDL.Func([], [IDL.Variant({ 
+              ok: AIConfig, 
+              err: IDL.Variant({ NotAuthorized: IDL.Null }) 
+            })], ['query']),
+          });
+        };
+
+        const storageActor = Actor.createActor(storageIdlFactory, {
+          agent,
+          canisterId: storageCanisterId,
+        });
+
+        const result = await storageActor.getAIConfig();
+        if ('ok' in result) {
+          const config = result.ok;
+          setAIConfig({
+            apiKey: config.apiKey || '',
+            model: config.model || 'gpt-3.5-turbo',
+            costLimits: {
+              maxDailyCost: Number(config.costLimits.maxDailyCost) || 10,
+              maxMonthlyCost: Number(config.costLimits.maxMonthlyCost) || 100,
+              maxConcurrent: Number(config.costLimits.maxConcurrent) || 5
+            },
+            temperature: 0.7,
+            maxTokens: 2000
+          });
+        } else {
+          // Use defaults if not authorized
+          console.warn('Not authorized to get AI config, using defaults');
+          setAIConfig({
+            apiKey: '',
+            model: 'gpt-3.5-turbo',
+            costLimits: {
+              maxDailyCost: 10,
+              maxMonthlyCost: 100,
+              maxConcurrent: 5
+            },
+            temperature: 0.7,
+            maxTokens: 2000
+          });
+        }
+      } catch (error) {
+        console.error('Failed to load AI config:', error);
+        // Use defaults on error
         setAIConfig({
           apiKey: '',
           model: 'gpt-3.5-turbo',
@@ -138,9 +208,6 @@ export const ScrapingConfig: React.FC = () => {
           temperature: 0.7,
           maxTokens: 2000
         });
-      } catch (error) {
-        console.error('Failed to load AI config:', error);
-        setError(error instanceof Error ? error.message : 'Failed to load AI configuration');
       } finally {
         setAIConfigLoading(false);
       }
