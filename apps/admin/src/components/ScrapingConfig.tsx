@@ -3,7 +3,7 @@ import { useAuth } from '../hooks/useAuth';
 import type { ScrapingTopic, AIConfig, ScrapedData } from '../types';
 import { TopicModal } from './TopicModal';
 import { AIConfigModal } from './AIConfigModal';
-import { getAdminActor, getScrapedDataDirect } from '../lib/admin';
+import { getAdminActor, getScrapedDataDirect, getTopics } from '../lib/admin';
 import StorageAuthorization from './StorageAuthorization';
 
 export const ScrapingConfig: React.FC = () => {
@@ -36,12 +36,10 @@ export const ScrapingConfig: React.FC = () => {
       try {
         setTopicsLoading(true);
         setTopicsError(null);
-        const actor = await getAdminActor();
         console.log('Fetching topics...');
-        const result = await actor.getTopics();
-        if ('err' in result) {
-          throw new Error(result.err);
-        }
+        // Use the getTopics function which now calls storage canister
+        const fetchedTopics = await getTopics();
+        console.log('Fetched topics:', fetchedTopics);
         
         // Load saved sampleArticleUrls from local storage
         const savedSampleArticleUrls = {};
@@ -54,7 +52,7 @@ export const ScrapingConfig: React.FC = () => {
         } catch (e) {
           console.error('Error loading saved sampleArticleUrls from local storage:', e);
         }
-        const processedTopics = result.ok.map((topic: any) => {
+        const processedTopics = fetchedTopics.map((topic: any) => {
           console.log(`Processing topic ${topic.id}, contentIdentifiers:`, topic.contentIdentifiers);
           
           // Ensure contentIdentifiers is properly extracted if it exists
@@ -127,22 +125,18 @@ export const ScrapingConfig: React.FC = () => {
     const loadAIConfig = async () => {
       try {
         setAIConfigLoading(true);
-        const actor = await getAdminActor();
-        const result = await actor.getAIConfig();
-        if ('err' in result) {
-          throw new Error(result.err);
-        }
-        const config = result.ok;
+        // AI config is stored in storage canister, but for now use defaults
+        // TODO: Implement getAIConfig in storage canister
         setAIConfig({
-          apiKey: config.apiKey,
-          model: config.model,
+          apiKey: '',
+          model: 'gpt-3.5-turbo',
           costLimits: {
-            maxDailyCost: Number(config.costLimits.maxDailyCost) || 0,
-            maxMonthlyCost: Number(config.costLimits.maxMonthlyCost) || 0,
-            maxConcurrent: Number(config.costLimits.maxConcurrent) || 0
+            maxDailyCost: 10,
+            maxMonthlyCost: 100,
+            maxConcurrent: 5
           },
-          temperature: config.temperature || 0.7,
-          maxTokens: config.maxTokens || 2000
+          temperature: 0.7,
+          maxTokens: 2000
         });
       } catch (error) {
         console.error('Failed to load AI config:', error);

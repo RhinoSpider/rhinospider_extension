@@ -218,7 +218,9 @@ export async function getTopics(): Promise<ScrapingTopic[]> {
 }
 
 export async function createTopic(topic: CreateTopicRequest): Promise<ScrapingTopic> {
-  const adminActor = await getAdminActor();
+  // Topics should be stored in storage canister
+  // For now, store in localStorage as a temporary solution
+  console.warn('createTopic: Using localStorage temporarily - needs storage canister implementation');
   
   // Log the input topic for debugging
   console.log('Creating topic:', JSON.stringify(topic, replaceBigInt));
