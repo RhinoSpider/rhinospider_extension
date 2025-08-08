@@ -1854,6 +1854,35 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     logger.log('Received message:', message);
 
     switch (message.type) {
+        case 'GET_SCRAPING_CONFIG':
+            // Return the current scraping configuration
+            chrome.storage.local.get(['scrapingEnabled', 'enabled'], (result) => {
+                sendResponse({ 
+                    success: true, 
+                    data: { 
+                        enabled: result.scrapingEnabled || false // Default to false
+                    } 
+                });
+            });
+            return true; // Will respond asynchronously
+            
+        case 'UPDATE_SCRAPING_CONFIG':
+            // Update the scraping configuration
+            const newEnabled = message.data?.enabled || false;
+            chrome.storage.local.set({ 
+                scrapingEnabled: newEnabled,
+                enabled: newEnabled,
+                isScrapingActive: newEnabled 
+            }, () => {
+                if (newEnabled) {
+                    startScraping();
+                } else {
+                    stopScraping();
+                }
+                sendResponse({ success: true });
+            });
+            return true; // Will respond asynchronously
+            
         case 'PROXY_REQUEST':
             // Handle CORS requests from the content script
             logger.log('Handling proxy request:', message.url);
@@ -2255,9 +2284,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
                 // Store principalId in local storage
                 chrome.storage.local.set({ principalId: message.principalId }, () => {
-                    // Enable extension by default after login and set scraping as active
-                    chrome.storage.local.set({ enabled: true, isScrapingActive: true }, async () => {
-                        logger.log('Extension is enabled by default after login, loading topics');
+                    // DO NOT enable extension by default after login - let user control it
+                    chrome.storage.local.set({ enabled: false, isScrapingActive: false, scrapingEnabled: false }, async () => {
+                        logger.log('Extension is disabled by default after login, user must enable it manually');
                         
                         // Create user profile in referral canister
                         try {
@@ -2822,10 +2851,12 @@ async function initializeOnInstall(details) {
     try {
         await initializeExtension();
 
-        // Set initial state if not already set
+        // Set initial state if not already set - DEFAULT TO FALSE
         if (result.enabled === undefined) {
             await chrome.storage.local.set({
-                enabled: true
+                enabled: false,
+                scrapingEnabled: false,
+                isScrapingActive: false
             });
         }
 

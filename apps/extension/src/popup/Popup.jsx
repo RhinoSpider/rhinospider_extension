@@ -44,11 +44,11 @@ const Popup = () => {
   const [principal, setPrincipal] = useState(null);
   const [authClient, setAuthClient] = useState(null);
 
-  // UI states
+  // UI states - ALWAYS start with plugin OFF
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [points, setPoints] = useState(0);
   const [uptime, setUptime] = useState('0 mins');
-  const [isPluginActive, setIsPluginActive] = useState(false);
+  const [isPluginActive, setIsPluginActive] = useState(false); // ALWAYS FALSE initially
   const [bandwidthSpeed, setBandwidthSpeed] = useState('off');
   const [currentSpeed, setCurrentSpeed] = useState('0 MB/s');
   const [avatar, setAvatar] = useState(null);

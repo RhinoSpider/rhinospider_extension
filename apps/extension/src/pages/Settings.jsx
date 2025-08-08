@@ -67,21 +67,26 @@ function Settings() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <div className="font-medium">Scraping Status</div>
-              <div className="text-sm text-gray-500">Enable or disable scraping</div>
+              <div className="font-medium text-white">Enable RhinoSpider Extension</div>
+              <div className="text-sm text-gray-400">Toggle data scraping on/off</div>
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
               <input
                 type="checkbox"
-                checked={config?.enabled}
+                checked={config?.enabled || false}
                 onChange={async () => {
                   try {
+                    const newState = !config?.enabled;
                     const response = await chrome.runtime.sendMessage({
                       type: 'UPDATE_SCRAPING_CONFIG',
-                      data: { enabled: !config?.enabled }
+                      data: { enabled: newState }
                     });
                     if (response.success) {
-                      setConfig(prev => ({ ...prev, enabled: !prev.enabled }));
+                      setConfig(prev => ({ ...prev, enabled: newState }));
+                      // Also update storage for consistency
+                      chrome.storage.local.set({ 
+                        scrapingEnabled: newState 
+                      });
                     }
                   } catch (error) {
                     console.error('Failed to update config:', error);
@@ -89,7 +94,7 @@ function Settings() {
                 }}
                 className="sr-only peer"
               />
-              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
             </label>
           </div>
 

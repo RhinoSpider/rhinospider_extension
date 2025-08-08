@@ -9,11 +9,11 @@ export function Dashboard() {
   useEffect(() => {
     console.log('Dashboard mounted');
     
-    // Get initial state
-    chrome.storage.local.get(['enabled', 'startTime'], (result) => {
+    // Get initial state - DEFAULT TO FALSE
+    chrome.storage.local.get(['scrapingEnabled', 'startTime'], (result) => {
       console.log('Got storage state:', result);
-      setIsEnabled(result.enabled !== false);
-      if (result.startTime) {
+      setIsEnabled(result.scrapingEnabled === true); // Only true if explicitly set
+      if (result.startTime && result.scrapingEnabled) {
         setUptime(Math.floor((Date.now() - result.startTime) / 1000));
       }
     });
@@ -49,10 +49,15 @@ export function Dashboard() {
     
     const startTime = newState ? Date.now() : null;
     chrome.storage.local.set({ 
-      enabled: newState,
+      scrapingEnabled: newState, // Use consistent key
       startTime
     }, () => {
-      console.log('Saved new state:', { enabled: newState, startTime });
+      console.log('Saved new state:', { scrapingEnabled: newState, startTime });
+      // Also update background config
+      chrome.runtime.sendMessage({ 
+        type: 'UPDATE_SCRAPING_CONFIG',
+        data: { enabled: newState }
+      });
     });
   };
 
