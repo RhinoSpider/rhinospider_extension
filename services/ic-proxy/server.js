@@ -1728,6 +1728,55 @@ app.post('/api/authorize-consumer', authenticateApiKey, async (req, res) => {
   }
 });
 
+// Referral endpoints for consumer canister
+app.post('/api/consumer-referral-code', authenticateApiKey, async (req, res) => {
+  console.log('[/api/consumer-referral-code] Getting referral code');
+  try {
+    const result = await consumerActor.getReferralCode();
+    console.log('[/api/consumer-referral-code] Result:', result);
+    res.json(result);
+  } catch (error) {
+    console.error('[/api/consumer-referral-code] Error:', error);
+    res.status(500).json({ err: error.message });
+  }
+});
+
+app.post('/api/consumer-use-referral', authenticateApiKey, async (req, res) => {
+  console.log('[/api/consumer-use-referral] Using referral code:', req.body.code);
+  try {
+    const result = await consumerActor.useReferralCode(req.body.code);
+    console.log('[/api/consumer-use-referral] Result:', result);
+    res.json(result);
+  } catch (error) {
+    console.error('[/api/consumer-use-referral] Error:', error);
+    res.status(500).json({ err: error.message });
+  }
+});
+
+app.post('/api/consumer-user-data', authenticateApiKey, async (req, res) => {
+  console.log('[/api/consumer-user-data] Getting user data');
+  try {
+    const result = await consumerActor.getUserData();
+    console.log('[/api/consumer-user-data] Result:', result);
+    res.json(result);
+  } catch (error) {
+    console.error('[/api/consumer-user-data] Error:', error);
+    res.status(500).json({ err: error.message });
+  }
+});
+
+app.post('/api/consumer-update-login', authenticateApiKey, async (req, res) => {
+  console.log('[/api/consumer-update-login] Updating user login with IP:', req.body.ipAddress);
+  try {
+    const result = await consumerActor.updateUserLogin(req.body.ipAddress);
+    console.log('[/api/consumer-update-login] Result:', result);
+    res.json(result);
+  } catch (error) {
+    console.error('[/api/consumer-update-login] Error:', error);
+    res.status(500).json({ err: error.message });
+  }
+});
+
 // Start the server
 app.listen(PORT, async () => {
   console.log(`IC Proxy server running on port ${PORT}`);

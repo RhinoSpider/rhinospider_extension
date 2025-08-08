@@ -39,10 +39,7 @@ const config = {
     
     // API Key for Direct Storage
     apiKey: import.meta.env.VITE_DIRECT_STORAGE_API_KEY || 'test-api-key'
-  },
-  
-  // Referral Canister ID
-  referralCanisterId: import.meta.env.VITE_REFERRAL_CANISTER_ID || 'woxyw-xqaaa-aaaao-a4oqq-cai'
+  }
 };
 
 export default config;

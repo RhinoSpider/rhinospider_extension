@@ -6,22 +6,11 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import config from './config.js';
-import { Actor, HttpAgent } from '@dfinity/agent';
-import { idlFactory as referralIdl } from '../declarations/referral/referral.did.js';
 
 // Constants
 const IC_PROXY_URL = config.icProxy.url;
 const SEARCH_PROXY_URL = config.searchProxy.url;
 const API_KEY = config.icProxy.apiKey;
-const REFERRAL_CANISTER_ID = config.referralCanisterId;
-
-
-
-const agent = new HttpAgent({ host: IC_PROXY_URL });
-const referralActor = Actor.createActor(referralIdl, {
-  agent,
-  canisterId: REFERRAL_CANISTER_ID,
-});
 
 /**
  * Service Worker Adapter
@@ -220,11 +209,32 @@ class ServiceWorkerAdapter {
   }
 
   /**
-   * Get referral code for the current user (MOCKED)
+   * Get referral code for the current user
    * @returns {Promise<Object>} Referral code
    */
   async getReferralCode() {
-    return referralActor.getReferralCode();
+    try {
+      const response = await fetch(`${IC_PROXY_URL}/api/consumer-referral-code`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-device-id': this.deviceId || await this.getOrCreateDeviceId(),
+          'Authorization': `Bearer ${API_KEY}`
+        },
+        body: JSON.stringify({})
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        return result;
+      } else {
+        console.error('Get referral code error:', response.status, response.statusText);
+        throw new Error(`Get referral code error: ${response.status} ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error('Error getting referral code:', error);
+      throw error;
+    }
   }
 
   /**
@@ -233,7 +243,28 @@ class ServiceWorkerAdapter {
    * @returns {Promise<Object>} Result
    */
   async useReferralCode(code) {
-    return referralActor.useReferralCode(code);
+    try {
+      const response = await fetch(`${IC_PROXY_URL}/api/consumer-use-referral`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-device-id': this.deviceId || await this.getOrCreateDeviceId(),
+          'Authorization': `Bearer ${API_KEY}`
+        },
+        body: JSON.stringify({ code })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        return result;
+      } else {
+        console.error('Use referral code error:', response.status, response.statusText);
+        throw new Error(`Use referral code error: ${response.status} ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error('Error using referral code:', error);
+      throw error;
+    }
   }
 
   /**
@@ -241,7 +272,28 @@ class ServiceWorkerAdapter {
    * @returns {Promise<Object>} User data
    */
   async getUserData() {
-    return referralActor.getUserData();
+    try {
+      const response = await fetch(`${IC_PROXY_URL}/api/consumer-user-data`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-device-id': this.deviceId || await this.getOrCreateDeviceId(),
+          'Authorization': `Bearer ${API_KEY}`
+        },
+        body: JSON.stringify({})
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        return result;
+      } else {
+        console.error('Get user data error:', response.status, response.statusText);
+        throw new Error(`Get user data error: ${response.status} ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error('Error getting user data:', error);
+      throw error;
+    }
   }
 
   /**
@@ -250,7 +302,28 @@ class ServiceWorkerAdapter {
    * @returns {Promise<Object>} Result
    */
   async updateUserLogin(ipAddress) {
-    return referralActor.updateUserLogin(ipAddress);
+    try {
+      const response = await fetch(`${IC_PROXY_URL}/api/consumer-update-login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-device-id': this.deviceId || await this.getOrCreateDeviceId(),
+          'Authorization': `Bearer ${API_KEY}`
+        },
+        body: JSON.stringify({ ipAddress })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        return result;
+      } else {
+        console.error('Update user login error:', response.status, response.statusText);
+        throw new Error(`Update user login error: ${response.status} ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error('Error updating user login:', error);
+      throw error;
+    }
   }
 
   /**
@@ -260,7 +333,10 @@ class ServiceWorkerAdapter {
    * @returns {Promise<Object>} Result
    */
   async awardPoints(principalId, contentLength) {
-    return referralActor.awardPoints(principalId, BigInt(contentLength));
+    // Points are now automatically awarded when submitting scraped data
+    // This method is kept for compatibility but is no longer needed
+    console.log('Points are automatically awarded during data submission');
+    return { ok: true };
   }
 
   /**
