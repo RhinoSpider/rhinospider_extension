@@ -110,6 +110,7 @@ export async function createTopic(topic: ScrapingTopic): Promise<ScrapingTopic> 
     const adminActor = await getAdminActor();
     
     // Convert the topic to the format expected by the canister
+    // IMPORTANT: Optional fields (opt) in Motoko need to be wrapped in an array or null
     const createRequest = {
       id: topic.id,
       name: topic.name,
@@ -118,14 +119,15 @@ export async function createTopic(topic: ScrapingTopic): Promise<ScrapingTopic> 
       
       // Search Configuration
       searchQueries: topic.searchQueries || [],
-      preferredDomains: topic.preferredDomains && topic.preferredDomains.length > 0 ? topic.preferredDomains : [],
-      excludeDomains: topic.excludeDomains && topic.excludeDomains.length > 0 ? topic.excludeDomains : [],
+      // Optional fields must be [value] for Some or [] for None
+      preferredDomains: topic.preferredDomains && topic.preferredDomains.length > 0 ? [topic.preferredDomains] : [],
+      excludeDomains: topic.excludeDomains && topic.excludeDomains.length > 0 ? [topic.excludeDomains] : [],
       requiredKeywords: topic.requiredKeywords || [],
-      excludeKeywords: topic.excludeKeywords && topic.excludeKeywords.length > 0 ? topic.excludeKeywords : [],
+      excludeKeywords: topic.excludeKeywords && topic.excludeKeywords.length > 0 ? [topic.excludeKeywords] : [],
       
       // Extraction Configuration
       contentSelectors: topic.contentSelectors || ['article', 'main', '.content'],
-      titleSelectors: topic.titleSelectors && topic.titleSelectors.length > 0 ? topic.titleSelectors : [],
+      titleSelectors: topic.titleSelectors && topic.titleSelectors.length > 0 ? [topic.titleSelectors] : [],
       excludeSelectors: topic.excludeSelectors || [],
       minContentLength: BigInt(topic.minContentLength || 100),
       maxContentLength: BigInt(topic.maxContentLength || 50000),
