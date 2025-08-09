@@ -1,0 +1,18 @@
+#!/bin/bash
+
+echo "Deploying IC Proxy with AI support..."
+echo ""
+echo "Please SSH into the server and run these commands:"
+echo ""
+echo "ssh root@143.244.133.154"
+echo "cd /var/www/ic-proxy"
+echo "git pull"
+echo "npm install --legacy-peer-deps"
+echo "pm2 restart ic-proxy"
+echo ""
+echo "The IC proxy now has real OpenAI integration!"
+echo "When AI is enabled in the admin dashboard:"
+echo "1. Users add their OpenAI API key"
+echo "2. The extension calls the IC proxy AI endpoint"
+echo "3. IC proxy uses OpenAI's gpt-3.5-turbo model"
+echo "4. Content is enhanced with summaries, keywords, etc."
