@@ -19,7 +19,7 @@ app.use(express.json());
 // Environment variables
 const ADMIN_CANISTER_ID = process.env.ADMIN_CANISTER_ID || 'wvset-niaaa-aaaao-a4osa-cai';
 const STORAGE_CANISTER_ID = process.env.STORAGE_CANISTER_ID || 'hhaip-uiaaa-aaaao-a4khq-cai';
-const CONSUMER_CANISTER_ID = process.env.CONSUMER_CANISTER_ID || 'uzt4z-lp777-77774-qaabq-cai';
+const CONSUMER_CANISTER_ID = process.env.CONSUMER_CANISTER_ID || 'umunu-kh777-77774-qaaca-cai';
 const IC_HOST = process.env.IC_HOST || 'https://icp0.io';
 
 console.log('IC Proxy server starting...');
