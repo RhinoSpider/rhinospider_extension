@@ -351,48 +351,99 @@ export async function getStorageActor() {
   }
 }
 
-export async function getScrapedData(topicIds: string[] = []): Promise<ScrapedData[]> {
+export async function getScrapedData(topicId?: string): Promise<ScrapedData[]> {
   try {
     const storageActor = await getStorageActor();
+    
+    // If a specific topic is provided, convert to array format
+    const topicIds = topicId ? [topicId] : [];
+    console.log(`[admin.ts] getScrapedData called with topicIds:`, topicIds);
+    
     const result = await storageActor.getScrapedData(topicIds);
     
     if ('err' in result) {
-      console.error('Error fetching scraped data:', result.err);
+      console.error('[admin.ts] Error from storage canister:', result.err);
       return [];
     }
     
-    return result.ok;
+    console.log(`[admin.ts] getScrapedData returned ${result.ok?.length || 0} items`);
+    return result.ok || [];
   } catch (error) {
-    console.error('Error fetching scraped data:', error);
+    console.error('[admin.ts] Error fetching scraped data:', error);
     return [];
   }
 }
 
 export async function getExtensionUsers(): Promise<ExtensionUser[]> {
-  // For now, return mock data
-  // In production, this would fetch from the consumer canister
-  return [
-    {
-      id: '1',
-      principalId: 'xxxxx-xxxxx-xxxxx-xxxxx',
-      deviceId: 'device-1',
-      dataContributed: 1024 * 1024 * 50, // 50MB
-      lastActive: new Date(Date.now() - 1000 * 60 * 5).toISOString(), // 5 minutes ago
-      joinDate: new Date(Date.now() - 1000 * 60 * 60 * 24 * 30).toISOString(), // 30 days ago
-      isActive: true,
-      ipAddress: '192.168.1.1',
-      location: 'New York, USA'
-    },
-    {
-      id: '2',
-      principalId: 'yyyyy-yyyyy-yyyyy-yyyyy',
-      deviceId: 'device-2',
-      dataContributed: 1024 * 1024 * 120, // 120MB
-      lastActive: new Date(Date.now() - 1000 * 60 * 30).toISOString(), // 30 minutes ago
-      joinDate: new Date(Date.now() - 1000 * 60 * 60 * 24 * 15).toISOString(), // 15 days ago
-      isActive: true,
-      ipAddress: '10.0.0.1',
-      location: 'San Francisco, USA'
+  try {
+    const identity = await getIdentity();
+    if (!identity) {
+      throw new Error('No identity found');
     }
-  ];
+    
+    const agent = new HttpAgent({ 
+      identity,
+      host: import.meta.env.VITE_IC_HOST || 'https://icp0.io'
+    });
+    
+    const consumerCanisterId = 't3pjp-kqaaa-aaaao-a4ooq-cai';
+    
+    // Create actor for consumer canister
+    const idlFactory = ({ IDL }: any) => {
+      const UserProfile = IDL.Record({
+        principal: IDL.Principal,
+        devices: IDL.Vec(IDL.Text),
+        created: IDL.Int,
+        lastLogin: IDL.Int,
+        ipAddress: IDL.Opt(IDL.Text),
+        country: IDL.Opt(IDL.Text),
+        region: IDL.Opt(IDL.Text),
+        city: IDL.Opt(IDL.Text),
+        latitude: IDL.Opt(IDL.Float64),
+        longitude: IDL.Opt(IDL.Float64),
+        lastActive: IDL.Int,
+        isActive: IDL.Bool,
+        dataVolumeKB: IDL.Nat,
+        referralCode: IDL.Text,
+        referralCount: IDL.Nat,
+        points: IDL.Nat,
+        totalDataScraped: IDL.Nat,
+        referredBy: IDL.Opt(IDL.Principal),
+        preferences: IDL.Record({
+          notificationsEnabled: IDL.Bool,
+          theme: IDL.Text,
+        }),
+      });
+
+      return IDL.Service({
+        getAllUsers: IDL.Func([], [IDL.Vec(IDL.Tuple(IDL.Principal, UserProfile))], ['query']),
+      });
+    };
+
+    const consumerActor = Actor.createActor(idlFactory, {
+      agent,
+      canisterId: Principal.fromText(consumerCanisterId),
+    });
+
+    // Fetch all users
+    const allUsers = await consumerActor.getAllUsers() as [Principal, any][];
+    
+    // Convert to ExtensionUser format
+    return allUsers.map(([principal, profile], index) => ({
+      id: (index + 1).toString(),
+      principalId: principal.toString(),
+      deviceId: profile.devices?.[0] || 'unknown',
+      dataContributed: Number(profile.dataVolumeKB) * 1024, // Convert KB to bytes
+      lastActive: new Date(Number(profile.lastActive) / 1_000_000).toISOString(), // Convert nanoseconds to milliseconds
+      joinDate: new Date(Number(profile.created) / 1_000_000).toISOString(), // Convert nanoseconds to milliseconds
+      isActive: profile.isActive,
+      ipAddress: profile.ipAddress?.[0] || 'unknown',
+      location: profile.city?.[0] && profile.country?.[0] 
+        ? `${profile.city[0]}, ${profile.country[0]}`
+        : profile.country?.[0] || 'Unknown'
+    }));
+  } catch (error) {
+    console.error('Error fetching extension users:', error);
+    return [];
+  }
 }

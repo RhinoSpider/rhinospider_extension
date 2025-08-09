@@ -62,7 +62,7 @@ export const Overview: React.FC = () => {
       }
 
       // Consumer canister ID
-      const consumerCanisterId = 'tgyl5-yyaaa-aaaaj-az4wq-cai';
+      const consumerCanisterId = 't3pjp-kqaaa-aaaao-a4ooq-cai';
       
       // Admin canister ID  
       const adminCanisterId = 'wvset-niaaa-aaaao-a4osa-cai';
@@ -175,10 +175,18 @@ export const Overview: React.FC = () => {
       // Try to get data count from storage canister
       let dataCount = BigInt(0);
       let todayScrapedCount = 0;
+      let systemStatus = {
+        consumerCanister: 'online' as 'online' | 'offline',
+        storageCanister: 'online' as 'online' | 'offline',
+        adminCanister: 'online' as 'online' | 'offline',
+      };
       
       try {
-        // Try getAllData since getDataCount doesn't exist
+        // Use getAllData method that we added to the storage IDL
         const allData = await storageActor.getAllData();
+        if (!allData) {
+          throw new Error('getAllData returned null/undefined');
+        }
         dataCount = BigInt(allData.length);
         
         // Calculate today's scraped pages
@@ -190,10 +198,13 @@ export const Overview: React.FC = () => {
           Number(data.timestamp) >= todayTimestamp
         ).length;
       } catch (e) {
-        // Storage canister might not have data or method might not exist
-        console.warn('Could not fetch storage data:', e);
+        // Storage canister method might not be implemented yet
+        console.error('Could not fetch storage data:', e);
         dataCount = BigInt(0);
         todayScrapedCount = 0;
+        
+        // Set storage canister as offline if getAllData fails
+        systemStatus.storageCanister = 'offline';
       }
 
       // Calculate active extensions (users active in last 24 hours)
@@ -228,9 +239,9 @@ export const Overview: React.FC = () => {
         activeTopics: activeTopics.length,
         recentActivity,
         systemStatus: {
-          consumerCanister: 'online',
-          storageCanister: dataCount > 0 ? 'online' : 'offline',
-          adminCanister: 'online',
+          consumerCanister: systemStatus.consumerCanister,
+          storageCanister: systemStatus.storageCanister,
+          adminCanister: systemStatus.adminCanister,
           lastUpdate: BigInt(Date.now()),
         },
       };

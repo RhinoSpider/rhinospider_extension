@@ -70,7 +70,7 @@ export const ExtensionUsers: React.FC = () => {
         await agent.fetchRootKey();
       }
 
-      const consumerCanisterId = 'tgyl5-yyaaa-aaaaj-az4wq-cai';
+      const consumerCanisterId = 't3pjp-kqaaa-aaaao-a4ooq-cai';
       
       // Create actor for consumer canister
       const idlFactory = ({ IDL }: any) => {

@@ -105,7 +105,7 @@ export const RhinoScan: React.FC = () => {
       }
 
       // Consumer canister ID
-      const consumerCanisterId = 'tgyl5-yyaaa-aaaaj-az4wq-cai';
+      const consumerCanisterId = 't3pjp-kqaaa-aaaao-a4ooq-cai';
       
       // Create actor with the consumer canister interface
       const idlFactory = ({ IDL }: any) => {
@@ -159,7 +159,7 @@ export const RhinoScan: React.FC = () => {
       setGeoData(geoDistribution);
     } catch (err) {
       console.error('Error loading RhinoScan data:', err);
-      setError('Failed to load RhinoScan data. Please try again.');
+      setError(`Failed to load RhinoScan data from consumer canister: ${err.message || 'Unknown error'}. Ensure getAllUsers and related methods are implemented.`);
     } finally {
       setLoading(false);
     }
@@ -456,12 +456,12 @@ export const RhinoScan: React.FC = () => {
           <div className="flex items-center space-x-2">
             <span className="text-gray-400">Consumer Canister:</span>
             <a 
-              href={`https://dashboard.internetcomputer.org/canister/tgyl5-yyaaa-aaaaj-az4wq-cai`}
+              href={`https://dashboard.internetcomputer.org/canister/t3pjp-kqaaa-aaaao-a4ooq-cai`}
               target="_blank"
               rel="noopener noreferrer"
               className="text-[#B692F6] hover:underline"
             >
-              tgyl5-yyaaa-aaaaj-az4wq-cai
+              t3pjp-kqaaa-aaaao-a4ooq-cai
             </a>
           </div>
           <div className="flex items-center space-x-2">

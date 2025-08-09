@@ -41,6 +41,7 @@ export const storageIdlFactory = ({ IDL }: any) => {
     'getStats': IDL.Func([], [StorageStats], ['query']),
     'getCycles': IDL.Func([], [IDL.Nat], ['query']),
     'getScrapedData': IDL.Func([IDL.Vec(IDL.Text)], [IDL.Vec(ScrapedData)], ['query']),
+    'getAllData': IDL.Func([], [IDL.Vec(IDL.Tuple(IDL.Text, ScrapedData))], ['query']),
   });
 };
 

@@ -101,8 +101,8 @@ export const ScrapedData: React.FC = () => {
         }
       } catch (error: any) { // Type assertion for error
         console.error(`[ScrapedData] Failed to load data:`, error);
-        // Set error message for UI
-        setError(`Error loading data: ${error.message || 'Unknown error'}`);
+        // Set error message for UI with more details
+        setError(`Error loading scraped data from storage canister: ${error.message || 'Unknown error'}. Please ensure the storage canister methods are properly implemented.`);
         setLoading(false);
         return; // Exit early if there's an error
       }

@@ -57,7 +57,7 @@ export const PointsManagement: React.FC = () => {
         await agent.fetchRootKey();
       }
 
-      const consumerCanisterId = 'tgyl5-yyaaa-aaaaj-az4wq-cai';
+      const consumerCanisterId = 't3pjp-kqaaa-aaaao-a4ooq-cai';
       
       // Create actor for consumer canister
       const idlFactory = ({ IDL }: any) => {
@@ -132,8 +132,8 @@ export const PointsManagement: React.FC = () => {
           activeUsers: BigInt(activeUsers),
         });
       } catch (err) {
-        console.warn('getAllUsers not implemented, using mock data');
-        // Use mock data for demonstration
+        console.error('Error calling getAllUsers:', err);
+        setError(`Failed to load user data from consumer canister: ${err.message || 'Unknown error'}`);
         setUsers([]);
         setStats({
           totalPointsDistributed: BigInt(0),
