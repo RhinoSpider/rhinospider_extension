@@ -63,8 +63,8 @@ actor ConsumerBackend {
     };
 
     // Constants
-    private let STORAGE_CANISTER_ID = "hhaip-uiaaa-aaaao-a4khq-cai"; // Updated to the latest storage canister ID
-    private let ADMIN_CANISTER_ID = "wvset-niaaa-aaaao-a4osa-cai";  // New admin backend canister
+    private let STORAGE_CANISTER_ID = "hhaip-uiaaa-aaaao-a4khq-cai"; // EXISTING production storage canister
+    private let ADMIN_CANISTER_ID = "wvset-niaaa-aaaao-a4osa-cai";  // EXISTING production admin backend canister
     private let CYCLES_PER_CALL = 100_000_000_000; // 100B cycles per call
 
     // Canister references
