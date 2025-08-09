@@ -3,10 +3,10 @@
 echo "🚀 DEPLOYING FIXED IC PROXY SERVER"
 echo "=================================="
 
-echo "Copy this server.js content to /var/www/ic-proxy-v2/server.js on the server:"
-echo ""
+SERVER="root@143.244.133.154"
 
-cat << 'EOF'
+echo "📝 Creating deployment file..."
+cat << 'EOF' > /tmp/ic-proxy-server.js
 const express = require('express');
 const cors = require('cors');
 const { Actor, HttpAgent } = require('@dfinity/agent');
@@ -250,25 +250,41 @@ app.listen(PORT, () => {
 module.exports = app;
 EOF
 
+echo "📤 Uploading to server..."
+scp /tmp/ic-proxy-server.js ${SERVER}:/tmp/new-server.js
+
+echo "🔄 Deploying on server..."
+ssh ${SERVER} << 'ENDSSH'
+    echo "📋 Backing up current server..."
+    cp /var/www/ic-proxy-v2/server.js /var/www/ic-proxy-v2/server.js.backup.$(date +%Y%m%d-%H%M%S)
+    
+    echo "🔄 Installing new server..."
+    cp /tmp/new-server.js /var/www/ic-proxy-v2/server.js
+    
+    echo "♻️ Restarting IC Proxy..."
+    pm2 restart ic-proxy-v2
+    
+    echo "⏳ Waiting 5 seconds for startup..."
+    sleep 5
+    
+    echo "🩺 Testing health endpoint..."
+    curl -s https://ic-proxy.rhinospider.com/api/health | jq '.' 2>/dev/null || curl -s https://ic-proxy.rhinospider.com/api/health
+    
+    echo ""
+    echo "📊 Checking PM2 status..."
+    pm2 list | grep ic-proxy-v2
+    
+    echo ""
+    echo "📝 Recent logs..."
+    pm2 logs ic-proxy-v2 --lines 5 --nostream
+ENDSSH
+
+echo "🧹 Cleaning up..."
+rm -f /tmp/ic-proxy-server.js
+
 echo ""
-echo "COMMANDS TO RUN ON SERVER:"
-echo "=========================="
+echo "✅ DEPLOYMENT COMPLETE!"
 echo ""
-echo "1. SSH into server:"
-echo "   ssh root@143.244.133.154"
-echo ""
-echo "2. Backup current server:"
-echo "   cp /var/www/ic-proxy-v2/server.js /var/www/ic-proxy-v2/server.js.backup"
-echo ""
-echo "3. Replace server.js with content above"
-echo ""
-echo "4. Restart IC proxy:"
-echo "   pm2 restart ic-proxy-v2"
-echo ""
-echo "5. Check logs:"
-echo "   pm2 logs ic-proxy-v2 --lines 10"
-echo ""
-echo "6. Test health endpoint:"
-echo "   curl https://ic-proxy.rhinospider.com/api/health"
-echo ""
-echo "✅ DEPLOYMENT READY!"
+echo "🌐 Test the endpoints:"
+echo "  Health:  curl https://ic-proxy.rhinospider.com/api/health"
+echo "  Topics:  curl https://ic-proxy.rhinospider.com/api/topics"
