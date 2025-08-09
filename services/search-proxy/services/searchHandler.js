@@ -63,10 +63,21 @@ async function searchForUrls(topic, keywords = [], page = 0, userId = 'anonymous
       };
     }
     
-    // Extract domains from options if available
+    // Extract domains and exclusions from options if available
     let domains = [];
-    if (options && options.domains) {
-      domains = Array.isArray(options.domains) ? options.domains : [options.domains];
+    let excludeDomains = [];
+    let excludeKeywords = [];
+    
+    if (options) {
+      if (options.domains) {
+        domains = Array.isArray(options.domains) ? options.domains : [options.domains];
+      }
+      if (options.excludeDomains) {
+        excludeDomains = Array.isArray(options.excludeDomains) ? options.excludeDomains : [options.excludeDomains];
+      }
+      if (options.excludeKeywords) {
+        excludeKeywords = Array.isArray(options.excludeKeywords) ? options.excludeKeywords : [options.excludeKeywords];
+      }
     }
     
     // Use parallel search approach to maximize URL discovery
@@ -223,12 +234,43 @@ async function searchForUrls(topic, keywords = [], page = 0, userId = 'anonymous
     const notPreviouslyScraped = filterScrapedUrls(urls);
     console.log(`Filtered out ${urls.length - notPreviouslyScraped.length} previously scraped URLs`);
     
+    // Filter out URLs based on exclude domains and keywords
+    let filteredByExclusions = notPreviouslyScraped;
+    
+    // Filter out excluded domains
+    if (excludeDomains && excludeDomains.length > 0) {
+      filteredByExclusions = filteredByExclusions.filter(url => {
+        const urlLower = url.toLowerCase();
+        return !excludeDomains.some(domain => domain && urlLower.includes(domain.toLowerCase()));
+      });
+      console.log(`Filtered out ${notPreviouslyScraped.length - filteredByExclusions.length} URLs from excluded domains`);
+    }
+    
+    // Filter out excluded keywords (would need to fetch content, so skip for now)
+    // This can be done later in the scraping phase
+    
     // Filter out URLs that have been sent to this user recently
-    const filteredUrls = notPreviouslyScraped.filter(url => !hasUrlBeenSentRecently(userId, topicId, url));
-    console.log(`Filtered out ${notPreviouslyScraped.length - filteredUrls.length} URLs recently sent to user`);
+    const filteredUrls = filteredByExclusions.filter(url => !hasUrlBeenSentRecently(userId, topicId, url));
+    console.log(`Filtered out ${filteredByExclusions.length - filteredUrls.length} URLs recently sent to user`);
+    
+    // Prioritize preferred domains if specified
+    let finalUrls = filteredUrls;
+    if (domains && domains.length > 0) {
+      const preferredUrls = filteredUrls.filter(url => {
+        const urlLower = url.toLowerCase();
+        return domains.some(domain => domain && urlLower.includes(domain.toLowerCase()));
+      });
+      const otherUrls = filteredUrls.filter(url => {
+        const urlLower = url.toLowerCase();
+        return !domains.some(domain => domain && urlLower.includes(domain.toLowerCase()));
+      });
+      // Put preferred URLs first
+      finalUrls = [...preferredUrls, ...otherUrls];
+      console.log(`Prioritized ${preferredUrls.length} URLs from preferred domains`);
+    }
     
     // Limit URLs to user quota
-    const allowedUrls = filteredUrls.slice(0, quotaCheck.allowed);
+    const allowedUrls = finalUrls.slice(0, quotaCheck.allowed);
     
     // Track URLs for this user and mark them as scraped globally
     const urlObjects = allowedUrls.map(url => {

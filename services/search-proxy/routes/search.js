@@ -28,7 +28,15 @@ function getCacheKey(extensionId) {
  * POST /api/search/urls
  * Request body: {
  *   extensionId: string,
- *   topics: [{ id: string, name: string, keywords: string[] }],
+ *   topics: [{ 
+ *     id: string, 
+ *     name: string, 
+ *     searchQueries: string[],
+ *     preferredDomains: string[],
+ *     excludeDomains: string[],
+ *     requiredKeywords: string[],
+ *     excludeKeywords: string[]
+ *   }],
  *   batchSize: number (default: 500),
  *   reset: boolean (optional, resets pagination)
  * }
@@ -99,15 +107,39 @@ router.post('/urls', async (req, res, next) => {
         
         // Fetch new URLs for this topic using our search handler with quota management
         console.log(`Fetching new URLs for topic: ${topic.name} (page ${currentPage})`);
-        // Pass the topic object directly to allow access to domains and other properties
-        const searchResults = await searchForUrls(
-          topic.name, 
-          topic.keywords || [], 
-          currentPage, 
-          extensionId, 
-          topic.id, 
-          { domains: topic.domains || [] }
-        );
+        
+        // Use searchQueries if available, otherwise fall back to topic name
+        const queries = topic.searchQueries && topic.searchQueries.length > 0 
+          ? topic.searchQueries 
+          : [topic.name];
+        
+        // Combine all search results
+        const allSearchResults = [];
+        
+        for (const query of queries) {
+          // Pass the topic object with all its properties
+          const searchResults = await searchForUrls(
+            query, 
+            topic.requiredKeywords || topic.keywords || [], 
+            currentPage, 
+            extensionId, 
+            topic.id, 
+            { 
+              domains: topic.preferredDomains || topic.domains || [],
+              excludeDomains: topic.excludeDomains || [],
+              excludeKeywords: topic.excludeKeywords || []
+            }
+          );
+          
+          // Add unique URLs to results
+          searchResults.urls.forEach(url => {
+            if (!allSearchResults.includes(url)) {
+              allSearchResults.push(url);
+            }
+          });
+        }
+        
+        const searchResults = { urls: allSearchResults };
         
         // Add new unique URLs to the pool
         const existingUrls = new Set(urlPool[topic.id]);
