@@ -184,6 +184,14 @@ actor class Storage() = this {
         Buffer.toArray(buffer)
     };
 
+    // Get all scraped data for admin overview
+    public query({ caller }) func getAllData(): async [(Text, SharedTypes.ScrapedData)] {
+        if (not isAuthorizedCaller(caller)) {
+            return [];
+        };
+        Iter.toArray(scrapedData.entries())
+    };
+
     // Add a new method to store scraped data with improved logging
     public shared({ caller }) func storeScrapedData(data: SharedTypes.ScrapedData): async Result.Result<(), SharedTypes.Error> {
         Debug.print("storeScrapedData called by: " # Principal.toText(caller));
