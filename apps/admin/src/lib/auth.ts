@@ -10,9 +10,7 @@ const DEFAULT_SESSION_DURATION = BigInt(7 * 24 * 60 * 60 * 1000 * 1000 * 1000);
 
 export const initAuthClient = async (): Promise<AuthClient> => {
   if (!authClient) {
-    console.log('Creating new auth client...');
     authClient = await AuthClient.create();
-    console.log('Auth client created');
   }
   return authClient;
 };
@@ -31,7 +29,6 @@ export const isAuthenticated = async (): Promise<boolean> => {
         const timeUntilExpiry = delegationChain.delegations[0].delegation.expiration - BigInt(Date.now()) * BigInt(1000_000);
         
         if (timeUntilExpiry < RENEWAL_THRESHOLD) {
-          console.log('Identity expiring soon, attempting renewal...');
           await renewIdentity();
         }
       }
@@ -63,7 +60,7 @@ export const renewIdentity = async (): Promise<void> => {
     await client.login({
       identityProvider: import.meta.env.VITE_II_URL || 'http://127.0.0.1:8000/?canisterId=br5f7-7uaaa-aaaaa-qaaca-cai',
       maxTimeToLive: DEFAULT_SESSION_DURATION,
-      onSuccess: () => console.log('Identity renewed successfully'),
+      onSuccess: () => {},
       onError: (error) => { throw error; }
     });
   } catch (error) {
@@ -81,13 +78,11 @@ export const login = async (): Promise<void> => {
       identityProvider: identityProviderUrl,
       maxTimeToLive: DEFAULT_SESSION_DURATION,
       onSuccess: async () => {
-        console.log('Login successful');
         // Verify delegation chain
         const identity = client.getIdentity();
         const delegationChain = identity.getDelegation();
         
         if (!delegationChain) {
-          console.error('No delegation chain found after login');
           reject(new Error('Invalid delegation chain'));
           return;
         }
@@ -108,7 +103,6 @@ export const logout = async (): Promise<void> => {
   try {
     const client = await initAuthClient();
     await client.logout();
-    console.log('Logged out successfully');
     
     // Force a page reload to ensure all state is updated
     window.location.reload();

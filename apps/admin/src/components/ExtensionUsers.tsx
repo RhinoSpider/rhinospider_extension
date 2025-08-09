@@ -133,7 +133,6 @@ export const ExtensionUsers: React.FC = () => {
 
         setUsers(processedUsers);
       } catch (err) {
-        console.warn('getAllUsers not implemented yet, using empty array');
         setUsers([]);
       }
     } catch (err) {

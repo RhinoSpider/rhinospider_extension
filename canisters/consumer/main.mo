@@ -1116,4 +1116,9 @@ actor ConsumerBackend {
             case null null;
         }
     };
+    
+    // Get all users for admin dashboard
+    public query func getAllUsers(): async [(Principal, UserProfile)] {
+        Iter.toArray(userProfiles.entries())
+    };
 }

@@ -26,7 +26,6 @@ JSON.stringify = function(value, replacer, space) {
   return originalStringify(value, replacer || bigintReplacer, space);
 };
 
-console.log('BigInt serialization handler installed');
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
