@@ -24,7 +24,7 @@ const fs = require('fs');
 
 // Environment variables
 const IC_HOST = process.env.IC_HOST || 'https://icp0.io';
-const CONSUMER_CANISTER_ID = process.env.CONSUMER_CANISTER_ID || 't3pjp-kqaaa-aaaao-a4ooq-cai';
+const CONSUMER_CANISTER_ID = process.env.CONSUMER_CANISTER_ID || 'uzt4z-lp777-77774-qaabq-cai';
 const ADMIN_CANISTER_ID = process.env.ADMIN_CANISTER_ID || 'wvset-niaaa-aaaao-a4osa-cai'; // New admin backend canister ID
 const ADMIN_FRONTEND_CANISTER_ID = process.env.ADMIN_FRONTEND_CANISTER_ID || 'sxsvc-aqaaa-aaaaj-az4ta-cai'; // Admin frontend canister ID
 const STORAGE_CANISTER_ID = process.env.STORAGE_CANISTER_ID || 'hhaip-uiaaa-aaaao-a4khq-cai'; // Production storage canister ID
