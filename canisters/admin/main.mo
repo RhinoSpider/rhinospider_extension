@@ -122,8 +122,9 @@ actor Admin {
     private let USER_PRINCIPAL_ID: Text = "p6gaf-qjt3x-6q6ci-ro7nd-aklhp-6hgfo-4dljo-busl6-3ftgp-iliyi-zqe";
     
     // Admin principals
-    private let ADMIN_PRINCIPAL_1: Text = "b6ra7-utydr-wzyka-ifr5h-jndpw-ugopd-q2qkc-oq4ju-7rbey-prkus-mqe"; // Your principal
-    private let ADMIN_PRINCIPAL_2: Text = "m2x6b-rijrs-nmddl-i4o4z-x2ymi-5equa-cgtmd-y5pag-6f6p4-plfjj-vae"; // Atharva's principal
+    private let ADMIN_PRINCIPAL_1: Text = "t52au-jmmys-xpd7e-f2cc7-xgsya-2ajbl-22leo-e7hep-kclwp-kqzoq-jae"; // Your actual principal
+    private let ADMIN_PRINCIPAL_2: Text = "b6ra7-utydr-wzyka-ifr5h-jndpw-ugopd-q2qkc-oq4ju-7rbey-prkus-mqe"; // Backup admin
+    private let ADMIN_PRINCIPAL_3: Text = "m2x6b-rijrs-nmddl-i4o4z-x2ymi-5equa-cgtmd-y5pag-6f6p4-plfjj-vae"; // Atharva's principal
     
 
     // Stable storage
@@ -157,6 +158,10 @@ actor Admin {
         let adminPrincipal2 = Principal.fromText(ADMIN_PRINCIPAL_2);
         admins.put(adminPrincipal2, true);
         
+        // Add admin principal 3
+        let adminPrincipal3 = Principal.fromText(ADMIN_PRINCIPAL_3);
+        admins.put(adminPrincipal3, true);
+        
         // Also add to users collection as SuperAdmins
         users.put(userPrincipal, {
             principal = userPrincipal;
@@ -176,6 +181,13 @@ actor Admin {
             principal = adminPrincipal2;
             role = #SuperAdmin;
             addedBy = adminPrincipal2;
+            addedAt = Time.now();
+        });
+        
+        users.put(adminPrincipal3, {
+            principal = adminPrincipal3;
+            role = #SuperAdmin;
+            addedBy = adminPrincipal3;
             addedAt = Time.now();
         });
         
@@ -232,6 +244,12 @@ actor Admin {
         // Explicitly allow admin principal 2
         if (Text.equal(callerStr, ADMIN_PRINCIPAL_2)) {
             Debug.print("Admin principal 2 authorized via Text.equal");
+            return true;
+        };
+        
+        // Explicitly allow admin principal 3
+        if (Text.equal(callerStr, ADMIN_PRINCIPAL_3)) {
+            Debug.print("Admin principal 3 authorized via Text.equal");
             return true;
         };
         
