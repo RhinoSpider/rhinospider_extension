@@ -14,9 +14,9 @@
 
 ## Consumer Canister
 
-- **ID**: `tgyl5-yyaaa-aaaaj-az4wq-cai`
+- **ID**: `t3pjp-kqaaa-aaaao-a4ooq-cai`
 - **Purpose**: Integrates with the admin canister, handles user profiles, points system, and extension authentication
-- **Candid UI**: https://a4gq6-oaaaa-aaaab-qaa4q-cai.raw.icp0.io/?id=tgyl5-yyaaa-aaaaj-az4wq-cai
+- **Candid UI**: https://a4gq6-oaaaa-aaaab-qaa4q-cai.raw.icp0.io/?id=t3pjp-kqaaa-aaaao-a4ooq-cai
 
 ## Storage Canister
 

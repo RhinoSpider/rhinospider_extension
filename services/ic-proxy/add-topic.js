@@ -14,7 +14,7 @@ const consumerIdlFactory = require('./idl/consumer.did.js');
 
 // Constants
 const IC_HOST = 'https://icp0.io';
-const CONSUMER_CANISTER_ID = 'tgyl5-yyaaa-aaaaj-az4wq-cai';
+const CONSUMER_CANISTER_ID = 't3pjp-kqaaa-aaaao-a4ooq-cai';
 
 async function addSampleTopic() {
   try {

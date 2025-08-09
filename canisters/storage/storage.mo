@@ -17,7 +17,7 @@ actor class Storage() = this {
     // Stable storage
     private stable var authorizedCanisterIds: [Principal] = [
         Principal.fromText("s6r66-wyaaa-aaaaj-az4sq-cai"), // admin
-        Principal.fromText("tgyl5-yyaaa-aaaaj-az4wq-cai")  // consumer
+        Principal.fromText("t3pjp-kqaaa-aaaao-a4ooq-cai")  // consumer
     ];
     private stable var stableTopics: [(Text, SharedTypes.ScrapingTopic)] = [];
     private stable var stableScrapedData: [(Text, SharedTypes.ScrapedData)] = [];

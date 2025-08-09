@@ -10,7 +10,7 @@ RhinoSpider is a DePIN (Decentralized Physical Infrastructure Network) system fo
 |----------|-----|---------|-----|
 | Admin Backend | `wvset-niaaa-aaaao-a4osa-cai` | Topic management, AI config | [Candid UI](https://a4gq6-oaaaa-aaaab-qaa4q-cai.raw.icp0.io/?id=wvset-niaaa-aaaao-a4osa-cai) |
 | Admin Frontend | `sxsvc-aqaaa-aaaaj-az4ta-cai` | Web dashboard | https://sxsvc-aqaaa-aaaaj-az4ta-cai.icp0.io/ |
-| Consumer | `tgyl5-yyaaa-aaaaj-az4wq-cai` | User profiles, points, auth | [Candid UI](https://a4gq6-oaaaa-aaaab-qaa4q-cai.raw.icp0.io/?id=tgyl5-yyaaa-aaaaj-az4wq-cai) |
+| Consumer | `t3pjp-kqaaa-aaaao-a4ooq-cai` | User profiles, points, auth | [Candid UI](https://a4gq6-oaaaa-aaaab-qaa4q-cai.raw.icp0.io/?id=t3pjp-kqaaa-aaaao-a4ooq-cai) |
 | Storage | `hhaip-uiaaa-aaaao-a4khq-cai` | Scraped data storage | [Candid UI](https://a4gq6-oaaaa-aaaab-qaa4q-cai.raw.icp0.io/?id=hhaip-uiaaa-aaaao-a4khq-cai) |
 | Referral | `t3pjp-kqaaa-aaaao-a4ooq-cai` | Referral system | [Candid UI](https://a4gq6-oaaaa-aaaab-qaa4q-cai.raw.icp0.io/?id=t3pjp-kqaaa-aaaao-a4ooq-cai) |
 
@@ -139,7 +139,7 @@ curl https://search-proxy.rhinospider.com/api/health
 ### Extension (.env)
 ```
 VITE_IC_HOST=https://icp0.io
-VITE_CONSUMER_CANISTER_ID=tgyl5-yyaaa-aaaaj-az4wq-cai
+VITE_CONSUMER_CANISTER_ID=t3pjp-kqaaa-aaaao-a4ooq-cai
 VITE_IC_PROXY_URL=https://ic-proxy.rhinospider.com
 ```
 
@@ -147,7 +147,7 @@ VITE_IC_PROXY_URL=https://ic-proxy.rhinospider.com
 ```
 PORT=3001
 IC_HOST=https://icp0.io
-CONSUMER_CANISTER_ID=tgyl5-yyaaa-aaaaj-az4wq-cai
+CONSUMER_CANISTER_ID=t3pjp-kqaaa-aaaao-a4ooq-cai
 ADMIN_CANISTER_ID=wvset-niaaa-aaaao-a4osa-cai
 STORAGE_CANISTER_ID=hhaip-uiaaa-aaaao-a4khq-cai
 ```
@@ -157,5 +157,5 @@ STORAGE_CANISTER_ID=hhaip-uiaaa-aaaao-a4khq-cai
 PORT=3002
 NODE_ENV=production
 IC_PROXY_URL=https://ic-proxy.rhinospider.com
-CONSUMER_CANISTER_ID=tgyl5-yyaaa-aaaaj-az4wq-cai
+CONSUMER_CANISTER_ID=t3pjp-kqaaa-aaaao-a4ooq-cai
 ```

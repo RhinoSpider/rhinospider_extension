@@ -5,7 +5,7 @@ import { IDL } from '@dfinity/candid';
 
 // Constants
 const IC_HOST = 'https://icp0.io';
-const CONSUMER_CANISTER_ID = 'tgyl5-yyaaa-aaaaj-az4wq-cai';
+const CONSUMER_CANISTER_ID = 't3pjp-kqaaa-aaaao-a4ooq-cai';
 
 // Define UserProfile type for decoding
 const UserProfile = IDL.Record({

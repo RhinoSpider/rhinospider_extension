@@ -63,7 +63,7 @@ Required environment variables:
 PORT=3002
 NODE_ENV=production
 IC_PROXY_URL=https://ic-proxy.rhinospider.com
-CONSUMER_CANISTER_ID=tgyl5-yyaaa-aaaaj-az4wq-cai
+CONSUMER_CANISTER_ID=t3pjp-kqaaa-aaaao-a4ooq-cai
 ```
 
 ### Step 7: Restart the service

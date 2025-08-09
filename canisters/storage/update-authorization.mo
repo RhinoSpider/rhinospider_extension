@@ -24,7 +24,7 @@ actor class StorageUpdate() {
         };
 
         // Explicitly allow the consumer canister - FIXED: Ensure this check works properly
-        let consumerCanisterId = "tgyl5-yyaaa-aaaaj-az4wq-cai";
+        let consumerCanisterId = "t3pjp-kqaaa-aaaao-a4ooq-cai";
         if (Principal.toText(caller) == consumerCanisterId) {
             Debug.print("Consumer canister explicitly authorized: " # consumerCanisterId);
             return true;

@@ -6,7 +6,7 @@ echo "Directly upgrading consumer canister..."
 
 # Set environment variables
 export DFX_NETWORK=${1:-"ic"}
-export CONSUMER_CANISTER_ID="tgyl5-yyaaa-aaaaj-az4wq-cai"
+export CONSUMER_CANISTER_ID="t3pjp-kqaaa-aaaao-a4ooq-cai"
 
 echo "Using network: $DFX_NETWORK"
 echo "Consumer canister ID: $CONSUMER_CANISTER_ID"

@@ -154,7 +154,7 @@ Your Browser → Extension → Consumer Canister → Storage Canister
 ```
 
 ### Canisters (Blockchain Components)
-- **Consumer**: `tgyl5-yyaaa-aaaaj-az4wq-cai` - Handles user data
+- **Consumer**: `t3pjp-kqaaa-aaaao-a4ooq-cai` - Handles user data
 - **Storage**: `hhaip-uiaaa-aaaao-a4khq-cai` - Stores scraped data
 - **Admin Backend**: `wvset-niaaa-aaaao-a4osa-cai` - Administrative backend API
 

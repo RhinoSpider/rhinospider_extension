@@ -66,7 +66,7 @@ export const RhinoScan = () => {
       });
 
       // Consumer canister ID
-      const consumerCanisterId = 'tgyl5-yyaaa-aaaaj-az4wq-cai';
+      const consumerCanisterId = 't3pjp-kqaaa-aaaao-a4ooq-cai';
       
       // Create actor with the consumer canister interface
       const idlFactory = ({ IDL }) => {
@@ -350,7 +350,7 @@ export const RhinoScan = () => {
           <div className="verification-item">
             <span>Consumer Canister:</span>
             <a 
-              href="https://dashboard.internetcomputer.org/canister/tgyl5-yyaaa-aaaaj-az4wq-cai"
+              href="https://dashboard.internetcomputer.org/canister/t3pjp-kqaaa-aaaao-a4ooq-cai"
               target="_blank"
               rel="noopener noreferrer"
             >

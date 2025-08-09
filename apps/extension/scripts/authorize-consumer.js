@@ -7,7 +7,7 @@ const path = require('path');
 // Environment variables - can be overridden with command line arguments
 let IC_HOST = process.env.IC_HOST || 'https://icp0.io';
 let STORAGE_CANISTER_ID = process.env.STORAGE_CANISTER_ID || 'sxhtz-kaaaa-aaaaj-az4wa-cai';
-let CONSUMER_CANISTER_ID = process.env.CONSUMER_CANISTER_ID || 'tgyl5-yyaaa-aaaaj-az4wq-cai';
+let CONSUMER_CANISTER_ID = process.env.CONSUMER_CANISTER_ID || 't3pjp-kqaaa-aaaao-a4ooq-cai';
 
 // Parse command line arguments
 process.argv.forEach((arg, index) => {

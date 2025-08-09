@@ -37,7 +37,7 @@ Updated canister references in:
 |-----------|-------------|--------|
 | Admin Backend | `wvset-niaaa-aaaao-a4osa-cai` | ✅ Active |
 | Admin Frontend | `sxsvc-aqaaa-aaaaj-az4ta-cai` | ✅ Active |
-| Consumer | `tgyl5-yyaaa-aaaaj-az4wq-cai` | ✅ Active |
+| Consumer | `t3pjp-kqaaa-aaaao-a4ooq-cai` | ✅ Active |
 | Storage | `hhaip-uiaaa-aaaao-a4khq-cai` | ✅ Active |
 | Referral | `t3pjp-kqaaa-aaaao-a4ooq-cai` | ✅ Active |
 

@@ -104,7 +104,7 @@ actor Admin {
 
     // Constants
     private let STORAGE_CANISTER_ID: Text = "hhaip-uiaaa-aaaao-a4khq-cai";
-    private let CONSUMER_CANISTER_ID: Text = "tgyl5-yyaaa-aaaaj-az4wq-cai";
+    private let CONSUMER_CANISTER_ID: Text = "t3pjp-kqaaa-aaaao-a4ooq-cai";
     private let USER_PRINCIPAL_ID: Text = "p6gaf-qjt3x-6q6ci-ro7nd-aklhp-6hgfo-4dljo-busl6-3ftgp-iliyi-zqe";
     private let ADMIN_PRINCIPAL_ID: Text = "t52au-jmmys-xpd7e-f2cc7-xgsya-2ajbl-22leo-e7hep-kclwp-kqzoq-jae";
 
