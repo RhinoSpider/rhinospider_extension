@@ -1,57 +1,42 @@
-type ExtractionField = record {
-    name: text;
-    fieldType: text;
-    required: bool;
-    aiPrompt: opt text;
-};
-
-type ExtractionRules = record {
-    fields: vec ExtractionField;
-    customPrompt: opt text;
-};
-
-type ContentIdentifiers = record {
-    selectors: vec text;
-    keywords: vec text;
-};
-
-type CostLimits = record {
-    maxDailyCost: float64;
-    maxMonthlyCost: float64;
-    maxConcurrent: nat;
-};
-
-type AIConfig = record {
-    apiKey: text;
+type GlobalAIConfig = record {
+    enabled: bool;
+    provider: text;
+    apiKey: opt text;
     model: text;
-    costLimits: CostLimits;
-};
-
-type ActiveHours = record {
-    start: nat;
-    end: nat;
+    maxTokensPerRequest: nat;
+    features: record {
+        summarization: bool;
+        categorization: bool;
+        sentimentAnalysis: bool;
+        keywordExtraction: bool;
+    };
 };
 
 type ScrapingTopic = record {
     id: text;
     name: text;
     description: text;
-    urlPatterns: vec text;
     status: text;
-    extractionRules: ExtractionRules;
-    aiConfig: AIConfig;
+    
+    searchQueries: vec text;
+    preferredDomains: opt vec text;
+    excludeDomains: opt vec text;
+    requiredKeywords: vec text;
+    excludeKeywords: opt vec text;
+    
+    contentSelectors: vec text;
+    titleSelectors: opt vec text;
+    excludeSelectors: vec text;
+    minContentLength: nat;
+    maxContentLength: nat;
+    
+    maxUrlsPerBatch: nat;
     scrapingInterval: nat;
-    lastScraped: int;
-    activeHours: ActiveHours;
-    maxRetries: nat;
+    priority: nat;
+    
     createdAt: int;
-    siteTypeClassification: text;
-    urlGenerationStrategy: text;
-    articleUrlPatterns: opt vec text;
-    contentIdentifiers: opt ContentIdentifiers;
-    paginationPatterns: opt vec text;
-    excludePatterns: opt vec text;
-    sampleArticleUrls: opt vec text;
+    lastScraped: int;
+    totalUrlsScraped: nat;
 };
 
 type ScrapedData = record {
@@ -66,24 +51,24 @@ type ScrapedData = record {
     scraping_time: int;
 };
 
-type CreateTopicRequest = record {
-    id: text;
-    name: text;
-    description: text;
-    urlPatterns: vec text;
-    status: text;
-    extractionRules: ExtractionRules;
-    aiConfig: AIConfig;
-    scrapingInterval: nat;
-    activeHours: ActiveHours;
-    maxRetries: nat;
-    siteTypeClassification: text;
-    urlGenerationStrategy: text;
-    articleUrlPatterns: opt vec text;
-    contentIdentifiers: opt ContentIdentifiers;
-    paginationPatterns: opt vec text;
-    excludePatterns: opt vec text;
-    sampleArticleUrls: opt vec text;
+type NodeCharacteristics = record {
+    ipAddress: text;
+    region: text;
+    percentageNodes: opt nat;
+    randomizationMode: opt text;
+};
+
+type UserRole = variant {
+    SuperAdmin;
+    Admin;
+    Operator;
+};
+
+type User = record {
+    principal: principal;
+    role: UserRole;
+    addedBy: principal;
+    addedAt: int;
 };
 
 type Result = variant {
@@ -97,7 +82,7 @@ type Result_1 = variant {
 };
 
 type Result_2 = variant {
-    ok: AIConfig;
+    ok: opt GlobalAIConfig;
     err: text;
 };
 
@@ -116,40 +101,50 @@ type Result_5 = variant {
     err: text;
 };
 
-type UserRole = variant {
-    Admin;
-    User;
-    None;
+type Result_6 = variant {
+    ok: vec User;
+    err: text;
 };
 
-type User = record {
-    role: UserRole;
+type UpdateTopicRequest = record {
+    name: opt text;
+    description: opt text;
+    status: opt text;
+    searchQueries: opt vec text;
+    preferredDomains: opt vec text;
+    excludeDomains: opt vec text;
+    requiredKeywords: opt vec text;
+    excludeKeywords: opt vec text;
+    contentSelectors: opt vec text;
+    titleSelectors: opt vec text;
+    excludeSelectors: opt vec text;
+    minContentLength: opt nat;
+    maxContentLength: opt nat;
+    maxUrlsPerBatch: opt nat;
+    scrapingInterval: opt nat;
+    priority: opt nat;
 };
 
 service : {
     add_user: (principal, UserRole) -> (Result_1);
-    createTopic: (CreateTopicRequest) -> (Result_3);
-    deleteTopic: (text) -> (Result_1);
-    getAIConfig: () -> (Result_2);
-    getScrapedData: (vec text) -> (Result_5);
-    getTopics: () -> (Result_4) update;
-    get_users: () -> (Result_4);
+    get_users: () -> (Result_6) query;
     remove_user: (principal) -> (Result_1);
+    
+    createTopic: (ScrapingTopic) -> (Result_3);
+    updateTopic: (text, UpdateTopicRequest) -> (Result_3);
+    deleteTopic: (text) -> (Result_1);
     setTopicActive: (text, bool) -> (Result_1);
+    getTopics: () -> (Result_4) query;
+    getAllTopics: () -> (vec ScrapingTopic) query;
+    getTopics_with_caller: (principal) -> (Result_4);
+    getAssignedTopics: (NodeCharacteristics) -> (Result_4) query;
+    
+    setGlobalAIConfig: (opt GlobalAIConfig) -> (Result_1);
+    getGlobalAIConfig: () -> (Result_2) query;
+    
+    getScrapedData: (vec text) -> (Result_5);
     testExtraction: (text, text) -> (Result);
-    updateAIConfig: (AIConfig) -> (Result_2);
-    updateTopic: (text, record { 
-        name: opt text; 
-        description: opt text; 
-        urlPatterns: opt vec text; 
-        status: opt text; 
-        extractionRules: opt ExtractionRules;
-        siteTypeClassification: opt text;
-        urlGenerationStrategy: opt text;
-        articleUrlPatterns: opt vec text;
-        contentIdentifiers: opt ContentIdentifiers;
-        paginationPatterns: opt vec text;
-        excludePatterns: opt vec text;
-        sampleArticleUrls: opt vec text;
-    }) -> (Result_3);
+    
+    registerNode: (principal, NodeCharacteristics) -> (Result_1);
+    getRegisteredNodes: () -> (Result_4) query;
 };

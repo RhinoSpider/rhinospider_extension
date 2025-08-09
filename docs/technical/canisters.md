@@ -1,19 +1,34 @@
 # Canisters
 
-## Admin Canister
+## Admin Backend Canister
 
-- **ID**: `444wf-gyaaa-aaaaj-az5sq-cai`
-- **Purpose**: Handles backend logic, data storage, and topic management.
+- **ID**: `wvset-niaaa-aaaao-a4osa-cai`
+- **Purpose**: Handles backend logic, topic management, and AI configuration
+- **Candid UI**: https://a4gq6-oaaaa-aaaab-qaa4q-cai.raw.icp0.io/?id=wvset-niaaa-aaaao-a4osa-cai
+
+## Admin Frontend Canister
+
+- **ID**: `sxsvc-aqaaa-aaaaj-az4ta-cai`
+- **Purpose**: Web dashboard for managing topics and viewing data
+- **URL**: https://sxsvc-aqaaa-aaaaj-az4ta-cai.icp0.io/
 
 ## Consumer Canister
 
 - **ID**: `tgyl5-yyaaa-aaaaj-az4wq-cai`
-- **Purpose**: Integrates with the admin canister and acts as an intermediary for the extension.
+- **Purpose**: Integrates with the admin canister, handles user profiles, points system, and extension authentication
+- **Candid UI**: https://a4gq6-oaaaa-aaaab-qaa4q-cai.raw.icp0.io/?id=tgyl5-yyaaa-aaaaj-az4wq-cai
 
 ## Storage Canister
 
 - **ID**: `hhaip-uiaaa-aaaao-a4khq-cai`
-- **Purpose**: Stores all scraped data from the extension.
+- **Purpose**: Stores all scraped data from the extension
+- **Candid UI**: https://a4gq6-oaaaa-aaaab-qaa4q-cai.raw.icp0.io/?id=hhaip-uiaaa-aaaao-a4khq-cai
+
+## Referral Canister
+
+- **ID**: `t3pjp-kqaaa-aaaao-a4ooq-cai`
+- **Purpose**: Manages referral system and rewards
+- **Candid UI**: https://a4gq6-oaaaa-aaaab-qaa4q-cai.raw.icp0.io/?id=t3pjp-kqaaa-aaaao-a4ooq-cai
 
 ## Deployment
 

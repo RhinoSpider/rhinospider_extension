@@ -3,10 +3,10 @@ import { useAuth } from '../hooks/useAuth';
 import type { ScrapingTopic, AIConfig, ScrapedData } from '../types';
 import { TopicModal } from './TopicModal';
 import { AIConfigModal } from './AIConfigModal';
-import { getAdminActor, getScrapedDataDirect, getTopics } from '../lib/admin';
+import { getAdminActor, getTopics, createTopic, updateTopic, deleteTopic, setTopicActive, getAIConfig, updateAIConfig, getScrapedData } from '../lib/admin';
 import { getIdentity } from '../lib/auth';
 import { Actor, HttpAgent } from '@dfinity/agent';
-import StorageAuthorization from './StorageAuthorization';
+// import StorageAuthorization from './StorageAuthorization';
 
 export const ScrapingConfig: React.FC = () => {
   const { isAuthenticated } = useAuth();
@@ -19,9 +19,7 @@ export const ScrapingConfig: React.FC = () => {
   const [isTopicModalOpen, setIsTopicModalOpen] = useState(false);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [selectedTopic, setSelectedTopic] = useState<ScrapingTopic | null>(null);
-  // We need setUpdating for the handleSaveTopic function
   const [, setUpdating] = useState(false);
-  // Keep error state as it's used in the loadAIConfig function
   const [, setError] = useState<string | null>(null);
   const [togglingTopics, setTogglingTopics] = useState<Record<string, boolean>>({});
   const [deletingTopics, setDeletingTopics] = useState<Record<string, boolean>>({});
@@ -39,194 +37,93 @@ export const ScrapingConfig: React.FC = () => {
         setTopicsLoading(true);
         setTopicsError(null);
         console.log('Fetching topics...');
-        // Use the getTopics function which now calls storage canister
         const fetchedTopics = await getTopics();
         console.log('Fetched topics:', fetchedTopics);
-        
-        // Load saved sampleArticleUrls from local storage
-        const savedSampleArticleUrls = {};
-        try {
-          const savedData = localStorage.getItem('rhinoSpiderSampleArticleUrls');
-          if (savedData) {
-            Object.assign(savedSampleArticleUrls, JSON.parse(savedData));
-            console.log('Loaded saved sampleArticleUrls from local storage:', savedSampleArticleUrls);
-          }
-        } catch (e) {
-          console.error('Error loading saved sampleArticleUrls from local storage:', e);
-        }
-        const processedTopics = fetchedTopics.map((topic: any) => {
-          console.log(`Processing topic ${topic.id}, contentIdentifiers:`, topic.contentIdentifiers);
-          
-          // Ensure contentIdentifiers is properly extracted if it exists
-          let contentIdentifiers = undefined;
-          if (topic.contentIdentifiers && topic.contentIdentifiers.length > 0) {
-            // Extract from array wrapper (since it's an opt type in Candid)
-            contentIdentifiers = topic.contentIdentifiers[0];
-            console.log('Extracted contentIdentifiers:', JSON.stringify(contentIdentifiers, null, 2));
-          }
-          
-          // Extract excludePatterns from array wrapper if it exists
-          let excludePatterns = undefined;
-          if (topic.excludePatterns && topic.excludePatterns.length > 0) {
-            excludePatterns = topic.excludePatterns[0];
-            console.log('Extracted excludePatterns:', JSON.stringify(excludePatterns, null, 2));
-          }
-          
-          // Extract paginationPatterns from array wrapper if it exists
-          let paginationPatterns = undefined;
-          if (topic.paginationPatterns && topic.paginationPatterns.length > 0) {
-            paginationPatterns = topic.paginationPatterns[0];
-            console.log('Extracted paginationPatterns:', JSON.stringify(paginationPatterns, null, 2));
-          }
-          
-          // Extract sampleArticleUrls from array wrapper if it exists
-          // or from local storage if available
-          let sampleArticleUrls = undefined;
-          if (topic.sampleArticleUrls && topic.sampleArticleUrls.length > 0) {
-            sampleArticleUrls = topic.sampleArticleUrls[0];
-            console.log('Extracted sampleArticleUrls from backend:', JSON.stringify(sampleArticleUrls, null, 2));
-          } else if (topic.id && savedSampleArticleUrls && typeof savedSampleArticleUrls === 'object' && savedSampleArticleUrls[topic.id as keyof typeof savedSampleArticleUrls]) {
-            sampleArticleUrls = savedSampleArticleUrls[topic.id as keyof typeof savedSampleArticleUrls];
-            console.log('Using sampleArticleUrls from local storage for topic', topic.id, ':', sampleArticleUrls);
-          }
-          
-          return {
-            ...topic,
-            extractionRules: {
-              ...topic.extractionRules,
-              fields: topic.extractionRules.fields.map((f: any) => ({
-                ...f,
-                description: f.description || '',
-                type: f.type || f.fieldType || 'text'
-              })),
-              customPrompt: topic.extractionRules.customPrompt || []
-            },
-            contentIdentifiers: contentIdentifiers || { selectors: [], keywords: [] },
-            paginationPatterns: paginationPatterns || [],
-            // Ensure sampleArticleUrls always exists
-            sampleArticleUrls: sampleArticleUrls || [],
-            // Ensure excludePatterns always exists
-            excludePatterns: topic.excludePatterns || ['']
-          };
-        });
-        console.log('Processed topics:', JSON.stringify(processedTopics, null, 2));
-        setTopics(processedTopics);
+        setTopics(fetchedTopics);
+        console.log('Processed topics:', fetchedTopics);
       } catch (error) {
-        console.error('Failed to fetch topics:', error);
-        setTopicsError(error instanceof Error ? error.message : 'Failed to fetch topics');
+        console.error('Error fetching topics:', error);
+        setTopicsError('Failed to fetch topics');
+        setTopics([]);
       } finally {
         setTopicsLoading(false);
       }
     };
 
-    loadData();
-  }, []);
-
-  // Fetch AI config on mount and when modal closes
-  useEffect(() => {
     const loadAIConfig = async () => {
       try {
-        setAIConfigLoading(true);
-        
-        // Get AI config from storage canister
-        const identity = await getIdentity();
-        if (!identity) {
-          throw new Error('No identity found');
-        }
-
-        const agent = new HttpAgent({ 
-          identity,
-          host: import.meta.env.VITE_IC_HOST || 'https://icp0.io'
-        });
-
-        const storageCanisterId = 'hhaip-uiaaa-aaaao-a4khq-cai';
-        
-        const storageIdlFactory = ({ IDL }: any) => {
-          const AIConfig = IDL.Record({
-            apiKey: IDL.Text,
-            model: IDL.Text,
-            costLimits: IDL.Record({
-              maxDailyCost: IDL.Float64,
-              maxMonthlyCost: IDL.Float64,
-              maxConcurrent: IDL.Nat,
-            }),
-          });
-
-          return IDL.Service({
-            getAIConfig: IDL.Func([], [IDL.Variant({ 
-              ok: AIConfig, 
-              err: IDL.Variant({ NotAuthorized: IDL.Null }) 
-            })], ['query']),
-          });
-        };
-
-        const storageActor = Actor.createActor(storageIdlFactory, {
-          agent,
-          canisterId: storageCanisterId,
-        });
-
-        const result = await storageActor.getAIConfig();
-        if ('ok' in result) {
-          const config = result.ok;
-          setAIConfig({
-            apiKey: config.apiKey || '',
-            model: config.model || 'gpt-3.5-turbo',
-            costLimits: {
-              maxDailyCost: Number(config.costLimits.maxDailyCost) || 10,
-              maxMonthlyCost: Number(config.costLimits.maxMonthlyCost) || 100,
-              maxConcurrent: Number(config.costLimits.maxConcurrent) || 5
-            },
-            temperature: 0.7,
-            maxTokens: 2000
-          });
-        } else {
-          // Use defaults if not authorized
-          console.warn('Not authorized to get AI config, using defaults');
-          setAIConfig({
-            apiKey: '',
-            model: 'gpt-3.5-turbo',
-            costLimits: {
-              maxDailyCost: 10,
-              maxMonthlyCost: 100,
-              maxConcurrent: 5
-            },
-            temperature: 0.7,
-            maxTokens: 2000
-          });
-        }
+        const config = await getAIConfig();
+        console.log('Fetched AI config:', config);
+        setAIConfig(config);
       } catch (error) {
-        console.error('Failed to load AI config:', error);
-        // Use defaults on error
-        setAIConfig({
-          apiKey: '',
-          model: 'gpt-3.5-turbo',
-          costLimits: {
-            maxDailyCost: 10,
-            maxMonthlyCost: 100,
-            maxConcurrent: 5
-          },
-          temperature: 0.7,
-          maxTokens: 2000
-        });
+        console.log('Not authorized to get AI config, using defaults');
+        setError('Failed to load AI configuration');
       } finally {
         setAIConfigLoading(false);
       }
     };
 
     if (isAuthenticated) {
+      loadData();
       loadAIConfig();
     }
-  }, [isAuthenticated, isAIModalOpen]); // Reload when modal closes or auth state changes
+  }, [isAuthenticated]);
 
-  // Function to fetch data directly from the storage canister
-  const fetchDataFromStorage = async (topicId?: string) => {
+  const handleToggleTopic = async (topicId: string, currentStatus: string) => {
+    try {
+      setTogglingTopics(prev => ({ ...prev, [topicId]: true }));
+      const newStatus = currentStatus === 'active' ? false : true;
+      await setTopicActive(topicId, newStatus);
+      
+      // Update local state
+      setTopics(prevTopics => 
+        prevTopics.map(t => 
+          t.id === topicId 
+            ? { ...t, status: newStatus ? 'active' : 'inactive' } 
+            : t
+        )
+      );
+      
+      setTopicsStatus(`Topic ${newStatus ? 'activated' : 'deactivated'} successfully`);
+      setTimeout(() => setTopicsStatus(null), 3000);
+    } catch (error) {
+      console.error('Error toggling topic:', error);
+      setTopicsError(`Failed to toggle topic: ${error}`);
+    } finally {
+      setTogglingTopics(prev => ({ ...prev, [topicId]: false }));
+    }
+  };
+
+  const handleDeleteTopic = async (topicId: string) => {
+    if (!confirm('Are you sure you want to delete this topic?')) {
+      return;
+    }
+
+    try {
+      setDeletingTopics(prev => ({ ...prev, [topicId]: true }));
+      await deleteTopic(topicId);
+      
+      // Update local state
+      setTopics(prevTopics => prevTopics.filter(t => t.id !== topicId));
+      
+      setTopicsStatus('Topic deleted successfully');
+      setTimeout(() => setTopicsStatus(null), 3000);
+    } catch (error) {
+      console.error('Error deleting topic:', error);
+      setTopicsError(`Failed to delete topic: ${error}`);
+    } finally {
+      setDeletingTopics(prev => ({ ...prev, [topicId]: false }));
+    }
+  };
+
+  const handleFetchStorageData = async (topicId?: string) => {
     try {
       setFetchingData(true);
       setFetchDataError(null);
       setFetchDataStatus('Fetching data from storage canister...');
       
-      // Call the direct storage access function
-      const data = await getScrapedDataDirect(topicId);
+      // Call the storage access function
+      const data = await getScrapedData(topicId ? [topicId] : []);
       setScrapedData(data);
       
       setFetchDataStatus(`Successfully fetched ${data.length} items from storage canister`);
@@ -238,17 +135,15 @@ export const ScrapingConfig: React.FC = () => {
           id: item.id,
           topic: item.topic,
           url: item.url,
-          timestamp: new Date(Number(item.timestamp) / 1000000).toLocaleString(),
-          status: item.status
+          contentLength: item.content?.length || 0,
+          timestamp: new Date(Number(item.timestamp) / 1000000).toLocaleString()
         })));
       }
       
-      return data;
+      setTimeout(() => setFetchDataStatus(null), 5000);
     } catch (error) {
       console.error('Error fetching data from storage canister:', error);
-      setFetchDataError('Error fetching data: ' + (error as Error).message);
-      setFetchDataStatus('Failed to fetch data from storage canister');
-      return [];
+      setFetchDataError(`Failed to fetch data: ${error}`);
     } finally {
       setFetchingData(false);
     }
@@ -258,268 +153,129 @@ export const ScrapingConfig: React.FC = () => {
     try {
       setUpdating(true);
       setTopicsStatus('Saving topic...');
-      const actor = await getAdminActor();
       
+      let savedTopic;
       if (selectedTopic) {
         // Update existing topic
         console.log('Updating topic with ID:', topic.id);
-        console.log('Topic data:', JSON.stringify(topic, null, 2));
-
-        // Format contentIdentifiers correctly
-        const contentIdentifiersFormatted = topic.contentIdentifiers ? 
-          [{
-            selectors: Array.isArray(topic.contentIdentifiers.selectors) 
-              ? topic.contentIdentifiers.selectors.filter((s: any) => typeof s === 'string' && s.trim() !== '') 
-              : [],
-            keywords: Array.isArray(topic.contentIdentifiers.keywords) 
-              ? topic.contentIdentifiers.keywords.filter((k: any) => typeof k === 'string' && k.trim() !== '') 
-              : []
-          }] : [];
-
-        // Prepare update request
-        const updateRequest = {
-          name: [topic.name],
-          description: [topic.description],
-          urlPatterns: [topic.urlPatterns],
-          status: [topic.status],
-          extractionRules: [
-            {
-              fields: topic.extractionRules.fields.map((field: any) => ({
-                name: field.name,
-                fieldType: field.fieldType,
-                required: field.required,
-                aiPrompt: Array.isArray(field.aiPrompt) ? field.aiPrompt : [field.aiPrompt]
-              })),
-              customPrompt: Array.isArray(topic.extractionRules.customPrompt) 
-                ? topic.extractionRules.customPrompt 
-                : [topic.extractionRules.customPrompt]
-            }
-          ],
-          siteTypeClassification: [topic.siteTypeClassification || 'blog'],
-          urlGenerationStrategy: [topic.urlGenerationStrategy || 'pattern_based'],
-          articleUrlPatterns: topic.articleUrlPatterns 
-            ? [Array.isArray(topic.articleUrlPatterns[0]) 
-                ? [...topic.articleUrlPatterns[0], ...topic.articleUrlPatterns.slice(1).filter(p => typeof p === 'string')] 
-                : topic.articleUrlPatterns.filter(p => typeof p === 'string' ? p.trim() !== '' : false)]
-            : [],
-          contentIdentifiers: contentIdentifiersFormatted.length > 0 ? contentIdentifiersFormatted : [{ selectors: [], keywords: [] }],
-          paginationPatterns: topic.paginationPatterns && topic.paginationPatterns.length > 0
-              ? [topic.paginationPatterns.filter(p => typeof p === 'string' && p.trim() !== '').map(p => p.trim())]
-              : [],
-          excludePatterns: topic.excludePatterns && topic.excludePatterns.length > 0
-              ? [topic.excludePatterns.filter(p => typeof p === 'string' && p.trim() !== '').map(p => p.trim())]
-              : [],
-          // For updateTopic, sampleArticleUrls should be wrapped in a single array for opt vec text
-          sampleArticleUrls: topic.sampleArticleUrls && topic.sampleArticleUrls.length > 0
-              ? [topic.sampleArticleUrls.filter(url => typeof url === 'string' && url.trim() !== '')]
-              : []
-        };
-
-        console.log('Update request with contentIdentifiers:', JSON.stringify(updateRequest, null, 2));
-        console.log('excludePatterns in update request:', JSON.stringify(updateRequest.excludePatterns, null, 2));
-        console.log('excludePatterns in topic before update:', JSON.stringify(topic.excludePatterns, null, 2));
-
-        try {
-          console.log('Update request with sampleArticleUrls:', JSON.stringify(updateRequest.sampleArticleUrls, null, 2));
-          const result = await actor.updateTopic(topic.id, updateRequest);
-          console.log('Update result:', result);
-          console.log('Update result raw:', JSON.stringify(result));
-          console.log('sampleArticleUrls in result:', result.ok?.sampleArticleUrls);
-          console.log('excludePatterns in result:', result.ok?.excludePatterns);
-          if ('err' in result) {
-            throw new Error(result.err);
-          }
-          // Ensure sampleArticleUrls is preserved in the response
-          const updatedTopic = {
-            ...result.ok,
-            // If sampleArticleUrls is missing in the response, use the value from the original topic
-            sampleArticleUrls: result.ok.sampleArticleUrls || topic.sampleArticleUrls
-          };
-          
-          console.log('Updated topic with preserved sampleArticleUrls:', updatedTopic);
-          
-          // Save sampleArticleUrls to local storage
-          try {
-            const savedData = localStorage.getItem('rhinoSpiderSampleArticleUrls') || '{}';
-            const savedUrls = JSON.parse(savedData);
-            savedUrls[topic.id] = updatedTopic.sampleArticleUrls;
-            localStorage.setItem('rhinoSpiderSampleArticleUrls', JSON.stringify(savedUrls));
-            console.log('Saved sampleArticleUrls to local storage:', savedUrls);
-          } catch (e) {
-            console.error('Error saving sampleArticleUrls to local storage:', e);
-          }
-          
-          // Update the local state with the updated topic
-          setTopics(prev => prev.map(t => t.id === topic.id ? updatedTopic : t));
-        } catch (error) {
-          console.error('Error in updateTopic call:', error);
-          throw error;
-        }
+        savedTopic = await updateTopic(topic.id, topic);
       } else {
         // Create new topic
         console.log('Creating new topic with ID:', topic.id);
-        console.log('Topic data:', JSON.stringify(topic, null, 2));
-
-        // Format contentIdentifiers correctly for creation
-        // Don't format contentIdentifiers here - we'll handle it in the createRequest
-
-        const createRequest = {
-          id: topic.id,
-          name: topic.name,
-          description: topic.description,
-          urlPatterns: topic.urlPatterns,
-          status: topic.status,
-          extractionRules: {
-            fields: topic.extractionRules.fields.map((field: any) => ({
-              name: field.name,
-              fieldType: field.fieldType,
-              required: field.required,
-              aiPrompt: Array.isArray(field.aiPrompt) ? field.aiPrompt : [field.aiPrompt]
-            })),
-            customPrompt: Array.isArray(topic.extractionRules.customPrompt) 
-              ? topic.extractionRules.customPrompt 
-              : [topic.extractionRules.customPrompt]
-          },
-          aiConfig: {
-            apiKey: topic.aiConfig?.apiKey || "",
-            model: topic.aiConfig?.model || "gpt-3.5-turbo",
-            costLimits: {
-              maxDailyCost: topic.aiConfig?.costLimits?.maxDailyCost || 1.0,
-              maxMonthlyCost: topic.aiConfig?.costLimits?.maxMonthlyCost || 10.0,
-              maxConcurrent: topic.aiConfig?.costLimits?.maxConcurrent || 5
-            }
-          },
-          scrapingInterval: topic.scrapingInterval || 3600,
-          activeHours: {
-            start: topic.activeHours?.start || 0,
-            end: topic.activeHours?.end || 24
-          },
-          maxRetries: topic.maxRetries || 3,
-          siteTypeClassification: topic.siteTypeClassification || null,
-          urlGenerationStrategy: topic.urlGenerationStrategy || null,
-          // Handle articleUrlPatterns - check if it's already wrapped in an array
-          articleUrlPatterns: topic.articleUrlPatterns ? 
-            (Array.isArray(topic.articleUrlPatterns[0]) ? 
-              // Already wrapped in an array, use as is
-              topic.articleUrlPatterns : 
-              // Wrap in an array if not already wrapped
-              [topic.articleUrlPatterns.filter((p: any) => typeof p === 'string' && p.trim() !== '').map((p: any) => p.trim())]) : 
-            [],
-          // Format contentIdentifiers as an optional record by wrapping it in an array
-          // Use the actual values from the topic data
-          contentIdentifiers: [{
-            selectors: topic.contentIdentifiers?.selectors?.filter((s: any) => typeof s === 'string' && s.trim() !== '') || [],
-            keywords: topic.contentIdentifiers?.keywords?.filter((k: any) => typeof k === 'string' && k.trim() !== '') || []
-          }],
-          // Handle paginationPatterns - check if it's already wrapped in an array
-          paginationPatterns: topic.paginationPatterns ? 
-            (Array.isArray(topic.paginationPatterns[0]) ? 
-              // Already wrapped in an array, use as is
-              topic.paginationPatterns : 
-              // Wrap in an array if not already wrapped
-              [topic.paginationPatterns.filter((p: any) => typeof p === 'string' && p.trim() !== '').map((p: any) => p.trim())]) : 
-            [],
-          // Handle excludePatterns - check if it's already wrapped in an array
-          excludePatterns: topic.excludePatterns ? 
-            (Array.isArray(topic.excludePatterns[0]) ? 
-              // Already wrapped in an array, use as is
-              topic.excludePatterns : 
-              // Wrap in an array if not already wrapped
-              [topic.excludePatterns.filter((p: any) => typeof p === 'string' && p.trim() !== '').map((p: any) => p.trim())]) : 
-            [],
-          // For createTopic, sampleArticleUrls should be WRAPPED for opt vec text
-          sampleArticleUrls: topic.sampleArticleUrls && 
-            topic.sampleArticleUrls.some((url: any) => typeof url === 'string' && url.trim() !== '')
-              ? [topic.sampleArticleUrls
-                  .filter((url: any) => typeof url === 'string' && url.trim() !== '')
-                  .map((url: any) => url.trim())]
-              : []
-        };
-
-        console.log('Create request:', JSON.stringify(createRequest, null, 2));
-
-        try {
-          const result = await actor.createTopic(createRequest);
-          console.log('Create result:', result);
-          if ('err' in result) {
-            throw new Error(result.err);
-          }
-          setTopics(prev => [...prev, result.ok]);
-        } catch (error) {
-          console.error('Error in createTopic call:', error);
-          throw error;
-        }
+        savedTopic = await createTopic(topic);
       }
+      
+      // Update local state
+      setTopics(prevTopics => {
+        if (selectedTopic) {
+          return prevTopics.map(t => t.id === topic.id ? savedTopic : t);
+        } else {
+          return [...prevTopics, savedTopic];
+        }
+      });
+      
       setTopicsStatus('Topic saved successfully');
+      setTimeout(() => setTopicsStatus(null), 3000);
+      
+      // Close modal
       setIsTopicModalOpen(false);
+      setSelectedTopic(null);
     } catch (error) {
-      console.error('Failed to save topic:', error);
-      setTopicsError(error instanceof Error ? error.message : 'Failed to save topic');
+      console.error('Error saving topic:', error);
+      setTopicsError(`Failed to save topic: ${error}`);
     } finally {
       setUpdating(false);
     }
   };
 
-  const handleDeleteTopic = async (id: string) => {
+  const handleSaveAIConfig = async (config: AIConfig | null) => {
     try {
-      setDeletingTopics(prev => ({ ...prev, [id]: true }));
-      const actor = await getAdminActor();
-      const result = await actor.deleteTopic(id);
-      if ('err' in result) {
-        throw new Error(result.err);
-      }
-      setTopics(prev => prev.filter(t => t.id !== id));
-      setTopicsStatus('Topic deleted successfully');
+      await updateAIConfig(config || {
+        enabled: false,
+        provider: 'openai',
+        apiKey: '',
+        model: 'gpt-3.5-turbo',
+        maxTokensPerRequest: 150,
+        features: {
+          summarization: false,
+          categorization: false,
+          sentimentAnalysis: false,
+          keywordExtraction: false
+        }
+      });
+      
+      setAIConfig(config);
+      setTopicsStatus('AI configuration saved successfully');
+      setTimeout(() => setTopicsStatus(null), 3000);
+      setIsAIModalOpen(false);
     } catch (error) {
-      console.error('Failed to delete topic:', error);
-      setTopicsError(error instanceof Error ? error.message : 'Failed to delete topic');
-    } finally {
-      setDeletingTopics(prev => ({ ...prev, [id]: false }));
-    }
-  };
-
-  const handleToggleTopic = async (id: string, active: boolean) => {
-    try {
-      setTogglingTopics(prev => ({ ...prev, [id]: true }));
-      const actor = await getAdminActor();
-      const result = await actor.setTopicActive(id, active);
-      if ('err' in result) {
-        throw new Error(result.err);
-      }
-      setTopics(prev => prev.map(t => t.id === id ? { ...t, status: active ? 'active' : 'inactive' } : t));
-      setTopicsStatus(`Topic ${active ? 'activated' : 'deactivated'} successfully`);
-    } catch (error) {
-      console.error('Failed to toggle topic:', error);
-      setTopicsError(error instanceof Error ? error.message : 'Failed to toggle topic');
-    } finally {
-      setTogglingTopics(prev => ({ ...prev, [id]: false }));
+      console.error('Error saving AI config:', error);
+      setTopicsError(`Failed to save AI configuration: ${error}`);
     }
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold text-white">Scraping Configuration</h1>
-        <button
-          onClick={() => {
-            setSelectedTopic(null);
-            setIsTopicModalOpen(true);
-          }}
-          className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700"
-        >
-          Add Topic
-        </button>
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-xl font-semibold text-white">Scraping Configuration</h2>
+        <div className="space-x-4">
+          <button
+            onClick={() => {
+              setSelectedTopic(null);
+              setIsTopicModalOpen(true);
+            }}
+            className="bg-[#B692F6] text-[#131217] px-4 py-2 rounded-lg hover:opacity-90 transition-opacity"
+          >
+            Add Topic
+          </button>
+          <button
+            onClick={() => setIsAIModalOpen(true)}
+            className="bg-[#2C2B33] text-white px-4 py-2 rounded-lg hover:bg-[#3C3B43] transition-colors"
+          >
+            AI Settings
+          </button>
+        </div>
       </div>
 
       {/* Status Messages */}
       {topicsError && (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+        <div className="bg-red-900/20 border border-red-400 text-red-400 px-4 py-3 rounded">
           {topicsError}
         </div>
       )}
+      
       {topicsStatus && (
-        <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
+        <div className="bg-green-900/20 border border-green-400 text-green-400 px-4 py-3 rounded">
           {topicsStatus}
+        </div>
+      )}
+
+      {/* AI Configuration Status */}
+      {aiConfigLoading ? (
+        <div className="bg-[#1C1B23] rounded-lg p-4">
+          <div className="text-gray-400">Loading AI configuration...</div>
+        </div>
+      ) : (
+        <div className="bg-[#1C1B23] rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-sm text-gray-400">AI Enhancement: </span>
+              <span className={`text-sm font-medium ${aiConfig?.enabled ? 'text-green-400' : 'text-gray-500'}`}>
+                {aiConfig?.enabled ? 'Enabled' : 'Disabled'}
+              </span>
+              {aiConfig?.enabled && (
+                <span className="text-sm text-gray-400 ml-2">
+                  ({aiConfig.provider} - {aiConfig.model})
+                </span>
+              )}
+            </div>
+            <button
+              onClick={() => setIsAIModalOpen(true)}
+              className="text-[#B692F6] hover:text-white transition-colors text-sm"
+            >
+              Configure
+            </button>
+          </div>
         </div>
       )}
 
@@ -527,124 +283,183 @@ export const ScrapingConfig: React.FC = () => {
       {topicsLoading ? (
         <div className="text-center py-8 text-gray-400">Loading topics...</div>
       ) : (
-        <div className="mb-8">
+        <div className="space-y-4">
           {topics.length === 0 ? (
-            <div className="bg-[#1C1B23] rounded-lg shadow-md p-8 text-center">
+            <div className="bg-[#1C1B23] rounded-lg p-8 text-center">
               <p className="text-gray-400 mb-4">No topics have been created yet.</p>
               <button
                 onClick={() => {
                   setSelectedTopic(null);
                   setIsTopicModalOpen(true);
                 }}
-                className="text-purple-400 hover:text-purple-300"
+                className="text-[#B692F6] hover:text-white transition-colors"
               >
                 Create your first topic
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {topics.map(topic => (
-                <div key={topic.id} className="bg-[#1C1B23] rounded-lg shadow-md p-6">
-                  <div className="flex justify-between items-start mb-4">
-                    <h2 className="text-xl font-semibold text-white">{topic.name}</h2>
-                    <div className="space-x-2">
-                      <button
-                        onClick={() => {
-                          setSelectedTopic(topic);
-                          setIsTopicModalOpen(true);
-                        }}
-                        className="text-purple-400 hover:text-purple-300"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDeleteTopic(topic.id)}
-                        disabled={deletingTopics[topic.id]}
-                        className="text-red-400 hover:text-red-300"
-                      >
-                        {deletingTopics[topic.id] ? 'Deleting...' : 'Delete'}
-                      </button>
+            topics.map(topic => (
+              <div key={topic.id} className="bg-[#1C1B23] rounded-lg p-6">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="flex-1">
+                    <h3 className="text-lg font-medium text-white mb-2">{topic.name}</h3>
+                    <p className="text-sm text-gray-400 mb-3">{topic.description}</p>
+                    
+                    <div className="flex flex-wrap gap-4 text-xs">
+                      <span className={`px-2 py-1 rounded ${
+                        topic.status === 'active' 
+                          ? 'bg-green-900/20 text-green-400 border border-green-400/20' 
+                          : 'bg-gray-900/20 text-gray-400 border border-gray-400/20'
+                      }`}>
+                        {topic.status}
+                      </span>
+                      <span className="text-gray-400">
+                        Priority: {topic.priority}/10
+                      </span>
+                      <span className="text-gray-400">
+                        Batch Size: {topic.maxUrlsPerBatch} URLs
+                      </span>
+                      <span className="text-gray-400">
+                        Interval: {Math.round(topic.scrapingInterval / 60)}min
+                      </span>
                     </div>
                   </div>
-                  <p className="text-gray-400 mb-4">{topic.description}</p>
-                  <div className="flex justify-between items-center">
-                    <span className={`px-2 py-1 rounded text-sm ${
-                      topic.status === 'active' ? 'bg-green-900 text-green-200' : 'bg-gray-800 text-gray-300'
-                    }`}>
-                      {topic.status}
-                    </span>
+                  
+                  <div className="flex items-center space-x-2 ml-4">
                     <button
-                      onClick={() => handleToggleTopic(topic.id, topic.status !== 'active')}
+                      onClick={() => handleToggleTopic(topic.id, topic.status)}
                       disabled={togglingTopics[topic.id]}
-                      className={`text-sm ${
+                      className={`px-3 py-1 rounded text-sm transition-colors ${
                         topic.status === 'active'
-                          ? 'text-red-400 hover:text-red-300'
-                          : 'text-purple-400 hover:text-purple-300'
-                      }`}
+                          ? 'bg-yellow-900/20 text-yellow-400 hover:bg-yellow-900/30'
+                          : 'bg-green-900/20 text-green-400 hover:bg-green-900/30'
+                      } disabled:opacity-50`}
                     >
-                      {togglingTopics[topic.id]
-                        ? 'Updating...'
-                        : topic.status === 'active'
-                        ? 'Deactivate'
-                        : 'Activate'}
+                      {togglingTopics[topic.id] ? '...' : (topic.status === 'active' ? 'Deactivate' : 'Activate')}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSelectedTopic(topic);
+                        setIsTopicModalOpen(true);
+                      }}
+                      className="text-[#B692F6] hover:text-white transition-colors"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDeleteTopic(topic.id)}
+                      disabled={deletingTopics[topic.id]}
+                      className="text-red-400 hover:text-red-300 transition-colors disabled:opacity-50"
+                    >
+                      {deletingTopics[topic.id] ? '...' : 'Delete'}
                     </button>
                   </div>
                 </div>
-              ))}
-            </div>
+                
+                {/* Search Queries */}
+                {topic.searchQueries && topic.searchQueries.length > 0 && (
+                  <div className="mt-4">
+                    <h4 className="text-xs text-gray-400 mb-2">Search Queries:</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {topic.searchQueries.map((query, idx) => (
+                        <span key={idx} className="px-2 py-1 bg-[#131217] rounded text-xs text-gray-300">
+                          {query}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Required Keywords */}
+                {topic.requiredKeywords && topic.requiredKeywords.length > 0 && (
+                  <div className="mt-3">
+                    <h4 className="text-xs text-gray-400 mb-2">Required Keywords:</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {topic.requiredKeywords.map((keyword, idx) => (
+                        <span key={idx} className="px-2 py-1 bg-green-900/20 rounded text-xs text-green-400">
+                          {keyword}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Stats */}
+                <div className="mt-4 pt-4 border-t border-[#2C2B33] text-xs text-gray-400">
+                  <div className="flex justify-between">
+                    <span>Created: {new Date(topic.createdAt).toLocaleDateString()}</span>
+                    <span>Total URLs Scraped: {topic.totalUrlsScraped}</span>
+                    <span>
+                      Last Scraped: {
+                        topic.lastScraped > 0 
+                          ? new Date(topic.lastScraped).toLocaleString() 
+                          : 'Never'
+                      }
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))
           )}
         </div>
       )}
 
-      {/* AI Configuration Box */}
-      <div className="p-6 bg-gray-800 rounded-lg mb-6">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-lg font-semibold text-white">AI Configuration</h2>
+      {/* Storage Data Fetch Section */}
+      <div className="bg-[#1C1B23] rounded-lg p-6">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-medium text-white">Storage Canister Data</h3>
           <button
-            onClick={() => setIsAIModalOpen(true)}
-            className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            onClick={() => handleFetchStorageData()}
+            disabled={fetchingData}
+            className="bg-[#B692F6] text-[#131217] px-4 py-2 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
           >
-            Configure
+            {fetchingData ? 'Fetching...' : 'Fetch All Data'}
           </button>
         </div>
-        {aiConfigLoading ? (
-          <div className="text-gray-400 mt-4">Loading AI configuration...</div>
-        ) : aiConfig ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-4">
-              <div className="flex flex-col">
-                <span className="text-sm font-medium text-gray-400">Model</span>
-                <span className="text-base text-white mt-1">{aiConfig.model}</span>
-              </div>
-              <div className="flex flex-col">
-                <span className="text-sm font-medium text-gray-400">Daily Cost Limit</span>
-                <span className="text-base text-white mt-1">${aiConfig.costLimits.maxDailyCost || 0}</span>
-              </div>
-            </div>
-            <div className="space-y-4">
-              <div className="flex flex-col">
-                <span className="text-sm font-medium text-gray-400">Monthly Cost Limit</span>
-                <span className="text-base text-white mt-1">${aiConfig.costLimits.maxMonthlyCost || 0}</span>
-              </div>
-              <div className="flex flex-col">
-                <span className="text-sm font-medium text-gray-400">Max Concurrent API Calls</span>
-                <span className="text-base text-white mt-1">{aiConfig.costLimits.maxConcurrent || 0}</span>
-              </div>
+        
+        {fetchDataStatus && (
+          <div className="bg-green-900/20 border border-green-400 text-green-400 px-4 py-3 rounded mb-4">
+            {fetchDataStatus}
+          </div>
+        )}
+        
+        {fetchDataError && (
+          <div className="bg-red-900/20 border border-red-400 text-red-400 px-4 py-3 rounded mb-4">
+            {fetchDataError}
+          </div>
+        )}
+        
+        {scrapedData.length > 0 && (
+          <div className="mt-4">
+            <p className="text-sm text-gray-400 mb-2">Found {scrapedData.length} items</p>
+            <div className="max-h-96 overflow-y-auto">
+              <table className="w-full text-sm">
+                <thead className="text-left text-gray-400 border-b border-[#2C2B33]">
+                  <tr>
+                    <th className="pb-2">Topic</th>
+                    <th className="pb-2">URL</th>
+                    <th className="pb-2">Content Size</th>
+                    <th className="pb-2">Timestamp</th>
+                  </tr>
+                </thead>
+                <tbody className="text-gray-300">
+                  {scrapedData.slice(0, 20).map((item, idx) => (
+                    <tr key={idx} className="border-b border-[#2C2B33]/50">
+                      <td className="py-2">{item.topic}</td>
+                      <td className="py-2 truncate max-w-xs" title={item.url}>
+                        {item.url}
+                      </td>
+                      <td className="py-2">{item.content?.length || 0} chars</td>
+                      <td className="py-2">
+                        {new Date(Number(item.timestamp) / 1000000).toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
-        ) : (
-          <div className="text-gray-400 mt-4">No AI configuration found</div>
         )}
-      </div>
-
-      {/* Storage Canister Authorization */}
-      <div className="p-6 bg-gray-800 rounded-lg mb-6">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-lg font-semibold text-white">Storage Canister Authorization</h2>
-        </div>
-        <div className="bg-[#1C1B23] rounded-lg p-6">
-          <StorageAuthorization />
-        </div>
       </div>
 
       {/* Topic Modal */}
@@ -668,20 +483,7 @@ export const ScrapingConfig: React.FC = () => {
           onClose={() => {
             setIsAIModalOpen(false);
           }}
-          onSave={async (config) => {
-            try {
-              const actor = await getAdminActor();
-              const result = await actor.updateAIConfig(config);
-              if ('err' in result) {
-                throw new Error(result.err);
-              }
-              setAIConfig(config);
-              setIsAIModalOpen(false);
-            } catch (error) {
-              console.error('Failed to update AI config:', error);
-              setError(error instanceof Error ? error.message : 'Failed to update AI configuration');
-            }
-          }}
+          onSave={handleSaveAIConfig}
         />
       )}
     </div>

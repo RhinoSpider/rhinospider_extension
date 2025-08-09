@@ -64,15 +64,41 @@ actor ConsumerBackend {
 
     // Constants
     private let STORAGE_CANISTER_ID = "hhaip-uiaaa-aaaao-a4khq-cai"; // Updated to the latest storage canister ID
-    private let ADMIN_CANISTER_ID = "444wf-gyaaa-aaaaj-az5sq-cai";  // Updated to match extension's .env file
+    private let ADMIN_CANISTER_ID = "wvset-niaaa-aaaao-a4osa-cai";  // New admin backend canister
     private let CYCLES_PER_CALL = 100_000_000_000; // 100B cycles per call
 
     // Canister references
     private let storage: StorageActor = actor(STORAGE_CANISTER_ID);
     private let admin: AdminActor = actor(ADMIN_CANISTER_ID);
 
-    // User profiles with stable storage - v2 with geographic data
-    private stable var stableUserProfilesV2: [(Principal, UserProfile)] = [];
+    // Define old type for migration
+    type UserProfileV2 = {
+        principal: Principal;
+        devices: [Text];
+        created: Int;
+        lastLogin: Int;
+        ipAddress: ?Text;
+        country: ?Text;
+        region: ?Text;
+        city: ?Text;
+        latitude: ?Float;
+        longitude: ?Float;
+        lastActive: Int;
+        isActive: Bool;
+        dataVolumeKB: Nat;
+        referralCode: Text;
+        referralCount: Nat;
+        points: Nat;
+        totalDataScraped: Nat;
+        referredBy: ?Principal;
+        preferences: {
+            notificationsEnabled: Bool;
+            theme: Text;
+        };
+    };
+
+    // User profiles with stable storage - using old type for compatibility
+    private stable var stableUserProfilesV2: [(Principal, UserProfileV2)] = [];
     private var userProfiles = HashMap.HashMap<Principal, UserProfile>(10, Principal.equal, Principal.hash);
     
     // Referral system storage
@@ -98,6 +124,7 @@ actor ConsumerBackend {
         points: Nat;
         totalDataScraped: Nat;
         referredBy: ?Principal;
+        scrapedUrls: [Text]; // Track URLs already scraped by this user
         preferences: {
             notificationsEnabled: Bool;
             theme: Text;
@@ -124,12 +151,67 @@ actor ConsumerBackend {
 
     // Upgrade hooks
     system func preupgrade() {
-        stableUserProfilesV2 := Iter.toArray(userProfiles.entries());
+        // Convert current profiles to V2 format for stable storage
+        let v2Profiles = Array.map<(Principal, UserProfile), (Principal, UserProfileV2)>(
+            Iter.toArray(userProfiles.entries()),
+            func ((principal, profile)) = (principal, {
+                principal = profile.principal;
+                devices = profile.devices;
+                created = profile.created;
+                lastLogin = profile.lastLogin;
+                ipAddress = profile.ipAddress;
+                country = profile.country;
+                region = profile.region;
+                city = profile.city;
+                latitude = profile.latitude;
+                longitude = profile.longitude;
+                lastActive = profile.lastActive;
+                isActive = profile.isActive;
+                dataVolumeKB = profile.dataVolumeKB;
+                referralCode = profile.referralCode;
+                referralCount = profile.referralCount;
+                points = profile.points;
+                totalDataScraped = profile.totalDataScraped;
+                referredBy = profile.referredBy;
+                preferences = profile.preferences;
+                // Note: scrapedUrls is not saved in V2 format
+            })
+        );
+        stableUserProfilesV2 := v2Profiles;
         stableReferralCodes := Iter.toArray(referralCodes.entries());
     };
 
     system func postupgrade() {
-        userProfiles := HashMap.fromIter<Principal, UserProfile>(stableUserProfilesV2.vals(), 10, Principal.equal, Principal.hash);
+        // Migrate from V2 to current format
+        if (stableUserProfilesV2.size() > 0) {
+            let migratedProfiles = Array.map<(Principal, UserProfileV2), (Principal, UserProfile)>(
+                stableUserProfilesV2,
+                func ((principal, oldProfile)) = (principal, {
+                    principal = oldProfile.principal;
+                    devices = oldProfile.devices;
+                    created = oldProfile.created;
+                    lastLogin = oldProfile.lastLogin;
+                    ipAddress = oldProfile.ipAddress;
+                    country = oldProfile.country;
+                    region = oldProfile.region;
+                    city = oldProfile.city;
+                    latitude = oldProfile.latitude;
+                    longitude = oldProfile.longitude;
+                    lastActive = oldProfile.lastActive;
+                    isActive = oldProfile.isActive;
+                    dataVolumeKB = oldProfile.dataVolumeKB;
+                    referralCode = oldProfile.referralCode;
+                    referralCount = oldProfile.referralCount;
+                    points = oldProfile.points;
+                    totalDataScraped = oldProfile.totalDataScraped;
+                    referredBy = oldProfile.referredBy;
+                    scrapedUrls = []; // New field - start with empty array
+                    preferences = oldProfile.preferences;
+                })
+            );
+            userProfiles := HashMap.fromIter<Principal, UserProfile>(migratedProfiles.vals(), 10, Principal.equal, Principal.hash);
+        };
+        
         referralCodes := HashMap.fromIter<Text, Principal>(stableReferralCodes.vals(), 10, Text.equal, Text.hash);
     };
 
@@ -386,6 +468,34 @@ actor ConsumerBackend {
         };
     };
 
+    // URL deduplication functions
+    public shared({ caller }) func hasUserScrapedUrl(url: Text): async Bool {
+        if (not isAuthenticated(caller)) {
+            return false;
+        };
+        
+        switch (userProfiles.get(caller)) {
+            case (?profile) {
+                switch (Array.find<Text>(profile.scrapedUrls, func(u) = u == url)) {
+                    case (?_) true;
+                    case null false;
+                };
+            };
+            case null false;
+        };
+    };
+    
+    public shared({ caller }) func getUserScrapedUrls(): async [Text] {
+        if (not isAuthenticated(caller)) {
+            return [];
+        };
+        
+        switch (userProfiles.get(caller)) {
+            case (?profile) profile.scrapedUrls;
+            case null [];
+        };
+    };
+    
     // Scraped data management with points
     public shared({ caller }) func submitScrapedData(data: SharedTypes.ScrapedData): async Result.Result<(), SharedTypes.Error> {
         if (not isAuthenticated(caller)) {
@@ -396,10 +506,23 @@ actor ConsumerBackend {
         switch (userProfiles.get(caller)) {
             case null return #err(#NotAuthorized);
             case (?profile) {
+                // Check if URL was already scraped by this user
+                let urlAlreadyScraped = switch (Array.find<Text>(profile.scrapedUrls, func(u) = u == data.url)) {
+                    case (?_) true;
+                    case null false;
+                };
+                
                 // Calculate points for this submission
                 let contentLength = Text.size(data.content);
-                let points = calculatePoints(contentLength);
+                let points = if (urlAlreadyScraped) 0 else calculatePoints(contentLength); // No points for duplicate URLs
                 let dataKB = contentLength / 1024;
+                
+                // Add URL to scraped list if new
+                let updatedScrapedUrls = if (urlAlreadyScraped) {
+                    profile.scrapedUrls
+                } else {
+                    Array.append(profile.scrapedUrls, [data.url])
+                };
                 
                 // Update profile with new points and data scraped
                 let updatedProfile = {
@@ -407,6 +530,7 @@ actor ConsumerBackend {
                     points = profile.points + points;
                     totalDataScraped = profile.totalDataScraped + contentLength;
                     dataVolumeKB = profile.dataVolumeKB + dataKB;
+                    scrapedUrls = updatedScrapedUrls;
                     lastLogin = Time.now();
                     lastActive = Time.now();
                     isActive = true;
@@ -504,6 +628,7 @@ actor ConsumerBackend {
                     points = 0;
                     totalDataScraped = 0;
                     referredBy = null;
+                    scrapedUrls = [];
                     preferences = {
                         notificationsEnabled = true;
                         theme = "dark";
@@ -607,6 +732,7 @@ actor ConsumerBackend {
                     points = 0;
                     totalDataScraped = 0;
                     referredBy = null;
+                    scrapedUrls = [];
                     preferences = {
                         notificationsEnabled = true;
                         theme = "dark";
@@ -684,6 +810,7 @@ actor ConsumerBackend {
                             points = 0;
                             totalDataScraped = 0;
                             referredBy = ?referrer;
+                            scrapedUrls = [];
                             preferences = {
                                 notificationsEnabled = true;
                                 theme = "dark";

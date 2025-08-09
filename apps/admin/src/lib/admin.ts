@@ -9,8 +9,8 @@ import { getIdentity } from './auth';
 
 // Import the canister interfaces
 // @ts-ignore - Ignore TypeScript error for the direct import
-import { idlFactory } from '../declarations/admin/admin.did.js';
-import type { _SERVICE } from '../declarations/admin/admin.did.d';
+import { idlFactory } from '../declarations/admin/admin_backend.did.js';
+import type { _SERVICE } from '../declarations/admin/admin_backend.did.d';
 
 // Import the storage canister interface and factory
 // @ts-ignore - Ignore TypeScript error for the direct import
@@ -41,675 +41,356 @@ export const getAdminActor = async () => {
         host: import.meta.env.VITE_IC_HOST || 'https://icp0.io'
       });
 
-      // Use production canister ID as fallback
-      const canisterId = import.meta.env.VITE_ADMIN_CANISTER_ID || '444wf-gyaaa-aaaaj-az5sq-cai';
+      // Use new admin backend canister ID
+      const canisterId = import.meta.env.VITE_ADMIN_BACKEND_CANISTER_ID || 'wvset-niaaa-aaaao-a4osa-cai';
       if (!canisterId) {
         throw new Error('Admin canister ID not found in environment variables');
       }
 
       actor = await Actor.createActor(idlFactory, {
         agent,
-        canisterId,
+        canisterId: Principal.fromText(canisterId),
       });
 
-      // Verify that we can access the actor methods
-      const methods = Object.keys(actor);
-      console.log('Admin actor methods:', methods);
+      // Store the identity reference for future checks
+      actor._identity = identity;
+
+      // Log available methods for debugging
+      console.log('Admin actor methods:', Object.keys(actor));
     }
 
     return actor;
   } catch (error) {
-    console.error('Error getting admin actor:', error);
+    console.error('Error creating admin actor:', error);
     throw error;
   }
 };
 
-// Clear the cached actor (useful for logout)
-export const clearAdminActor = () => {
-  actor = null;
-};
-
-// Helper function to handle BigInt serialization
-function replaceBigInt(_key: string, value: any) {
+// Helper function to replace BigInt values with strings for JSON serialization
+const replaceBigInt = (key: string, value: any): any => {
   if (typeof value === 'bigint') {
-    return Number(value); // Convert BigInt to Number
+    return value.toString();
   }
   return value;
-}
-
-// Helper function to fix empty contentIdentifiers
-const fixEmptyContentIdentifiers = (topic: any) => {
-  // Check if contentIdentifiers exists but has empty values
-  if (topic.contentIdentifiers && 
-      Array.isArray(topic.contentIdentifiers.selectors) && 
-      Array.isArray(topic.contentIdentifiers.keywords) &&
-      topic.contentIdentifiers.selectors.length === 1 && 
-      topic.contentIdentifiers.keywords.length === 1 &&
-      topic.contentIdentifiers.selectors[0] === "" &&
-      topic.contentIdentifiers.keywords[0] === "") {
-    
-    console.log(`Fixing empty contentIdentifiers for topic ${topic.id}`);
-    
-    // Replace with default values
-    topic.contentIdentifiers = {
-      selectors: ["article", "main", ".content", "#content"],
-      keywords: ["article", "news", "blog", "post"]
-    };
-  }
-  
-  return topic;
 };
 
-// Topic Management
 export async function getTopics(): Promise<ScrapingTopic[]> {
-  // Use storage canister for topics instead of admin canister
   try {
-    const identity = await getIdentity();
-    if (!identity) {
-      throw new Error('No identity found');
-    }
-
-    const agent = new HttpAgent({ 
-      identity,
-      host: import.meta.env.VITE_IC_HOST || 'https://icp0.io'
-    });
-
-    const storageCanisterId = 'hhaip-uiaaa-aaaao-a4khq-cai';
+    const adminActor = await getAdminActor();
     
-    // Create IDL factory for storage canister getTopics
-    const storageIdlFactory = ({ IDL }: any) => {
-      const ScrapingTopic = IDL.Record({
-        id: IDL.Text,
-        name: IDL.Text,
-        description: IDL.Text,
-        urlPatterns: IDL.Vec(IDL.Text),
-        status: IDL.Text,
-        extractionRules: IDL.Record({
-          fields: IDL.Vec(IDL.Record({
-            name: IDL.Text,
-            fieldType: IDL.Text,
-            required: IDL.Bool,
-            aiPrompt: IDL.Opt(IDL.Text),
-          })),
-          customPrompt: IDL.Opt(IDL.Text),
-        }),
-        scrapingInterval: IDL.Nat,
-        activeHours: IDL.Record({
-          start: IDL.Nat,
-          end: IDL.Nat,
-        }),
-        maxRetries: IDL.Nat,
-        createdAt: IDL.Int,
-        lastScraped: IDL.Int,
-        aiConfig: IDL.Record({
-          apiKey: IDL.Text,
-          model: IDL.Text,
-          costLimits: IDL.Record({
-            maxDailyCost: IDL.Float64,
-            maxMonthlyCost: IDL.Float64,
-            maxConcurrent: IDL.Nat,
-          }),
-        }),
-      });
-
-      return IDL.Service({
-        getTopics: IDL.Func([], [IDL.Variant({ ok: IDL.Vec(ScrapingTopic), err: IDL.Variant({ NotAuthorized: IDL.Null }) })], ['query']),
-      });
-    };
-
-    const storageActor = Actor.createActor(storageIdlFactory, {
-      agent,
-      canisterId: storageCanisterId,
-    });
-
-    const result = await storageActor.getTopics();
+    const result = await adminActor.getTopics();
+    
     if ('err' in result) {
-      // If storage fails, return empty array
-      console.warn('Storage canister getTopics failed:', result.err);
+      console.error('Error fetching topics:', result.err);
       return [];
     }
     
-    // Convert the result to a plain object with BigInt values converted to numbers
-    const topics = JSON.parse(JSON.stringify(result.ok, replaceBigInt));
+    // Convert BigInt values to numbers for JSON serialization
+    const topics = result.ok.map((topic: any) => ({
+      ...topic,
+      createdAt: Number(topic.createdAt),
+      lastScraped: Number(topic.lastScraped),
+      totalUrlsScraped: Number(topic.totalUrlsScraped),
+      minContentLength: Number(topic.minContentLength),
+      maxContentLength: Number(topic.maxContentLength),
+      maxUrlsPerBatch: Number(topic.maxUrlsPerBatch),
+      scrapingInterval: Number(topic.scrapingInterval),
+      priority: Number(topic.priority)
+    }));
     
-    // Log the first topic to see its structure
-    if (topics.length > 0) {
-      console.log('First topic from backend:', topics[0]);
-      console.log('First topic contentIdentifiers:', topics[0].contentIdentifiers);
-      console.log('First topic paginationPatterns:', topics[0].paginationPatterns);
-    }
-    
-    // Process the topics to handle optional fields correctly
-    const processedTopics = topics.map((topic: any) => {
-      // Handle contentIdentifiers field
-      let contentIdentifiers = undefined;
-      if (topic.contentIdentifiers && topic.contentIdentifiers.length > 0) {
-        contentIdentifiers = topic.contentIdentifiers[0];
-      }
-      
-      // Handle articleUrlPatterns field
-      let articleUrlPatterns = undefined;
-      if (topic.articleUrlPatterns && topic.articleUrlPatterns.length > 0) {
-        articleUrlPatterns = topic.articleUrlPatterns[0];
-      }
-      
-      // Handle paginationPatterns field
-      let paginationPatterns = undefined;
-      if (topic.paginationPatterns && topic.paginationPatterns.length > 0) {
-        paginationPatterns = topic.paginationPatterns[0];
-      }
-      
-      // Apply the fix for empty contentIdentifiers
-      const processedTopic = fixEmptyContentIdentifiers({
-        ...topic,
-        contentIdentifiers,
-        articleUrlPatterns,
-        paginationPatterns
-      });
-      
-      return processedTopic;
-    });
-    
-    return processedTopics;
+    return topics;
   } catch (error) {
-    console.error('Error in getTopics call:', error);
-    throw error;
+    console.error('Error fetching topics:', error);
+    return [];
   }
 }
 
-export async function createTopic(topic: CreateTopicRequest): Promise<ScrapingTopic> {
-  // Topics should be stored in storage canister
-  // For now, store in localStorage as a temporary solution
-  console.warn('createTopic: Using localStorage temporarily - needs storage canister implementation');
-  
-  // Log the input topic for debugging
-  console.log('Creating topic:', JSON.stringify(topic, replaceBigInt));
-  console.log('siteTypeClassification value:', topic.siteTypeClassification);
-  
-  // Ensure siteTypeClassification is set
-  const createRequest = {
-    ...topic,
-    siteTypeClassification: topic.siteTypeClassification || 'blog',
-    urlGenerationStrategy: topic.urlGenerationStrategy || 'pattern_based',
-    // Filter out empty patterns and store as a local field
-    // Wrap articleUrlPatterns in an additional array to match backend format
-    articleUrlPatterns: topic.articleUrlPatterns && topic.articleUrlPatterns.length > 0 
-      ? [topic.articleUrlPatterns.filter(p => typeof p === 'string' ? p.trim() !== '' : false)]
-      : undefined,
-    // Filter out empty selectors and keywords
-    contentIdentifiers: topic.contentIdentifiers ? {
-      selectors: topic.contentIdentifiers.selectors.filter(s => typeof s === 'string' ? s.trim() !== '' : false),
-      keywords: topic.contentIdentifiers.keywords.filter(k => typeof k === 'string' ? k.trim() !== '' : false)
-    } : undefined,
-    // Format exclude patterns with wildcards if they don't already have them
-    // Wrap excludePatterns in an additional array to match backend format
-    excludePatterns: topic.excludePatterns && topic.excludePatterns.length > 0
-      ? [topic.excludePatterns
-          .filter(p => typeof p === 'string' ? p.trim() !== '' : false)
-          .map(pattern => {
-            // If the pattern doesn't already have wildcards, add them
-            if (pattern.startsWith('*') || pattern.endsWith('*')) {
-              return pattern;
-            } else {
-              return `*${pattern}*`;
-            }
-          })]
-      : undefined,
-    // Wrap paginationPatterns in an additional array to match backend format
-    paginationPatterns: topic.paginationPatterns && topic.paginationPatterns.length > 0
-      ? [topic.paginationPatterns.filter(p => typeof p === 'string' ? p.trim() !== '' : false)]
-      : undefined
-  };
-  
-  console.log('Create request:', JSON.stringify(createRequest, replaceBigInt));
-  
+export async function createTopic(topic: ScrapingTopic): Promise<ScrapingTopic> {
   try {
+    const adminActor = await getAdminActor();
+    
+    // Convert the topic to the format expected by the canister
+    const createRequest = {
+      id: topic.id,
+      name: topic.name,
+      description: topic.description || '',
+      status: topic.status || 'active',
+      
+      // Search Configuration
+      searchQueries: topic.searchQueries || [],
+      preferredDomains: topic.preferredDomains && topic.preferredDomains.length > 0 ? topic.preferredDomains : [],
+      excludeDomains: topic.excludeDomains && topic.excludeDomains.length > 0 ? topic.excludeDomains : [],
+      requiredKeywords: topic.requiredKeywords || [],
+      excludeKeywords: topic.excludeKeywords && topic.excludeKeywords.length > 0 ? topic.excludeKeywords : [],
+      
+      // Extraction Configuration
+      contentSelectors: topic.contentSelectors || ['article', 'main', '.content'],
+      titleSelectors: topic.titleSelectors && topic.titleSelectors.length > 0 ? topic.titleSelectors : [],
+      excludeSelectors: topic.excludeSelectors || [],
+      minContentLength: BigInt(topic.minContentLength || 100),
+      maxContentLength: BigInt(topic.maxContentLength || 50000),
+      
+      // Operational Settings
+      maxUrlsPerBatch: BigInt(topic.maxUrlsPerBatch || 10),
+      scrapingInterval: BigInt(topic.scrapingInterval || 3600),
+      priority: BigInt(topic.priority || 5),
+      
+      // Tracking
+      createdAt: BigInt(topic.createdAt || Date.now()),
+      lastScraped: BigInt(topic.lastScraped || 0),
+      totalUrlsScraped: BigInt(topic.totalUrlsScraped || 0)
+    };
+    
+    console.log('Creating topic with request:', JSON.stringify(createRequest, replaceBigInt));
+    
     const result = await adminActor.createTopic(createRequest);
-    console.log('Raw create result:', result);
     
     if ('err' in result) {
       console.error('Error from backend:', result.err);
       throw new Error(result.err);
     }
     
-    // Convert the result to a plain object with BigInt values converted to numbers
-    const createdTopic = JSON.parse(JSON.stringify(result.ok, replaceBigInt));
-    console.log('Created topic from backend:', createdTopic);
+    // Convert the result back to the frontend format
+    const createdTopic = {
+      ...result.ok,
+      createdAt: Number(result.ok.createdAt),
+      lastScraped: Number(result.ok.lastScraped),
+      totalUrlsScraped: Number(result.ok.totalUrlsScraped),
+      minContentLength: Number(result.ok.minContentLength),
+      maxContentLength: Number(result.ok.maxContentLength),
+      maxUrlsPerBatch: Number(result.ok.maxUrlsPerBatch),
+      scrapingInterval: Number(result.ok.scrapingInterval),
+      priority: Number(result.ok.priority)
+    };
     
+    console.log('Topic created successfully:', createdTopic);
     return createdTopic;
   } catch (error) {
-    console.error('Error in createTopic call:', error);
+    console.error('Error in createTopic:', error);
     throw error;
   }
 }
 
 export async function updateTopic(id: string, topic: ScrapingTopic): Promise<ScrapingTopic> {
-  console.log('Topic data received:', JSON.stringify(topic, replaceBigInt, 2));
-  console.log('siteTypeClassification:', topic.siteTypeClassification);
-  console.log('contentIdentifiers:', topic.contentIdentifiers);
-  console.log('paginationPatterns:', topic.paginationPatterns);
-  
-  // Apply the fix for empty contentIdentifiers
-  topic = fixEmptyContentIdentifiers(topic);
-  
-  // Ensure paginationPatterns is always an array
-  if (!topic.paginationPatterns) {
-    topic.paginationPatterns = [];
-  }
-  
-  const adminActor = await getAdminActor();
-  
-  // Create the update request object
-  const updateRequest = {
-    name: topic.name ? [topic.name] : [],
-    description: topic.description ? [topic.description] : [],
-    urlPatterns: topic.urlPatterns ? [topic.urlPatterns] : [],
-    status: topic.status ? [topic.status] : [],
-    extractionRules: topic.extractionRules ? [{
-      fields: topic.extractionRules.fields.map(field => ({
-        name: field.name,
-        fieldType: field.fieldType,
-        required: field.required,
-        aiPrompt: field.aiPrompt ? [field.aiPrompt] : []
-      })),
-      customPrompt: topic.extractionRules.customPrompt ? [topic.extractionRules.customPrompt] : []
-    }] : [],
-    // Single-optional text for these fields (based on admin.did.d.ts)
-    siteTypeClassification: topic.siteTypeClassification ? [topic.siteTypeClassification] : [],
-    urlGenerationStrategy: topic.urlGenerationStrategy ? [topic.urlGenerationStrategy] : [],
-    // Single-optional array for articleUrlPatterns (based on admin.did.dts)
-    articleUrlPatterns: topic.articleUrlPatterns && topic.articleUrlPatterns.length > 0 
-      ? [topic.articleUrlPatterns.filter(p => typeof p === 'string' ? p.trim() !== '' : false)] 
-      : [],
-    // Add contentIdentifiers field
-    contentIdentifiers: topic.contentIdentifiers ? [{
-      selectors: topic.contentIdentifiers.selectors.filter(s => typeof s === 'string' ? s.trim() !== '' : false),
-      keywords: topic.contentIdentifiers.keywords.filter(k => typeof k === 'string' ? k.trim() !== '' : false)
-    }] : [],
-    // Add paginationPatterns field - ALWAYS include this field
-    paginationPatterns: topic.paginationPatterns && topic.paginationPatterns.length > 0
-      ? [topic.paginationPatterns.filter(p => typeof p === 'string' ? p.trim() !== '' : false)]
-      : [],
-    // Format exclude patterns with wildcards if they don't already have them
-    excludePatterns: topic.excludePatterns && topic.excludePatterns.length > 0
-      ? [topic.excludePatterns
-          .filter(p => typeof p === 'string' ? p.trim() !== '' : false)
-          .map(pattern => {
-            // If the pattern doesn't already have wildcards, add them
-            if (pattern.startsWith('*') || pattern.endsWith('*')) {
-              return pattern;
-            } else {
-              return `*${pattern}*`;
-            }
-          })]
-      : []
-  };
-
-  console.log('Update request:', JSON.stringify(updateRequest, replaceBigInt, 2));
-  
   try {
-    console.log('Updating topic with ID:', id);
+    const adminActor = await getAdminActor();
+    
+    // Create the update request with optional fields
+    const updateRequest = {
+      name: topic.name ? [topic.name] : [],
+      description: topic.description ? [topic.description] : [],
+      status: topic.status ? [topic.status] : [],
+      
+      // Search Configuration (all optional)
+      searchQueries: topic.searchQueries && topic.searchQueries.length > 0 ? [topic.searchQueries] : [],
+      preferredDomains: topic.preferredDomains && topic.preferredDomains.length > 0 ? [topic.preferredDomains] : [],
+      excludeDomains: topic.excludeDomains && topic.excludeDomains.length > 0 ? [topic.excludeDomains] : [],
+      requiredKeywords: topic.requiredKeywords && topic.requiredKeywords.length > 0 ? [topic.requiredKeywords] : [],
+      excludeKeywords: topic.excludeKeywords && topic.excludeKeywords.length > 0 ? [topic.excludeKeywords] : [],
+      
+      // Extraction Configuration (all optional)
+      contentSelectors: topic.contentSelectors && topic.contentSelectors.length > 0 ? [topic.contentSelectors] : [],
+      titleSelectors: topic.titleSelectors && topic.titleSelectors.length > 0 ? [topic.titleSelectors] : [],
+      excludeSelectors: topic.excludeSelectors && topic.excludeSelectors.length > 0 ? [topic.excludeSelectors] : [],
+      minContentLength: topic.minContentLength ? [BigInt(topic.minContentLength)] : [],
+      maxContentLength: topic.maxContentLength ? [BigInt(topic.maxContentLength)] : [],
+      
+      // Operational Settings (all optional)
+      maxUrlsPerBatch: topic.maxUrlsPerBatch ? [BigInt(topic.maxUrlsPerBatch)] : [],
+      scrapingInterval: topic.scrapingInterval ? [BigInt(topic.scrapingInterval)] : [],
+      priority: topic.priority ? [BigInt(topic.priority)] : []
+    };
+    
     const result = await adminActor.updateTopic(id, updateRequest);
-    console.log('Raw update result:', JSON.stringify(result, replaceBigInt, 2));
     
     if ('err' in result) {
-      console.error('Error from backend:', result.err);
+      console.error('Error updating topic:', result.err);
       throw new Error(result.err);
     }
     
-    // Log the raw ok value to see exactly what's coming from the backend
-    console.log('Raw ok value from update:', JSON.stringify(result.ok, null, 2));
-    
-    // Convert the result to a plain object with BigInt values converted to numbers
-    const updatedTopic = JSON.parse(JSON.stringify(result.ok, replaceBigInt));
-    console.log('Updated topic from backend (parsed):', JSON.stringify(updatedTopic, null, 2));
-    console.log('Updated contentIdentifiers:', updatedTopic.contentIdentifiers);
-    console.log('Updated paginationPatterns:', updatedTopic.paginationPatterns);
+    // Convert the result back to the frontend format
+    const updatedTopic = {
+      ...result.ok,
+      createdAt: Number(result.ok.createdAt),
+      lastScraped: Number(result.ok.lastScraped),
+      totalUrlsScraped: Number(result.ok.totalUrlsScraped),
+      minContentLength: Number(result.ok.minContentLength),
+      maxContentLength: Number(result.ok.maxContentLength),
+      maxUrlsPerBatch: Number(result.ok.maxUrlsPerBatch),
+      scrapingInterval: Number(result.ok.scrapingInterval),
+      priority: Number(result.ok.priority)
+    };
     
     return updatedTopic;
   } catch (error) {
-    console.error('Error in updateTopic call:', error);
+    console.error('Error updating topic:', error);
     throw error;
   }
 }
 
 export async function deleteTopic(id: string): Promise<void> {
-  const adminActor = await getAdminActor();
-  const result = await adminActor.deleteTopic(id);
-  if ('err' in result) {
-    throw new Error(result.err);
-  }
-}
-
-// AI Configuration
-export async function getAIConfig(): Promise<AIConfig> {
-  const adminActor = await getAdminActor();
-  const result = await adminActor.getAIConfig();
-  if ('err' in result) {
-    throw new Error(result.err);
-  }
-  return result.ok;
-}
-
-export async function updateAIConfig(config: AIConfig): Promise<AIConfig> {
-  const adminActor = await getAdminActor();
-  const result = await adminActor.updateAIConfig(config);
-  if ('err' in result) {
-    throw new Error(result.err);
-  }
-  return result.ok;
-}
-
-// Direct access to storage canister with proper variant type handling
-export async function getScrapedDataDirect(topicId?: string): Promise<ScrapedData[]> {
-  console.log(`[admin.ts] getScrapedDataDirect called with topicId:`, topicId);
-  
   try {
-    // Get the identity
-    const identity = await getIdentity();
-    if (!identity) {
-      console.error('[admin.ts] No identity found');
-      return [];
-    }
-    
-    // Create an agent for authentication
-    const host = 'https://icp0.io';
-    const agent = new HttpAgent({ identity, host });
-    
-    // Use the storage canister ID from the environment
-    const storageCanisterId = Principal.fromText('hhaip-uiaaa-aaaao-a4khq-cai');
-    console.log(`[admin.ts] Using storage canister ID:`, storageCanisterId.toString());
-    
-    // Prepare the parameter - always use a properly formatted array for Vec<Text>
-    const param: string[] = topicId?.trim() ? [topicId.trim()] : [];
-    
-    // If no specific topic was provided, we'll try with a known topic ID that should have data
-    if (param.length === 0) {
-      console.log(`[admin.ts] Using empty array to get all topics`);
-    } else {
-      console.log(`[admin.ts] Using topic ID:`, param[0]);
-    }
-    
-    // Create an actor to interact with the storage canister using our custom IDL factory
-    // This factory exactly matches the Candid interface of the storage canister
-    const storageActor = Actor.createActor<any>(customStorageIdlFactory, {
-      agent,
-      canisterId: storageCanisterId.toString(),
-    });
-    
-    try {
-      // Call the getScrapedData method with the direct array parameter
-      // This matches the Candid interface: getScrapedData: (vec text) -> (vec ScrapedData)
-      console.log(`[admin.ts] Calling storage canister with param:`, param);
-      const result = await storageActor.getScrapedData(param);
-      
-      // Handle the result based on its actual type
-      if (Array.isArray(result)) {
-        // Direct array response (vec ScrapedData)
-        console.log(`[admin.ts] Successfully retrieved ${result.length} items via storage canister`);
-        return result as ScrapedData[];
-      } else if (result && typeof result === 'object') {
-        // Check if it's possibly a variant with 'ok' field (Result<Vec<ScrapedData>, Text>)
-        if ('ok' in result && Array.isArray((result as any).ok)) {
-          console.log(`[admin.ts] Retrieved ${(result as any).ok.length} items via variant response`);
-          return (result as any).ok as ScrapedData[];
-        } else if ('err' in result) {
-          console.error(`[admin.ts] Error from storage canister:`, (result as any).err);
-        } else {
-          console.log(`[admin.ts] Unexpected result format:`, result);
-        }
-      } else {
-        console.log(`[admin.ts] Unexpected result type:`, typeof result);
-      }
-    } catch (error: any) {
-      console.error(`[admin.ts] Error calling storage canister:`, error);
-      
-      // If we get a specific error, try with a known topic ID that should have data
-      if (!topicId || topicId.trim() === '') {
-        try {
-          const knownTopicId = "topic_swsi3j4lj";
-          console.log(`[admin.ts] Trying with known topic ID:`, knownTopicId);
-          const knownResult = await storageActor.getScrapedData([knownTopicId]);
-          
-          if (Array.isArray(knownResult)) {
-            console.log(`[admin.ts] Successfully retrieved ${knownResult.length} items with known topic ID`);
-            return knownResult as ScrapedData[];
-          }
-        } catch (fallbackError) {
-          console.error(`[admin.ts] Fallback attempt also failed:`, fallbackError);
-        }
-      }
-    }
-  } catch (error) {
-    console.error(`[admin.ts] Exception in getScrapedDataDirect:`, error);
-  }
-  
-  console.log(`[admin.ts] No data returned from storage canister`);
-  return [];
-}
-
-// Access via admin canister as the primary method
-export async function getScrapedDataViaAdmin(topicId?: string): Promise<ScrapedData[]> {
-  console.log(`[admin.ts] getScrapedDataViaAdmin called with topicId:`, topicId);
-  
-  try {
-    // Get the admin actor
     const adminActor = await getAdminActor();
     
-    // Prepare parameters for admin canister
-    let adminParam: string[];
+    const result = await adminActor.deleteTopic(id);
     
-    // If we have a specific topic ID, use it
-    if (topicId && topicId.trim() !== '' && topicId !== 'ALL_TOPICS') {
-      adminParam = [topicId];
-      console.log(`[admin.ts] Using specific topic ID:`, topicId);
-    } 
-    // If we're looking for all topics, try with the topic we know has data first
-    else {
-      // Try with a specific topic ID that we know has data
-      adminParam = ['topic_swsi3j4lj'];
-      console.log(`[admin.ts] Using known topic ID with data: topic_swsi3j4lj`);
-    }
-    
-    console.log(`[admin.ts] Calling admin.getScrapedData with param:`, adminParam);
-    const adminResult = await adminActor.getScrapedData(adminParam);
-    
-    if ('err' in adminResult) {
-      console.error(`[admin.ts] Error from admin canister:`, adminResult.err);
-      
-      // If we get an error with our specific topic, try with an empty array
-      if (adminParam[0] === 'topic_swsi3j4lj' && !topicId) {
-        console.log(`[admin.ts] Trying with empty array after specific topic failed`);
-        const emptyResult = await adminActor.getScrapedData([]);
-        
-        if ('err' in emptyResult) {
-          console.error(`[admin.ts] Error with empty array:`, emptyResult.err);
-        } else if (emptyResult.ok && Array.isArray(emptyResult.ok)) {
-          console.log(`[admin.ts] Successfully retrieved ${emptyResult.ok.length} items with empty array`);
-          return emptyResult.ok;
-        }
-      }
-    } else if (adminResult.ok && Array.isArray(adminResult.ok)) {
-      console.log(`[admin.ts] Successfully retrieved ${adminResult.ok.length} items via admin canister`);
-      return adminResult.ok;
-    } else {
-      console.log(`[admin.ts] Unexpected result format from admin:`, adminResult);
-    }
-    
-    return [];
-  } catch (adminError) {
-    console.error(`[admin.ts] Admin canister approach failed:`, adminError);
-    return [];
-  }
-}
-
-// Main function that uses admin canister as an intermediary
-export async function getScrapedData(topicId?: string): Promise<ScrapedData[]> {
-  console.log(`[admin.ts] getScrapedData called with topicId:`, topicId);
-  
-  try {
-    // Use the admin canister as the primary method
-    console.log(`[admin.ts] Using admin canister as intermediary`);
-    const adminData = await getScrapedDataViaAdmin(topicId);
-    
-    if (adminData && adminData.length > 0) {
-      console.log(`[admin.ts] Successfully retrieved ${adminData.length} items via admin canister`);
-      return adminData;
-    } else {
-      console.log(`[admin.ts] No data returned from admin canister, trying direct storage access`);
-      // If admin canister returns no data, try direct storage access as fallback
-      const directData = await getScrapedDataDirect(topicId);
-      return directData;
+    if ('err' in result) {
+      console.error('Error deleting topic:', result.err);
+      throw new Error(result.err);
     }
   } catch (error) {
-    console.error(`[admin.ts] Error getting scraped data:`, error);
-    return [];
+    console.error('Error deleting topic:', error);
+    throw error;
   }
 }
 
-// User Management
-export async function getUsers(): Promise<ExtensionUser[]> {
-  const adminActor = await getAdminActor();
-  const result = await adminActor.get_users();
-  if ('err' in result) {
-    throw new Error(result.err);
+export async function setTopicActive(id: string, active: boolean): Promise<void> {
+  try {
+    const adminActor = await getAdminActor();
+    
+    const result = await adminActor.setTopicActive(id, active);
+    
+    if ('err' in result) {
+      console.error('Error setting topic active status:', result.err);
+      throw new Error(result.err);
+    }
+  } catch (error) {
+    console.error('Error setting topic active status:', error);
+    throw error;
   }
-  return (result.ok || []).map((user: any) => ({
-    principal: user.principal,
-    role: user.role._type,
-    createdAt: user.addedAt,
-    lastLogin: user.addedAt, // Assuming lastLogin is not explicitly tracked in Motoko yet, using addedAt for now
-    devices: [], // Assuming devices are not part of the User type in Motoko yet
-    preferences: {
-      notificationsEnabled: true,
-      theme: "dark",
-    },
-  }));
 }
 
-export async function updateUser(principalId: string, userData: ExtensionUser): Promise<ExtensionUser> {
-  const adminActor = await getAdminActor();
-  const result = await adminActor.add_user(Principal.fromText(principalId), { [userData.role]: null });
-  if ('err' in result) {
-    throw new Error(result.err);
+export async function getAIConfig(): Promise<AIConfig | null> {
+  try {
+    const adminActor = await getAdminActor();
+    const result = await adminActor.getGlobalAIConfig();
+    
+    if ('err' in result) {
+      console.error('Error fetching AI config:', result.err);
+      return null;
+    }
+    
+    // The result.ok is an optional, so check if it has a value
+    if (result.ok && result.ok.length > 0) {
+      const config = result.ok[0];
+      return {
+        enabled: config.enabled,
+        provider: config.provider,
+        apiKey: config.apiKey && config.apiKey.length > 0 ? config.apiKey[0] : '',
+        model: config.model,
+        maxTokensPerRequest: Number(config.maxTokensPerRequest),
+        features: config.features
+      };
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error fetching AI config:', error);
+    return null;
   }
-  return userData;
 }
 
-// Storage Canister Management
-// Import the storage canister interface and factory
-import type { _SERVICE as STORAGE_SERVICE } from '../declarations/storage/storage.did.d';
-// @ts-ignore - Ignore TypeScript error for the direct import
-import { idlFactory as storageIdlFactory } from '../declarations/storage/storage.did.js';
+export async function updateAIConfig(config: AIConfig): Promise<void> {
+  try {
+    const adminActor = await getAdminActor();
+    
+    // Convert to the format expected by the canister
+    const canisterConfig = config.enabled ? [{
+      enabled: config.enabled,
+      provider: config.provider,
+      apiKey: config.apiKey ? [config.apiKey] : [],
+      model: config.model,
+      maxTokensPerRequest: BigInt(config.maxTokensPerRequest || 150),
+      features: config.features
+    }] : [];
+    
+    const result = await adminActor.setGlobalAIConfig(canisterConfig);
+    
+    if ('err' in result) {
+      console.error('Error updating AI config:', result.err);
+      throw new Error(result.err);
+    }
+  } catch (error) {
+    console.error('Error updating AI config:', error);
+    throw error;
+  }
+}
 
-// Function to get the storage canister actor
+// Storage canister functions
 export async function getStorageActor() {
   try {
-    // Get identity
     const identity = await getIdentity();
     if (!identity) {
-      console.error('[admin.ts] No identity found');
       throw new Error('No identity found');
     }
-
-    const principalId = identity.getPrincipal().toString();
-    console.log('[admin.ts] Got identity for storage canister:', principalId);
-
-    // Use production canister ID as fallback
-    const canisterId = import.meta.env.VITE_STORAGE_CANISTER_ID || 'hhaip-uiaaa-aaaao-a4khq-cai';
-    if (!canisterId) {
-      throw new Error('Storage canister ID not found in environment variables');
-    }
-    console.log('[admin.ts] Using storage canister ID:', canisterId);
-
-    const host = import.meta.env.VITE_IC_HOST || 'https://icp0.io';
-    console.log('[admin.ts] Using IC host:', host);
-
+    
+    console.log('[admin.ts] Got identity for storage canister:', identity.getPrincipal().toString());
+    
     const agent = new HttpAgent({ 
       identity,
-      host
+      host: import.meta.env.VITE_IC_HOST || 'https://icp0.io'
     });
-
-    // Fetch root key in development
-    if (import.meta.env.DEV) {
-      console.log('[admin.ts] Fetching root key in development mode');
-      await agent.fetchRootKey();
-    }
-
-    console.log('[admin.ts] Creating storage actor with canister ID:', canisterId);
-    const storageActor = Actor.createActor<STORAGE_SERVICE>(storageIdlFactory, {
+    
+    const storageCanisterId = import.meta.env.VITE_STORAGE_CANISTER_ID || 'hhaip-uiaaa-aaaao-a4khq-cai';
+    console.log('[admin.ts] Using storage canister ID:', storageCanisterId);
+    console.log('[admin.ts] Using IC host:', import.meta.env.VITE_IC_HOST || 'https://icp0.io');
+    
+    console.log('[admin.ts] Creating storage actor with canister ID:', storageCanisterId);
+    const storageActor = await Actor.createActor(customStorageIdlFactory, {
       agent,
-      canisterId,
+      canisterId: Principal.fromText(storageCanisterId),
     });
-
+    
     console.log('[admin.ts] Storage actor created successfully');
     return storageActor;
   } catch (error) {
-    console.error('[admin.ts] Error getting storage actor:', error);
+    console.error('[admin.ts] Error creating storage actor:', error);
     throw error;
   }
 }
 
-// Add a principal as an authorized user to the storage canister
-export async function addAuthorizedPrincipalToStorage(principalId: string): Promise<void> {
+export async function getScrapedData(topicIds: string[] = []): Promise<ScrapedData[]> {
   try {
-    console.log(`[admin.ts] Adding principal ${principalId} as authorized user to storage canister`);
     const storageActor = await getStorageActor();
-    
-    // Convert the principal string to a Principal object
-    const principal = Principal.fromText(principalId);
-    console.log(`[admin.ts] Principal object created: ${principal.toString()}`);
-    
-    // Log available methods on the storage actor
-    const methods = Object.getOwnPropertyNames(Object.getPrototypeOf(storageActor))
-      .filter(name => name !== 'constructor' && typeof storageActor[name as keyof typeof storageActor] === 'function');
-    console.log(`[admin.ts] Storage actor methods: ${methods.join(', ')}`);
-    
-    // Call the addAuthorizedCanister method
-    console.log(`[admin.ts] Calling addAuthorizedCanister with principal: ${principal.toString()}`);
-    const result = await storageActor.addAuthorizedCanister(principal);
-    console.log(`[admin.ts] Result from addAuthorizedCanister:`, result);
+    const result = await storageActor.getScrapedData(topicIds);
     
     if ('err' in result) {
-      console.error(`[admin.ts] Error adding authorized principal:`, result.err);
-      throw new Error(JSON.stringify(result.err));
+      console.error('Error fetching scraped data:', result.err);
+      return [];
     }
     
-    console.log(`[admin.ts] Successfully added principal ${principalId} to storage canister`);
+    return result.ok;
   } catch (error) {
-    console.error(`[admin.ts] Failed to add authorized principal to storage:`, error);
-    throw error;
+    console.error('Error fetching scraped data:', error);
+    return [];
   }
 }
 
-// Remove a principal from the authorized users of the storage canister
-export async function removeAuthorizedPrincipalFromStorage(principalId: string): Promise<void> {
-  try {
-    console.log(`[admin.ts] Removing principal ${principalId} from storage canister authorized users`);
-    const storageActor = await getStorageActor();
-    
-    // Convert the principal string to a Principal object
-    const principal = Principal.fromText(principalId);
-    console.log(`[admin.ts] Principal object created for removal: ${principal.toString()}`);
-    
-    // Log available methods on the storage actor
-    const methods = Object.getOwnPropertyNames(Object.getPrototypeOf(storageActor))
-      .filter(name => name !== 'constructor' && typeof storageActor[name as keyof typeof storageActor] === 'function');
-    console.log(`[admin.ts] Storage actor methods for removal: ${methods.join(', ')}`);
-    
-    // Call the removeAuthorizedCanister method
-    console.log(`[admin.ts] Calling removeAuthorizedCanister with principal: ${principal.toString()}`);
-    const result = await storageActor.removeAuthorizedCanister(principal);
-    console.log(`[admin.ts] Result from removeAuthorizedCanister:`, result);
-    
-    if ('err' in result) {
-      console.error(`[admin.ts] Error removing authorized principal:`, result.err);
-      throw new Error(JSON.stringify(result.err));
+export async function getExtensionUsers(): Promise<ExtensionUser[]> {
+  // For now, return mock data
+  // In production, this would fetch from the consumer canister
+  return [
+    {
+      id: '1',
+      principalId: 'xxxxx-xxxxx-xxxxx-xxxxx',
+      deviceId: 'device-1',
+      dataContributed: 1024 * 1024 * 50, // 50MB
+      lastActive: new Date(Date.now() - 1000 * 60 * 5).toISOString(), // 5 minutes ago
+      joinDate: new Date(Date.now() - 1000 * 60 * 60 * 24 * 30).toISOString(), // 30 days ago
+      isActive: true,
+      ipAddress: '192.168.1.1',
+      location: 'New York, USA'
+    },
+    {
+      id: '2',
+      principalId: 'yyyyy-yyyyy-yyyyy-yyyyy',
+      deviceId: 'device-2',
+      dataContributed: 1024 * 1024 * 120, // 120MB
+      lastActive: new Date(Date.now() - 1000 * 60 * 30).toISOString(), // 30 minutes ago
+      joinDate: new Date(Date.now() - 1000 * 60 * 60 * 24 * 15).toISOString(), // 15 days ago
+      isActive: true,
+      ipAddress: '10.0.0.1',
+      location: 'San Francisco, USA'
     }
-    
-    console.log(`[admin.ts] Successfully removed principal ${principalId} from storage canister`);
-  } catch (error) {
-    console.error(`[admin.ts] Failed to remove authorized principal from storage:`, error);
-    throw error;
-  }
+  ];
 }

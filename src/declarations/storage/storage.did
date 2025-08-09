@@ -1,13 +1,20 @@
 type Storage = 
  service {
-   addAuthorizedCanister: (principal) -> (Result);
+   addAuthorizedCanister: (id: principal) -> (Result);
+   clearAllData: () -> (Result);
+   deleteScrapedData: (id: text) -> (Result);
+   deleteTopic: (id: text) -> (Result);
+   forwardCycles: (target: principal, amount: nat) -> (Result);
    getAIConfig: () -> (Result_3) query;
-   getScrapedData: (vec text) -> (Result_2) query;
+   getAuthorizedCanisters: () -> (Result_2) query;
+   getCycleBalance: () -> (nat) query;
+   getScrapedData: (topicIds: vec text) -> (vec ScrapedData) query;
    getTopics: () -> (Result_1) query;
-   removeAuthorizedCanister: (principal) -> (Result);
-   submitScrapedData: (ScrapedData) -> (Result);
-   updateAIConfig: (AIConfig) -> (Result);
-   updateTopic: (ScrapingTopic) -> (Result);
+   removeAuthorizedCanister: (id: principal) -> (Result);
+   storeScrapedData: (data: ScrapedData) -> (Result);
+   updateAIConfig: (config: AIConfig) -> (Result);
+   updateTopic: (topic: ScrapingTopic) -> (Result);
+   wallet_receive: () -> ();
  };
 type ScrapingTopic = 
  record {
@@ -19,9 +26,12 @@ type ScrapingTopic =
    createdAt: int;
    description: text;
    extractionRules: ExtractionRules;
+   geolocationFilter: opt text;
    id: text;
    maxRetries: nat;
    name: text;
+   percentageNodes: opt nat;
+   randomizationMode: opt text;
    scrapingInterval: nat;
    status: text;
    urlPatterns: vec text;
@@ -53,7 +63,7 @@ type Result_3 =
 type Result_2 = 
  variant {
    err: Error;
-   ok: vec ScrapedData;
+   ok: vec principal;
  };
 type Result_1 = 
  variant {

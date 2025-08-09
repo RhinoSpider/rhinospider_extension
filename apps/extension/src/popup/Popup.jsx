@@ -37,7 +37,7 @@ const Popup = () => {
   const navigate = useNavigate();
   const location = useLocation();
   
-  // Auth states
+  // Auth states - ALWAYS start as not authenticated
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -451,7 +451,7 @@ const Popup = () => {
 
   return (
     <div className="w-[360px] min-h-[600px] bg-gradient-to-b from-[#131217] via-[#360D68] to-[#131217] text-white">
-      {!isAuthenticated ? (
+      {!isAuthenticated || isLoading ? (
         <div className="flex flex-col h-full">
           <div className="p-6">
             <div className="flex items-center mb-8">
@@ -461,8 +461,15 @@ const Popup = () => {
           </div>
 
           <div className="flex-1 flex flex-col justify-center px-6">
-            <h1 className="text-2xl font-bold mb-3">Sign in</h1>
-            <p className="text-gray-300 mb-6">Please login to continue to your account.</p>
+            {isLoading ? (
+              <div className="text-center">
+                <div className="w-8 h-8 border-2 border-white/20 border-t-white/60 rounded-full animate-spin mx-auto mb-4"></div>
+                <p className="text-gray-300">Checking authentication...</p>
+              </div>
+            ) : (
+              <>
+                <h1 className="text-2xl font-bold mb-3">Sign in</h1>
+                <p className="text-gray-300 mb-6">Please login to continue to your account.</p>
             
             {error && (
               <div className="bg-red-900/20 border border-red-500/20 text-red-200 p-3 rounded mb-6">
@@ -488,8 +495,11 @@ const Popup = () => {
                 'Login with Internet Identity'
               )}
             </button>
+              </>
+            )}
             
-            <div className="text-sm text-gray-300">
+            {!isLoading && (
+              <div className="text-sm text-gray-300">
               <div className="flex items-center mb-4">
                 <span className="mr-2">🔒</span>
                 <span>Your data is secure and encrypted</span>
@@ -500,7 +510,8 @@ const Popup = () => {
                   Terms of Service
                 </a>
               </p>
-            </div>
+              </div>
+            )}
           </div>
 
           <div className="h-20"></div>

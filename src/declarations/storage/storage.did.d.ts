@@ -1,5 +1,6 @@
 import type { Principal } from '@dfinity/principal';
 import type { ActorMethod } from '@dfinity/agent';
+import type { IDL } from '@dfinity/candid';
 
 export interface AIConfig {
   'model' : string,
@@ -24,7 +25,7 @@ export type Result = { 'ok' : null } |
   { 'err' : Error };
 export type Result_1 = { 'ok' : Array<ScrapingTopic> } |
   { 'err' : Error };
-export type Result_2 = { 'ok' : Array<ScrapedData> } |
+export type Result_2 = { 'ok' : Array<Principal> } |
   { 'err' : Error };
 export type Result_3 = { 'ok' : AIConfig } |
   { 'err' : Error };
@@ -52,20 +53,32 @@ export interface ScrapingTopic {
   'createdAt' : bigint,
   'scrapingInterval' : bigint,
   'description' : string,
+  'randomizationMode' : [] | [string],
   'maxRetries' : bigint,
+  'percentageNodes' : [] | [bigint],
   'activeHours' : { 'end' : bigint, 'start' : bigint },
+  'geolocationFilter' : [] | [string],
   'urlPatterns' : Array<string>,
   'extractionRules' : ExtractionRules,
   'aiConfig' : AIConfig,
 }
 export interface Storage {
   'addAuthorizedCanister' : ActorMethod<[Principal], Result>,
+  'clearAllData' : ActorMethod<[], Result>,
+  'deleteScrapedData' : ActorMethod<[string], Result>,
+  'deleteTopic' : ActorMethod<[string], Result>,
+  'forwardCycles' : ActorMethod<[Principal, bigint], Result>,
   'getAIConfig' : ActorMethod<[], Result_3>,
-  'getScrapedData' : ActorMethod<[Array<string>], Result_2>,
+  'getAuthorizedCanisters' : ActorMethod<[], Result_2>,
+  'getCycleBalance' : ActorMethod<[], bigint>,
+  'getScrapedData' : ActorMethod<[Array<string>], Array<ScrapedData>>,
   'getTopics' : ActorMethod<[], Result_1>,
   'removeAuthorizedCanister' : ActorMethod<[Principal], Result>,
-  'submitScrapedData' : ActorMethod<[ScrapedData], Result>,
+  'storeScrapedData' : ActorMethod<[ScrapedData], Result>,
   'updateAIConfig' : ActorMethod<[AIConfig], Result>,
   'updateTopic' : ActorMethod<[ScrapingTopic], Result>,
+  'wallet_receive' : ActorMethod<[], undefined>,
 }
 export interface _SERVICE extends Storage {}
+export declare const idlFactory: IDL.InterfaceFactory;
+export declare const init: (args: { IDL: typeof IDL }) => IDL.Type[];

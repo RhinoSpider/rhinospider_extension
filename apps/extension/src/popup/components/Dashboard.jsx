@@ -42,24 +42,7 @@ export function Dashboard() {
     };
   }, []);
 
-  const handleToggle = () => {
-    console.log('Toggle clicked, current state:', isEnabled);
-    const newState = !isEnabled;
-    setIsEnabled(newState);
-    
-    const startTime = newState ? Date.now() : null;
-    chrome.storage.local.set({ 
-      scrapingEnabled: newState, // Use consistent key
-      startTime
-    }, () => {
-      console.log('Saved new state:', { scrapingEnabled: newState, startTime });
-      // Also update background config
-      chrome.runtime.sendMessage({ 
-        type: 'UPDATE_SCRAPING_CONFIG',
-        data: { enabled: newState }
-      });
-    });
-  };
+  // Removed handleToggle - control should be from main popup only
 
   const formatUptime = (seconds) => {
     const hours = Math.floor(seconds / 3600);
@@ -91,36 +74,23 @@ export function Dashboard() {
       <h2>RhinoSpider Dashboard</h2>
       
       <div style={{ marginBottom: '20px' }}>
-        <label 
-          style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}
-          onClick={handleToggle}
-        >
-          <div
-            style={{
-              width: '50px',
-              height: '24px',
-              backgroundColor: isEnabled ? '#4CAF50' : '#ccc',
-              borderRadius: '12px',
-              position: 'relative',
-              transition: 'background-color 0.2s',
-              marginRight: '10px'
-            }}
-          >
-            <div
-              style={{
-                width: '20px',
-                height: '20px',
-                backgroundColor: 'white',
-                borderRadius: '50%',
-                position: 'absolute',
-                top: '2px',
-                left: isEnabled ? '28px' : '2px',
-                transition: 'left 0.2s'
-              }}
-            />
+        <div style={{ 
+          backgroundColor: isEnabled ? 'rgba(76, 175, 80, 0.1)' : 'rgba(156, 163, 175, 0.1)',
+          padding: '15px',
+          borderRadius: '8px',
+          border: `1px solid ${isEnabled ? '#4CAF50' : '#9CA3AF'}`,
+          textAlign: 'center'
+        }}>
+          <div style={{ fontSize: '14px', color: isEnabled ? '#4CAF50' : '#9CA3AF', marginBottom: '5px' }}>
+            Extension Status
           </div>
-          <span>Enable Background Scraping</span>
-        </label>
+          <div style={{ fontSize: '18px', fontWeight: 'bold', color: isEnabled ? '#4CAF50' : '#666' }}>
+            {isEnabled ? 'ACTIVE' : 'INACTIVE'}
+          </div>
+          <div style={{ fontSize: '12px', color: '#888', marginTop: '8px' }}>
+            {isEnabled ? 'Data scraping is running' : 'Use the power button in the main popup to activate'}
+          </div>
+        </div>
       </div>
 
       <div style={{ 

@@ -14,6 +14,7 @@ const { idlFactory: consumerIdlFactory } = require('./declarations/consumer/cons
 const { idlFactory: storageIdlFactory } = require('./declarations/storage/storage.did.js');
 const { idlFactory: adminIdlFactory } = require('./declarations/admin/admin.did.js');
 const fetch = require('node-fetch');
+const OpenAI = require('openai');
 global.fetch = fetch;
 global.Headers = fetch.Headers;
 global.Request = fetch.Request;
@@ -24,7 +25,7 @@ const fs = require('fs');
 // Environment variables
 const IC_HOST = process.env.IC_HOST || 'https://icp0.io';
 const CONSUMER_CANISTER_ID = process.env.CONSUMER_CANISTER_ID || 'tgyl5-yyaaa-aaaaj-az4wq-cai';
-const ADMIN_CANISTER_ID = process.env.ADMIN_CANISTER_ID || '444wf-gyaaa-aaaaj-az5sq-cai'; // Admin backend canister ID
+const ADMIN_CANISTER_ID = process.env.ADMIN_CANISTER_ID || 'wvset-niaaa-aaaao-a4osa-cai'; // New admin backend canister ID
 const ADMIN_FRONTEND_CANISTER_ID = process.env.ADMIN_FRONTEND_CANISTER_ID || 'sxsvc-aqaaa-aaaaj-az4ta-cai'; // Admin frontend canister ID
 const STORAGE_CANISTER_ID = process.env.STORAGE_CANISTER_ID || 'hhaip-uiaaa-aaaao-a4khq-cai'; // Production storage canister ID
 const PORT = process.env.PORT || 3001;
@@ -829,117 +830,39 @@ app.get('/api/topics', async (req, res) => {
         disableHandshake: true,
       });
 
-      // Create a hardcoded response based on the admin app's console log
-      // This is a temporary solution until we can fix the admin canister IDL
-      const hardcodedTopic = {
-        id: "Tech News-1747585779646726371",
-        status: "active",
-        excludePatterns: [
-          "*/comments/*",
-          "*/author/*",
-          "*/tag/*",
-          "*/category/*"
-        ],
-        contentIdentifiers: {
-          keywords: [
-            "technology",
-            "tech",
-            "software",
-            "hardware",
-            "AI"
-          ],
-          selectors: [
-            ".article-content",
-            ".entry-content",
-            "article",
-            ".post-content"
-          ]
-        },
-        name: "Tech News",
-        createdAt: 1747585779646726400,
-        scrapingInterval: 3600,
-        description: "Scrapes technology news articles from major tech websites",
-        maxRetries: 3,
-        urlGenerationStrategy: "pattern_based",
-        activeHours: {
-          end: 24,
-          start: 0
-        },
-        urlPatterns: [
-          "https://techcrunch.com/*",
-          "https://www.theverge.com/*"
-        ],
-        extractionRules: {
-          fields: [
-            {
-              name: "Title",
-              aiPrompt: [
-                "Extract the main headline or title of the article"
-              ],
-              required: true,
-              fieldType: "text",
-              description: "",
-              type: "text"
-            },
-            {
-              name: "Content",
-              aiPrompt: [
-                "Extract the main body content of the article, excluding comments and advertisements"
-              ],
-              required: true,
-              fieldType: "text",
-              description: "",
-              type: "text"
-            },
-            {
-              name: "Author",
-              aiPrompt: [
-                "Extract the name of the author of the article"
-              ],
-              required: false,
-              fieldType: "text",
-              description: "",
-              type: "text"
-            },
-            {
-              name: "Publication Date",
-              aiPrompt: [
-                "Extract the date when the article was published"
-              ],
-              required: false,
-              fieldType: "text",
-              description: "",
-              type: "text"
-            }
-          ],
-          customPrompt: [
-            "Extract information from the webpage about Tech News"
-          ]
-        },
-        aiConfig: {
-          model: "gpt-3.5-turbo",
-          costLimits: {
-            maxConcurrent: 5,
-            maxDailyCost: 10,
-            maxMonthlyCost: 100
-          },
-          apiKey: ""
-        },
-        paginationPatterns: [
-          "page=*",
-          "/page/*"
-        ],
-        articleUrlPatterns: [
-          "https://techcrunch.com/*/",
-          "https://www.theverge.com/*/*/*/"
-        ],
-        lastScraped: 1747585779646726400,
-        siteTypeClassification: "news",
-        sampleArticleUrls: []
-      };
+      // Actually call the admin canister to get real topics
+      const adminActor = Actor.createActor(adminIdlFactory, {
+        agent,
+        canisterId: ADMIN_CANISTER_ID,
+      });
 
-      console.log(`Using hardcoded topic from admin app console log`);
-      return res.status(200).json([hardcodedTopic]);
+      try {
+        // Try to get topics from the admin canister
+        // Note: getTopics is an update call and requires authorization
+        console.log('Calling admin.getTopics() as update call...');
+        // Since getTopics is an update call in the .did file, we need to call it properly
+        const topicsResult = await adminActor.getTopics();
+        
+        // getTopics returns a Result type
+        if (topicsResult && topicsResult.ok) {
+          console.log(`Successfully got ${topicsResult.ok.length} topics from admin canister`);
+          return res.status(200).json(topicsResult.ok);
+        } else if (topicsResult && topicsResult.err) {
+          console.error('Admin canister returned error:', topicsResult.err);
+          // Return empty array instead of error to avoid breaking the extension
+          return res.status(200).json([]);
+        } else {
+          console.log('Admin canister returned empty result');
+          return res.status(200).json([]);
+        }
+      } catch (adminError) {
+        console.error('Error calling admin canister:', adminError);
+        // Fall back to empty array instead of hardcoded data
+        console.log('Returning empty topics array due to error');
+        return res.status(200).json([]);
+      }
+
+      // End of actual admin canister call logic
 
     } catch (error) {
       console.error(`Error getting topics:`, error.message);
@@ -1236,123 +1159,48 @@ app.post('/api/topics', async (req, res) => {
     console.log('POST /api/topics called');
 
     try {
-      // Create a hardcoded response based on the admin app's console log
-      // This is a temporary solution until we can fix the admin canister IDL
-      const hardcodedTopic = {
-        id: "Tech News-1747585779646726371",
-        status: "active",
-        excludePatterns: [
-          "*/comments/*",
-          "*/author/*",
-          "*/tag/*",
-          "*/category/*"
-        ],
-        contentIdentifiers: {
-          keywords: [
-            "technology",
-            "tech",
-            "software",
-            "hardware",
-            "AI"
-          ],
-          selectors: [
-            ".article-content",
-            ".entry-content",
-            "article",
-            ".post-content"
-          ]
-        },
-        name: "Tech News",
-        createdAt: 1747585779646726400,
-        scrapingInterval: 3600,
-        description: "Scrapes technology news articles from major tech websites",
-        maxRetries: 3,
-        urlGenerationStrategy: "pattern_based",
-        activeHours: {
-          end: 24,
-          start: 0
-        },
-        urlPatterns: [
-          "https://techcrunch.com/*",
-          "https://www.theverge.com/*"
-        ],
-        extractionRules: {
-          fields: [
-            {
-              name: "Title",
-              aiPrompt: [
-                "Extract the main headline or title of the article"
-              ],
-              required: true,
-              fieldType: "text",
-              description: "",
-              type: "text"
-            },
-            {
-              name: "Content",
-              aiPrompt: [
-                "Extract the main body content of the article, excluding comments and advertisements"
-              ],
-              required: true,
-              fieldType: "text",
-              description: "",
-              type: "text"
-            },
-            {
-              name: "Author",
-              aiPrompt: [
-                "Extract the name of the author of the article"
-              ],
-              required: false,
-              fieldType: "text",
-              description: "",
-              type: "text"
-            },
-            {
-              name: "Publication Date",
-              aiPrompt: [
-                "Extract the date when the article was published"
-              ],
-              required: false,
-              fieldType: "text",
-              description: "",
-              type: "text"
-            }
-          ],
-          customPrompt: [
-            "Extract information from the webpage about Tech News"
-          ]
-        },
-        aiConfig: {
-          model: "gpt-3.5-turbo",
-          costLimits: {
-            maxConcurrent: 5,
-            maxDailyCost: 10,
-            maxMonthlyCost: 100
-          },
-          apiKey: ""
-        },
-        paginationPatterns: [
-          "page=*",
-          "/page/*"
-        ],
-        articleUrlPatterns: [
-          "https://techcrunch.com/*/",
-          "https://www.theverge.com/*/*/*/"
-        ],
-        lastScraped: 1747585779646726400,
-        siteTypeClassification: "news",
-        sampleArticleUrls: []
-      };
+      // Use anonymous identity to call admin canister
+      const identity = new AnonymousIdentity();
+      const agent = new HttpAgent({
+        host: IC_HOST,
+        identity: identity,
+        fetch: fetch,
+        verifyQuerySignatures: false,
+        fetchRootKey: true,
+        disableHandshake: true,
+      });
 
-      console.log(`Using hardcoded topic from admin app console log`);
-      return res.json({ ok: [hardcodedTopic] });
+      // Create admin actor
+      const adminActor = Actor.createActor(adminIdlFactory, {
+        agent,
+        canisterId: ADMIN_CANISTER_ID,
+      });
+
+      // Get topics from admin canister
+      console.log('Calling admin.getTopics() as update call...');
+      const topicsResult = await adminActor.getTopics();
+      
+      // getTopics returns a Result type
+      if (topicsResult && topicsResult.ok) {
+        console.log(`Successfully got ${topicsResult.ok.length} topics from admin canister`);
+        return res.json({ ok: topicsResult.ok });
+      } else if (topicsResult && topicsResult.err) {
+        console.error('Admin canister returned error:', topicsResult.err);
+        return res.json({ ok: [] });
+      } else {
+        console.log('Admin canister returned empty result');
+        return res.json({ ok: [] });
+      }
+
+      // All hardcoded data has been removed - using real admin canister data only
+
     } catch (error) {
-      console.error(`Error getting topics:`, error.message);
-      return res.status(500).json({ err: error.message });
+      console.error(`Error getting topics from admin canister:`, error.message);
+      // Return empty array on error instead of hardcoded data
+      return res.json({ ok: [] });
     }
   } catch (error) {
-    console.error('Error in /api/topics endpoint:', error.message);
+    console.error('Error in POST /api/topics endpoint:', error.message);
     return res.status(500).json({ err: error.message });
   }
 });
@@ -1774,6 +1622,100 @@ app.post('/api/consumer-update-login', authenticateApiKey, async (req, res) => {
   } catch (error) {
     console.error('[/api/consumer-update-login] Error:', error);
     res.status(500).json({ err: error.message });
+  }
+});
+
+// AI Processing endpoint
+app.post('/api/process-with-ai', authenticateApiKey, async (req, res) => {
+  try {
+    const { content, aiConfig } = req.body;
+
+    if (!content || !aiConfig) {
+      return res.status(400).json({ error: 'Content and AI config are required' });
+    }
+
+    if (!aiConfig.enabled || !aiConfig.apiKey) {
+      return res.status(400).json({ error: 'AI is not enabled or API key is missing' });
+    }
+
+    console.log('[/api/process-with-ai] Processing content with AI');
+
+    // Initialize OpenAI client with the provided API key
+    const openai = new OpenAI({
+      apiKey: aiConfig.apiKey
+    });
+
+    const enhancements = {};
+
+    try {
+      // Process each enabled feature
+      if (aiConfig.features.summarization) {
+        const summaryResponse = await openai.chat.completions.create({
+          model: aiConfig.model || 'gpt-3.5-turbo',
+          messages: [
+            { role: 'system', content: 'You are a helpful assistant that creates concise summaries.' },
+            { role: 'user', content: `Summarize this content in 2-3 sentences: ${content.substring(0, 2000)}` }
+          ],
+          max_tokens: aiConfig.maxTokensPerRequest || 150,
+          temperature: 0.7
+        });
+        enhancements.summary = summaryResponse.choices[0].message.content;
+      }
+
+      if (aiConfig.features.keywordExtraction) {
+        const keywordsResponse = await openai.chat.completions.create({
+          model: aiConfig.model || 'gpt-3.5-turbo',
+          messages: [
+            { role: 'system', content: 'You are a helpful assistant that extracts keywords.' },
+            { role: 'user', content: `Extract 5-10 important keywords from this content: ${content.substring(0, 2000)}` }
+          ],
+          max_tokens: aiConfig.maxTokensPerRequest || 150,
+          temperature: 0.5
+        });
+        enhancements.keywords = keywordsResponse.choices[0].message.content.split(',').map(k => k.trim());
+      }
+
+      if (aiConfig.features.categorization) {
+        const categoryResponse = await openai.chat.completions.create({
+          model: aiConfig.model || 'gpt-3.5-turbo',
+          messages: [
+            { role: 'system', content: 'You are a helpful assistant that categorizes content.' },
+            { role: 'user', content: `Categorize this content into one of these categories: Technology, Business, Science, Health, Entertainment, Sports, Politics, Other. Content: ${content.substring(0, 2000)}` }
+          ],
+          max_tokens: 20,
+          temperature: 0.3
+        });
+        enhancements.category = categoryResponse.choices[0].message.content.trim();
+      }
+
+      if (aiConfig.features.sentimentAnalysis) {
+        const sentimentResponse = await openai.chat.completions.create({
+          model: aiConfig.model || 'gpt-3.5-turbo',
+          messages: [
+            { role: 'system', content: 'You are a helpful assistant that analyzes sentiment.' },
+            { role: 'user', content: `Analyze the sentiment of this content (positive, negative, or neutral): ${content.substring(0, 2000)}` }
+          ],
+          max_tokens: 20,
+          temperature: 0.3
+        });
+        enhancements.sentiment = sentimentResponse.choices[0].message.content.toLowerCase().trim();
+      }
+
+      console.log('[/api/process-with-ai] AI processing successful');
+      return res.json({ ok: enhancements });
+    } catch (aiError) {
+      console.error('[/api/process-with-ai] AI processing error:', aiError);
+      return res.status(500).json({ 
+        error: 'AI processing failed', 
+        details: aiError.message 
+      });
+    }
+  } catch (error) {
+    console.error('[/api/process-with-ai] Unexpected error:', error);
+    return res.status(500).json({ 
+      error: 'Internal server error', 
+      details: error.message 
+    });
   }
 });
 

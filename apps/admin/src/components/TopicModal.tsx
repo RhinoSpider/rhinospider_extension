@@ -2,8 +2,37 @@ import React, { useState, useEffect } from 'react';
 import { Dialog } from '@headlessui/react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { getAdminActor } from '../lib/admin';
-import type { ScrapingTopic, ExtractionField, CreateTopicRequest } from '../types';
-import { ExtractionTester } from './ExtractionTester';
+
+interface ScrapingTopic {
+  id: string;
+  name: string;
+  description: string;
+  status: string;
+  
+  // Search Configuration
+  searchQueries: string[];
+  preferredDomains?: string[];
+  excludeDomains?: string[];
+  requiredKeywords: string[];
+  excludeKeywords?: string[];
+  
+  // Extraction Configuration  
+  contentSelectors: string[];
+  titleSelectors?: string[];
+  excludeSelectors: string[];
+  minContentLength: number;
+  maxContentLength: number;
+  
+  // Operational Settings
+  maxUrlsPerBatch: number;
+  scrapingInterval: number;
+  priority: number;
+  
+  // Tracking
+  createdAt: number;
+  lastScraped: number;
+  totalUrlsScraped: number;
+}
 
 interface TopicModalProps {
   isOpen: boolean;
@@ -17,263 +46,89 @@ const generateId = () => {
   return 'topic_' + Math.random().toString(36).substr(2, 9);
 };
 
-// Helper function to generate custom prompt
-const generateCustomPrompt = (name: string, description: string) => {
-  if (!name && !description) return '';
-  return `Extract information from the webpage about ${name}. ${description}`;
-};
-
 export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, onSave }) => {
-  const [formData, setFormData] = useState<Partial<CreateTopicRequest>>({
+  const [formData, setFormData] = useState<Partial<ScrapingTopic>>({
     id: topic?.id || generateId(),
     name: topic?.name || '',
     description: topic?.description || '',
-    urlPatterns: topic?.urlPatterns || [''],
     status: topic?.status || 'active',
-    extractionRules: {
-      fields: [{
-        name: '',
-        fieldType: 'text',
-        required: true,
-        aiPrompt: ''
-      }],
-      customPrompt: ''
-    },
-    aiConfig: {
-      apiKey: "",
-      model: "gpt-3.5-turbo",
-      costLimits: {
-        maxDailyCost: 1.0,
-        maxMonthlyCost: 10.0,
-        maxConcurrent: 5
-      }
-    },
-    scrapingInterval: 3600,
-    activeHours: {
-      start: 0,
-      end: 24
-    },
-    maxRetries: 3,
-    // New fields for URL generation
-    articleUrlPatterns: topic?.articleUrlPatterns || [''],
-    siteTypeClassification: topic?.siteTypeClassification || 'blog',
-    contentIdentifiers: topic?.contentIdentifiers || {
-      selectors: [''],
-      keywords: ['']
-    },
-    paginationPatterns: topic?.paginationPatterns || [''],
-    sampleArticleUrls: topic?.sampleArticleUrls || [''],
-    urlGenerationStrategy: topic?.urlGenerationStrategy || 'pattern_based',
-    excludePatterns: topic?.excludePatterns || [''],
-        geolocationFilter: topic?.geolocationFilter || '',
-        percentageNodes: topic?.percentageNodes || 0,
-        randomizationMode: topic?.randomizationMode || 'none'
+    
+    // Search Configuration
+    searchQueries: topic?.searchQueries || [''],
+    preferredDomains: topic?.preferredDomains || [''],
+    excludeDomains: topic?.excludeDomains || [''],
+    requiredKeywords: topic?.requiredKeywords || [''],
+    excludeKeywords: topic?.excludeKeywords || [''],
+    
+    // Extraction Configuration
+    contentSelectors: topic?.contentSelectors || ['article', 'main', '.content', '#content'],
+    titleSelectors: topic?.titleSelectors || ['h1', 'title', '.title'],
+    excludeSelectors: topic?.excludeSelectors || ['nav', 'footer', 'header', '.sidebar', '.ads'],
+    minContentLength: topic?.minContentLength || 100,
+    maxContentLength: topic?.maxContentLength || 50000,
+    
+    // Operational Settings
+    maxUrlsPerBatch: topic?.maxUrlsPerBatch || 10,
+    scrapingInterval: topic?.scrapingInterval || 3600,
+    priority: topic?.priority || 5,
+    
+    // Tracking
+    createdAt: topic?.createdAt || Date.now(),
+    lastScraped: topic?.lastScraped || 0,
+    totalUrlsScraped: topic?.totalUrlsScraped || 0,
   });
+  
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [showTestRules, setShowTestRules] = useState(false);
 
   useEffect(() => {
     if (topic) {
-      console.log('Topic data received:', JSON.stringify(topic, null, 2));
-      console.log('siteTypeClassification:', topic.siteTypeClassification);
-      console.log('contentIdentifiers:', topic.contentIdentifiers);
-      
-      // Handle contentIdentifiers that might be an array or an object
-      let contentIdentifiersObj = { selectors: [''], keywords: [''] };
-      
-      if (topic.contentIdentifiers) {
-        if (Array.isArray(topic.contentIdentifiers) && topic.contentIdentifiers.length > 0) {
-          // If it's an array (from backend), take the first item
-          contentIdentifiersObj = {
-            selectors: topic.contentIdentifiers[0]?.selectors || [''],
-            keywords: topic.contentIdentifiers[0]?.keywords || ['']
-          };
-        } else if (typeof topic.contentIdentifiers === 'object') {
-          // If it's already an object
-          contentIdentifiersObj = {
-            selectors: topic.contentIdentifiers.selectors || [''],
-            keywords: topic.contentIdentifiers.keywords || ['']
-          };
-        }
-      }
-      
-      console.log('Normalized contentIdentifiers:', contentIdentifiersObj);
-      
-      // Ensure paginationPatterns is properly structured
-      let paginationPatterns = [''];
-      
-      if (topic.paginationPatterns) {
-        if (Array.isArray(topic.paginationPatterns)) {
-          if (topic.paginationPatterns.length > 0) {
-            if (Array.isArray(topic.paginationPatterns[0])) {
-              // If it's a nested array (from backend), flatten it
-              paginationPatterns = topic.paginationPatterns.flat();
-            } else {
-              // If it's already a flat array
-              paginationPatterns = topic.paginationPatterns;
-            }
-          }
-        }
-      }
-      
-      console.log('Normalized paginationPatterns:', paginationPatterns);
-      
-      // Ensure excludePatterns is properly structured
-      let excludePatterns = [''];
-      
-      if (topic.excludePatterns) {
-        if (Array.isArray(topic.excludePatterns)) {
-          if (topic.excludePatterns.length > 0) {
-            if (Array.isArray(topic.excludePatterns[0])) {
-              // If it's a nested array (from backend), flatten it
-              excludePatterns = topic.excludePatterns.flat();
-            } else {
-              // If it's already a flat array
-              excludePatterns = topic.excludePatterns;
-            }
-          }
-        }
-      }
-      
-      console.log('Normalized excludePatterns:', excludePatterns);
-      
-      // Ensure articleUrlPatterns is properly structured
-      const articleUrlPatterns = Array.isArray(topic.articleUrlPatterns) ? topic.articleUrlPatterns : [''];
-      
-      // Ensure extractionRules fields are properly structured
-      const extractionRulesFields = Array.isArray(topic.extractionRules?.fields) 
-        ? topic.extractionRules.fields.map(field => ({
-            ...field,
-            aiPrompt: field.aiPrompt || ''
-          }))
-        : [{
-            name: '',
-            fieldType: 'text',
-            required: true,
-            aiPrompt: ''
-          }];
-      
-      setFormData({
-        id: topic.id,
-        name: topic.name,
-        description: topic.description,
-        urlPatterns: topic.urlPatterns || [''],
-        status: topic.status || 'active',
-        extractionRules: {
-          fields: extractionRulesFields,
-          customPrompt: topic.extractionRules?.customPrompt || ''
-        },
-        aiConfig: topic.aiConfig || {
-          apiKey: "",
-          model: "gpt-3.5-turbo",
-          costLimits: {
-            maxDailyCost: 1.0,
-            maxMonthlyCost: 10.0,
-            maxConcurrent: 5
-          }
-        },
-        scrapingInterval: topic.scrapingInterval || 3600,
-        activeHours: topic.activeHours || {
-          start: 0,
-          end: 24
-        },
-        maxRetries: topic.maxRetries || 3,
-        articleUrlPatterns: articleUrlPatterns,
-        siteTypeClassification: topic.siteTypeClassification || 'blog',
-        contentIdentifiers: contentIdentifiersObj,
-        paginationPatterns: paginationPatterns,
-        sampleArticleUrls: topic.sampleArticleUrls || [''],
-        urlGenerationStrategy: topic.urlGenerationStrategy || 'pattern_based',
-        excludePatterns: excludePatterns,
-        geolocationFilter: topic.geolocationFilter || '',
-        percentageNodes: topic.percentageNodes || 0,
-        randomizationMode: topic.randomizationMode || 'none'
-      });
+      setFormData(topic);
     } else {
+      // Reset to defaults for new topic
       setFormData({
         id: generateId(),
         name: '',
         description: '',
-        urlPatterns: [''],
         status: 'active',
-        extractionRules: {
-          fields: [{
-            name: '',
-            fieldType: 'text',
-            required: true,
-            aiPrompt: ''
-          }],
-          customPrompt: ''
-        },
-        aiConfig: {
-          apiKey: "",
-          model: "gpt-3.5-turbo",
-          costLimits: {
-            maxDailyCost: 1.0,
-            maxMonthlyCost: 10.0,
-            maxConcurrent: 5
-          }
-        },
+        searchQueries: [''],
+        preferredDomains: [''],
+        excludeDomains: [''],
+        requiredKeywords: [''],
+        excludeKeywords: [''],
+        contentSelectors: ['article', 'main', '.content', '#content'],
+        titleSelectors: ['h1', 'title', '.title'],
+        excludeSelectors: ['nav', 'footer', 'header', '.sidebar', '.ads'],
+        minContentLength: 100,
+        maxContentLength: 50000,
+        maxUrlsPerBatch: 10,
         scrapingInterval: 3600,
-        activeHours: {
-          start: 0,
-          end: 24
-        },
-        maxRetries: 3,
-        articleUrlPatterns: [''],
-        siteTypeClassification: 'blog',
-        contentIdentifiers: {
-          selectors: [''],
-          keywords: ['']
-        },
-        paginationPatterns: [''],
-        sampleArticleUrls: [''],
-        urlGenerationStrategy: 'pattern_based',
-        excludePatterns: ['']
+        priority: 5,
+        createdAt: Date.now(),
+        lastScraped: 0,
+        totalUrlsScraped: 0,
       });
     }
     setError(null);
   }, [topic, isOpen]);
 
-  useEffect(() => {
-    if (!topic && (formData.name || formData.description)) {
-      setFormData(prev => ({
-        ...prev,
-        extractionRules: {
-          ...prev.extractionRules!,
-          customPrompt: generateCustomPrompt(formData.name || '', formData.description || '')
-        }
-      }));
-    }
-  }, [formData.name, formData.description, topic]);
+  const handleArrayFieldChange = (fieldName: keyof ScrapingTopic, index: number, value: string) => {
+    const field = formData[fieldName] as string[];
+    const updated = [...field];
+    updated[index] = value;
+    setFormData({ ...formData, [fieldName]: updated });
+  };
 
-  const handleFieldChange = (index: number, field: Partial<ExtractionField>) => {
-    const updatedFields = [...(formData.extractionRules?.fields || [])];
-    console.log('Field before update:', JSON.stringify(field, null, 2));
-    
-    // Create the updated field
-    const updatedField = {
-      ...updatedFields[index],
-      ...field,
-      // Handle aiPrompt as string only if it's a non-empty string
-      ...(field.aiPrompt !== undefined && {
-        aiPrompt: typeof field.aiPrompt === 'string' && field.aiPrompt.length > 0 
-          ? field.aiPrompt 
-          : undefined
-      })
-    };
-    
-    updatedFields[index] = updatedField;
-    console.log('Updated field:', JSON.stringify(updatedField, null, 2));
-    
-    setFormData({
-      ...formData,
-      extractionRules: {
-        ...formData.extractionRules,
-        fields: updatedFields,
-      },
-    });
+  const addArrayField = (fieldName: keyof ScrapingTopic) => {
+    const field = formData[fieldName] as string[];
+    setFormData({ ...formData, [fieldName]: [...field, ''] });
+  };
+
+  const removeArrayField = (fieldName: keyof ScrapingTopic, index: number) => {
+    const field = formData[fieldName] as string[];
+    if (field.length > 1) {
+      setFormData({ ...formData, [fieldName]: field.filter((_, i) => i !== index) });
+    }
   };
 
   const handleSave = async () => {
@@ -282,99 +137,43 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
       return;
     }
 
-    if (!formData.urlPatterns?.some(pattern => pattern.trim())) {
-      setError('At least one URL pattern is required');
+    if (!formData.searchQueries?.some(q => q.trim())) {
+      setError('At least one search query is required');
       return;
     }
 
-    if (!formData.extractionRules?.fields?.length) {
-      setError('At least one extraction field is required');
+    if (!formData.contentSelectors?.some(s => s.trim())) {
+      setError('At least one content selector is required');
       return;
     }
 
     setSaving(true);
     try {
-      // Normalize the extraction rules before saving
-      const normalizedFields = formData.extractionRules.fields.map(field => {
-        // Ensure aiPrompt is a single string or undefined
-        let aiPrompt = field.aiPrompt;
-        if (Array.isArray(aiPrompt)) {
-          aiPrompt = aiPrompt[0];
-          if (Array.isArray(aiPrompt)) {
-            aiPrompt = aiPrompt[0];
-          }
-        }
-
-        return {
-          ...field,
-          aiPrompt: typeof aiPrompt === 'string' && aiPrompt.trim() 
-            ? aiPrompt.trim() 
-            : undefined
-        };
-      });
-
-      // Normalize customPrompt
-      let customPrompt = formData.extractionRules.customPrompt;
-      if (Array.isArray(customPrompt)) {
-        customPrompt = customPrompt[0];
-        if (Array.isArray(customPrompt)) {
-          customPrompt = customPrompt[0];
-        }
-      }
-
-      // Ensure arrays are properly wrapped for backend format
-      // Backend expects arrays of arrays for these fields
-      const wrappedExcludePatterns = formData.excludePatterns && formData.excludePatterns.length > 0
-        ? [formData.excludePatterns.filter(p => p.trim() !== '')]
-        : undefined;
-      
-      const wrappedArticleUrlPatterns = formData.articleUrlPatterns && formData.articleUrlPatterns.length > 0
-        ? [formData.articleUrlPatterns.filter(p => p.trim() !== '')]
-        : undefined;
-      
-      const wrappedPaginationPatterns = formData.paginationPatterns && formData.paginationPatterns.length > 0
-        ? [formData.paginationPatterns.filter(p => p.trim() !== '')]
-        : undefined;
-      
-      console.log('Wrapped excludePatterns for backend:', wrappedExcludePatterns);
-      console.log('Wrapped articleUrlPatterns for backend:', wrappedArticleUrlPatterns);
-      console.log('Wrapped paginationPatterns for backend:', wrappedPaginationPatterns);
-
-      const newTopic: ScrapingTopic = {
+      // Clean up empty strings from arrays
+      const cleanedTopic: ScrapingTopic = {
         id: formData.id!,
         name: formData.name!,
         description: formData.description || '',
-        urlPatterns: formData.urlPatterns!,
         status: formData.status!,
-        extractionRules: {
-          ...formData.extractionRules!,
-          fields: normalizedFields,
-          customPrompt: typeof customPrompt === 'string' && customPrompt.trim()
-            ? customPrompt.trim()
-            : undefined
-        },
-        aiConfig: formData.aiConfig,
-        scrapingInterval: formData.scrapingInterval,
-        activeHours: formData.activeHours,
-        maxRetries: formData.maxRetries,
-        articleUrlPatterns: wrappedArticleUrlPatterns,
-        siteTypeClassification: formData.siteTypeClassification,
-        // Format contentIdentifiers as an optional record by wrapping it in an array
-        // Use the actual values from the form data
-        contentIdentifiers: [{
-          selectors: formData.contentIdentifiers?.selectors?.filter(s => typeof s === 'string' && s.trim() !== '') || [],
-          keywords: formData.contentIdentifiers?.keywords?.filter(k => typeof k === 'string' && k.trim() !== '') || []
-        }],
-        paginationPatterns: wrappedPaginationPatterns,
-        sampleArticleUrls: formData.sampleArticleUrls,
-        urlGenerationStrategy: formData.urlGenerationStrategy,
-        excludePatterns: wrappedExcludePatterns,
-        geolocationFilter: formData.geolocationFilter,
-        percentageNodes: formData.percentageNodes,
-        randomizationMode: formData.randomizationMode,
+        searchQueries: formData.searchQueries!.filter(q => q.trim()),
+        preferredDomains: formData.preferredDomains?.filter(d => d.trim()) || undefined,
+        excludeDomains: formData.excludeDomains?.filter(d => d.trim()) || undefined,
+        requiredKeywords: formData.requiredKeywords!.filter(k => k.trim()),
+        excludeKeywords: formData.excludeKeywords?.filter(k => k.trim()) || undefined,
+        contentSelectors: formData.contentSelectors!.filter(s => s.trim()),
+        titleSelectors: formData.titleSelectors?.filter(s => s.trim()) || undefined,
+        excludeSelectors: formData.excludeSelectors!.filter(s => s.trim()),
+        minContentLength: formData.minContentLength!,
+        maxContentLength: formData.maxContentLength!,
+        maxUrlsPerBatch: formData.maxUrlsPerBatch!,
+        scrapingInterval: formData.scrapingInterval!,
+        priority: formData.priority!,
+        createdAt: formData.createdAt!,
+        lastScraped: formData.lastScraped!,
+        totalUrlsScraped: formData.totalUrlsScraped!,
       };
 
-      await onSave?.(newTopic);
+      await onSave?.(cleanedTopic);
       onClose();
     } catch (err) {
       console.error('Error saving topic:', err);
@@ -389,10 +188,10 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
       <div className="flex items-center justify-center min-h-screen p-4">
         <Dialog.Overlay className="fixed inset-0 bg-black opacity-30" />
         
-        <div className="relative bg-[#1C1B23] rounded-lg w-full max-w-2xl p-6 text-white">
+        <div className="relative bg-[#1C1B23] rounded-lg w-full max-w-4xl p-6 text-white max-h-[90vh] overflow-y-auto">
           <div className="flex justify-between items-center mb-6">
             <Dialog.Title className="text-lg font-medium">
-              {topic ? 'Edit Topic' : 'New Topic'}
+              {topic ? 'Edit Topic' : 'New Search Topic'}
             </Dialog.Title>
             <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
               <XMarkIcon className="h-6 w-6" />
@@ -400,15 +199,29 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
           </div>
 
           <div className="space-y-6">
-            <div>
-              <label className="block text-xs text-gray-400 mb-1">Name</label>
-              <input
-                type="text"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
-                placeholder="Topic name"
-              />
+            {/* Basic Information */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Name</label>
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
+                  placeholder="e.g., DePIN Infrastructure News"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Status</label>
+                <select
+                  value={formData.status}
+                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                  className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
+                >
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
             </div>
 
             <div>
@@ -416,289 +229,169 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
               <textarea
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                rows={3}
+                rows={2}
                 className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
-                placeholder="Topic description"
+                placeholder="Describe what content this topic should find"
               />
             </div>
 
-            {/* URL Patterns */}
-            <div>
-              <div className="flex justify-between items-center mb-4">
-                <label className="block text-xs text-gray-400">URL Patterns</label>
-                <button
-                  onClick={() => {
-                    setFormData({
-                      ...formData,
-                      urlPatterns: [...formData.urlPatterns!, '']
-                    });
-                  }}
-                  className="text-[#B692F6] hover:text-white transition-colors text-xs"
-                >
-                  Add URL Pattern
-                </button>
+            {/* Search Configuration */}
+            <div className="border-t border-[#2C2B33] pt-4">
+              <h3 className="text-md font-medium mb-4 text-[#B692F6]">Search Configuration</h3>
+              
+              {/* Search Queries */}
+              <div className="mb-4">
+                <div className="flex justify-between items-center mb-2">
+                  <label className="block text-xs text-gray-400">Search Queries</label>
+                  <button
+                    onClick={() => addArrayField('searchQueries')}
+                    className="text-[#B692F6] hover:text-white transition-colors text-xs"
+                  >
+                    + Add Query
+                  </button>
+                </div>
+                {formData.searchQueries?.map((query, index) => (
+                  <div key={index} className="flex items-center gap-2 mb-2">
+                    <input
+                      type="text"
+                      value={query}
+                      onChange={(e) => handleArrayFieldChange('searchQueries', index, e.target.value)}
+                      className="flex-1 bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
+                      placeholder="e.g., DePIN infrastructure blockchain"
+                    />
+                    {formData.searchQueries!.length > 1 && (
+                      <button
+                        onClick={() => removeArrayField('searchQueries', index)}
+                        className="text-red-400 hover:text-red-300"
+                      >
+                        <XMarkIcon className="h-5 w-5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
               </div>
-              {formData.urlPatterns?.map((pattern, index) => (
-                <div key={index} className="flex items-center gap-2 mb-2">
-                  <input
-                    type="text"
-                    value={pattern}
-                    onChange={(e) => {
-                      const newPatterns = [...formData.urlPatterns!];
-                      newPatterns[index] = e.target.value;
-                      setFormData({
-                        ...formData,
-                        urlPatterns: newPatterns
-                      });
-                    }}
-                    className="flex-1 bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
-                    placeholder="e.g., https://example.com/products/*"
-                  />
-                  {formData.urlPatterns!.length > 1 && (
+
+              {/* Preferred Domains */}
+              <div className="mb-4">
+                <div className="flex justify-between items-center mb-2">
+                  <label className="block text-xs text-gray-400">Preferred Domains (Optional)</label>
+                  <button
+                    onClick={() => addArrayField('preferredDomains')}
+                    className="text-[#B692F6] hover:text-white transition-colors text-xs"
+                  >
+                    + Add Domain
+                  </button>
+                </div>
+                {formData.preferredDomains?.map((domain, index) => (
+                  <div key={index} className="flex items-center gap-2 mb-2">
+                    <input
+                      type="text"
+                      value={domain}
+                      onChange={(e) => handleArrayFieldChange('preferredDomains', index, e.target.value)}
+                      className="flex-1 bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
+                      placeholder="e.g., techcrunch.com, coindesk.com"
+                    />
                     <button
-                      onClick={() => {
-                        const newPatterns = formData.urlPatterns!.filter((_, i) => i !== index);
-                        setFormData({
-                          ...formData,
-                          urlPatterns: newPatterns
-                        });
-                      }}
-                      className="text-red-400 hover:text-red-300 transition-colors"
+                      onClick={() => removeArrayField('preferredDomains', index)}
+                      className="text-red-400 hover:text-red-300"
                     >
                       <XMarkIcon className="h-5 w-5" />
                     </button>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {/* Extraction Rules */}
-            <div>
-              <div className="flex justify-between items-center mb-4">
-                <label className="block text-xs text-gray-400">Extraction Fields</label>
-                <div className="flex items-center gap-4">
-                  <button
-                    onClick={() => setShowTestRules(true)}
-                    className="text-[#B692F6] hover:text-white transition-colors text-xs"
-                  >
-                    Test Rules
-                  </button>
-                  <button
-                    onClick={() => {
-                      setFormData({
-                        ...formData,
-                        extractionRules: {
-                          ...formData.extractionRules!,
-                          fields: [...formData.extractionRules!.fields, { name: '', fieldType: 'text', required: true, aiPrompt: '' }],
-                        },
-                      });
-                    }}
-                    className="text-[#B692F6] hover:text-white transition-colors text-xs"
-                  >
-                    Add Field
-                  </button>
-                </div>
+                  </div>
+                ))}
               </div>
-              {formData.extractionRules?.fields.map((field, index) => (
-                <div key={index} className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1">
-                      <label className="block text-xs text-gray-400 mb-1">Field Name</label>
-                      <input
-                        type="text"
-                        value={field.name}
-                        onChange={(e) => handleFieldChange(index, { name: e.target.value })}
-                        className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
-                        placeholder="e.g., price"
-                      />
-                    </div>
-                    <div className="flex-1">
-                      <label className="block text-xs text-gray-400 mb-1">Field Type</label>
-                      <select
-                        value={field.fieldType}
-                        onChange={(e) => handleFieldChange(index, { fieldType: e.target.value })}
-                        className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
-                      >
-                        <option value="text">Text</option>
-                        <option value="number">Number</option>
-                        <option value="date">Date</option>
-                        <option value="url">URL</option>
-                      </select>
-                    </div>
-                    <div className="flex items-center gap-2 pt-6">
-                      <input
-                        type="checkbox"
-                        checked={field.required}
-                        onChange={(e) => handleFieldChange(index, { required: e.target.checked })}
-                        className="bg-[#131217] border border-[#2C2B33] rounded text-[#B692F6] focus:ring-[#B692F6]"
-                      />
-                      <label className="text-xs text-gray-400">Required</label>
-                    </div>
-                    {formData.extractionRules!.fields.length > 1 && (
+
+              {/* Required Keywords */}
+              <div className="mb-4">
+                <div className="flex justify-between items-center mb-2">
+                  <label className="block text-xs text-gray-400">Required Keywords</label>
+                  <button
+                    onClick={() => addArrayField('requiredKeywords')}
+                    className="text-[#B692F6] hover:text-white transition-colors text-xs"
+                  >
+                    + Add Keyword
+                  </button>
+                </div>
+                {formData.requiredKeywords?.map((keyword, index) => (
+                  <div key={index} className="flex items-center gap-2 mb-2">
+                    <input
+                      type="text"
+                      value={keyword}
+                      onChange={(e) => handleArrayFieldChange('requiredKeywords', index, e.target.value)}
+                      className="flex-1 bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
+                      placeholder="e.g., blockchain, infrastructure"
+                    />
+                    {formData.requiredKeywords!.length > 1 && (
                       <button
-                        onClick={() => {
-                          const newFields = formData.extractionRules!.fields.filter((_, i) => i !== index);
-                          setFormData({
-                            ...formData,
-                            extractionRules: {
-                              ...formData.extractionRules!,
-                              fields: newFields
-                            }
-                          });
-                        }}
-                        className="text-red-400 hover:text-red-300 transition-colors pt-6"
+                        onClick={() => removeArrayField('requiredKeywords', index)}
+                        className="text-red-400 hover:text-red-300"
                       >
                         <XMarkIcon className="h-5 w-5" />
                       </button>
                     )}
                   </div>
-                  <div>
-                    <label className="block text-xs text-gray-400 mb-1">AI Prompt</label>
+                ))}
+              </div>
+
+              {/* Exclude Keywords */}
+              <div className="mb-4">
+                <div className="flex justify-between items-center mb-2">
+                  <label className="block text-xs text-gray-400">Exclude Keywords (Optional)</label>
+                  <button
+                    onClick={() => addArrayField('excludeKeywords')}
+                    className="text-[#B692F6] hover:text-white transition-colors text-xs"
+                  >
+                    + Add Keyword
+                  </button>
+                </div>
+                {formData.excludeKeywords?.map((keyword, index) => (
+                  <div key={index} className="flex items-center gap-2 mb-2">
                     <input
                       type="text"
-                      value={field.aiPrompt || ''}
-                      onChange={(e) => handleFieldChange(index, { aiPrompt: e.target.value })}
-                      className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
-                      placeholder="Custom AI prompt for this field"
+                      value={keyword}
+                      onChange={(e) => handleArrayFieldChange('excludeKeywords', index, e.target.value)}
+                      className="flex-1 bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
+                      placeholder="e.g., scam, hack, rug pull"
                     />
+                    <button
+                      onClick={() => removeArrayField('excludeKeywords', index)}
+                      className="text-red-400 hover:text-red-300"
+                    >
+                      <XMarkIcon className="h-5 w-5" />
+                    </button>
                   </div>
-                </div>
-              ))}
-              <button
-                onClick={() => {
-                  setFormData({
-                    ...formData,
-                    extractionRules: {
-                      ...formData.extractionRules!,
-                      fields: [
-                        ...formData.extractionRules!.fields,
-                        {
-                          name: '',
-                          fieldType: 'text',
-                          required: true,
-                          aiPrompt: ''
-                        }
-                      ]
-                    }
-                  });
-                }}
-                className="text-[#B692F6] hover:text-white transition-colors text-xs"
-              >
-                Add Field
-              </button>
+                ))}
+              </div>
             </div>
 
-            {/* Custom AI Prompt */}
-            <div className="mt-4">
-              <label className="block text-xs text-gray-400 mb-1">Custom AI Prompt</label>
-              <textarea
-                value={formData.extractionRules?.customPrompt}
-                onChange={(e) => {
-                  setFormData({
-                    ...formData,
-                    extractionRules: {
-                      ...formData.extractionRules!,
-                      customPrompt: e.target.value,
-                    },
-                  });
-                }}
-                rows={3}
-                className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white text-sm"
-                placeholder="Custom prompt for AI extraction"
-              />
-            </div>
-
-            {/* URL Generation Section */}
-            <div className="mt-6 pt-6 border-t border-[#2C2B33]">
-              <h3 className="text-md font-medium mb-4">URL Generation Settings</h3>
+            {/* Extraction Configuration */}
+            <div className="border-t border-[#2C2B33] pt-4">
+              <h3 className="text-md font-medium mb-4 text-[#B692F6]">Extraction Configuration</h3>
               
-              {/* Site Type Classification */}
-              <div className="mb-4">
-                <label className="block text-xs text-gray-400 mb-1">
-                  <span className="font-bold">Site Type Classification</span>
-                </label>
-                <div className="flex items-center">
-                  <select
-                    value={formData.siteTypeClassification || 'blog'}
-                    onChange={(e) => {
-                      console.log('Setting site type to:', e.target.value);
-                      setFormData({ ...formData, siteTypeClassification: e.target.value });
-                    }}
-                    className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
-                  >
-                    <option value="blog">Blog</option>
-                    <option value="news">News</option>
-                    <option value="ecommerce">E-commerce</option>
-                    <option value="forum">Forum</option>
-                    <option value="documentation">Documentation</option>
-                    <option value="social_media">Social Media</option>
-                    <option value="government">Government</option>
-                    <option value="academic">Academic</option>
-                    <option value="other">Other</option>
-                  </select>
-                </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  This classification helps determine how to extract content from the site.
-                </p>
-              </div>
-
-              {/* URL Generation Strategy */}
-              <div className="mb-4">
-                <label className="block text-xs text-gray-400 mb-1">URL Generation Strategy</label>
-                <select
-                  value={formData.urlGenerationStrategy}
-                  onChange={(e) => setFormData({ ...formData, urlGenerationStrategy: e.target.value })}
-                  className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
-                >
-                  <option value="pattern_based">Pattern Based</option>
-                  <option value="sitemap">Sitemap</option>
-                  <option value="homepage_links">Homepage Links</option>
-                  <option value="rss_feed">RSS Feed</option>
-                </select>
-              </div>
-
-              {/* Article URL Patterns */}
+              {/* Content Selectors */}
               <div className="mb-4">
                 <div className="flex justify-between items-center mb-2">
-                  <label className="block text-xs text-gray-400">Article URL Patterns</label>
+                  <label className="block text-xs text-gray-400">Content CSS Selectors</label>
                   <button
-                    onClick={() => {
-                      setFormData({
-                        ...formData,
-                        articleUrlPatterns: [...formData.articleUrlPatterns!, '']
-                      });
-                    }}
+                    onClick={() => addArrayField('contentSelectors')}
                     className="text-[#B692F6] hover:text-white transition-colors text-xs"
                   >
-                    Add Pattern
+                    + Add Selector
                   </button>
                 </div>
-                {formData.articleUrlPatterns?.map((pattern, index) => (
+                {formData.contentSelectors?.map((selector, index) => (
                   <div key={index} className="flex items-center gap-2 mb-2">
                     <input
                       type="text"
-                      value={pattern}
-                      onChange={(e) => {
-                        const newPatterns = [...formData.articleUrlPatterns!];
-                        newPatterns[index] = e.target.value;
-                        setFormData({
-                          ...formData,
-                          articleUrlPatterns: newPatterns
-                        });
-                      }}
-                      className="flex-1 bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
-                      placeholder="e.g., /posts/*, /article/*, /blog/*"
+                      value={selector}
+                      onChange={(e) => handleArrayFieldChange('contentSelectors', index, e.target.value)}
+                      className="flex-1 bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white font-mono text-sm"
+                      placeholder="e.g., article, main, .content"
                     />
-                    {formData.articleUrlPatterns!.length > 1 && (
+                    {formData.contentSelectors!.length > 1 && (
                       <button
-                        onClick={() => {
-                          const newPatterns = formData.articleUrlPatterns!.filter((_, i) => i !== index);
-                          setFormData({
-                            ...formData,
-                            articleUrlPatterns: newPatterns
-                          });
-                        }}
-                        className="text-red-400 hover:text-red-300 transition-colors"
+                        onClick={() => removeArrayField('contentSelectors', index)}
+                        className="text-red-400 hover:text-red-300"
                       >
                         <XMarkIcon className="h-5 w-5" />
                       </button>
@@ -707,321 +400,100 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
                 ))}
               </div>
 
-              {/* Content Identifiers */}
+              {/* Exclude Selectors */}
               <div className="mb-4">
-                <label className="block text-xs text-gray-400 mb-2">Content Identifiers</label>
-                
-                {/* Selectors */}
-                <div className="mb-2">
-                  <label className="block text-xs text-gray-400 mb-1">CSS Selectors</label>
-                  <div className="flex flex-wrap gap-2">
-                    {(formData.contentIdentifiers?.selectors || []).map((selector, index) => (
-                      <div key={index} className="flex items-center gap-1 bg-[#2C2B33] rounded-lg px-2 py-1">
-                        <input
-                          type="text"
-                          value={selector}
-                          onChange={(e) => {
-                            const newSelectors = [...(formData.contentIdentifiers?.selectors || [])];
-                            newSelectors[index] = e.target.value;
-                            setFormData({
-                              ...formData,
-                              contentIdentifiers: {
-                                ...(formData.contentIdentifiers || { selectors: [], keywords: [] }),
-                                selectors: newSelectors
-                              }
-                            });
-                          }}
-                          className="bg-transparent border-none text-white text-sm w-24 focus:outline-none"
-                          placeholder="e.g., article"
-                        />
-                        <button
-                          onClick={() => {
-                            const newSelectors = (formData.contentIdentifiers?.selectors || []).filter((_, i) => i !== index);
-                            setFormData({
-                              ...formData,
-                              contentIdentifiers: {
-                                ...(formData.contentIdentifiers || { selectors: [], keywords: [] }),
-                                selectors: newSelectors
-                              }
-                            });
-                          }}
-                          className="text-red-400 hover:text-red-300 transition-colors"
-                        >
-                          <XMarkIcon className="h-4 w-4" />
-                        </button>
-                      </div>
-                    ))}
-                    <button
-                      onClick={() => {
-                        setFormData({
-                          ...formData,
-                          contentIdentifiers: {
-                            ...(formData.contentIdentifiers || { selectors: [], keywords: [] }),
-                            selectors: [...(formData.contentIdentifiers?.selectors || []), '']
-                          }
-                        });
-                      }}
-                      className="text-[#B692F6] hover:text-white transition-colors text-xs"
-                    >
-                      + Add
-                    </button>
-                  </div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="block text-xs text-gray-400">Exclude CSS Selectors</label>
+                  <button
+                    onClick={() => addArrayField('excludeSelectors')}
+                    className="text-[#B692F6] hover:text-white transition-colors text-xs"
+                  >
+                    + Add Selector
+                  </button>
                 </div>
-                
-                {/* Keywords */}
+                {formData.excludeSelectors?.map((selector, index) => (
+                  <div key={index} className="flex items-center gap-2 mb-2">
+                    <input
+                      type="text"
+                      value={selector}
+                      onChange={(e) => handleArrayFieldChange('excludeSelectors', index, e.target.value)}
+                      className="flex-1 bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white font-mono text-sm"
+                      placeholder="e.g., nav, .ads, .sidebar"
+                    />
+                    {formData.excludeSelectors!.length > 1 && (
+                      <button
+                        onClick={() => removeArrayField('excludeSelectors', index)}
+                        className="text-red-400 hover:text-red-300"
+                      >
+                        <XMarkIcon className="h-5 w-5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Content Length */}
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs text-gray-400 mb-1">Keywords</label>
-                  <div className="flex flex-wrap gap-2">
-                    {(formData.contentIdentifiers?.keywords || []).map((keyword, index) => (
-                      <div key={index} className="flex items-center gap-1 bg-[#2C2B33] rounded-lg px-2 py-1">
-                        <input
-                          type="text"
-                          value={keyword}
-                          onChange={(e) => {
-                            const newKeywords = [...(formData.contentIdentifiers?.keywords || [])];
-                            newKeywords[index] = e.target.value;
-                            setFormData({
-                              ...formData,
-                              contentIdentifiers: {
-                                ...(formData.contentIdentifiers || { selectors: [], keywords: [] }),
-                                keywords: newKeywords
-                              }
-                            });
-                          }}
-                          className="bg-transparent border-none text-white text-sm w-24 focus:outline-none"
-                          placeholder="e.g., article"
-                        />
-                        <button
-                          onClick={() => {
-                            const newKeywords = (formData.contentIdentifiers?.keywords || []).filter((_, i) => i !== index);
-                            setFormData({
-                              ...formData,
-                              contentIdentifiers: {
-                                ...(formData.contentIdentifiers || { selectors: [], keywords: [] }),
-                                keywords: newKeywords
-                              }
-                            });
-                          }}
-                          className="text-red-400 hover:text-red-300 transition-colors"
-                        >
-                          <XMarkIcon className="h-4 w-4" />
-                        </button>
-                      </div>
-                    ))}
-                    <button
-                      onClick={() => {
-                        setFormData({
-                          ...formData,
-                          contentIdentifiers: {
-                            ...(formData.contentIdentifiers || { selectors: [], keywords: [] }),
-                            keywords: [...(formData.contentIdentifiers?.keywords || []), '']
-                          }
-                        });
-                      }}
-                      className="text-[#B692F6] hover:text-white transition-colors text-xs"
-                    >
-                      + Add
-                    </button>
-                  </div>
+                  <label className="block text-xs text-gray-400 mb-1">Min Content Length</label>
+                  <input
+                    type="number"
+                    value={formData.minContentLength}
+                    onChange={(e) => setFormData({ ...formData, minContentLength: parseInt(e.target.value) || 100 })}
+                    className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
+                    min="0"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Max Content Length</label>
+                  <input
+                    type="number"
+                    value={formData.maxContentLength}
+                    onChange={(e) => setFormData({ ...formData, maxContentLength: parseInt(e.target.value) || 50000 })}
+                    className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
+                    min="0"
+                  />
                 </div>
               </div>
+            </div>
 
-              {/* Exclude Patterns */}
-              <div className="mb-4">
-                <div className="flex justify-between items-center mb-2">
-                  <label className="block text-xs text-gray-400">Exclude Patterns</label>
-                  <button
-                    onClick={() => {
-                      setFormData({
-                        ...formData,
-                        excludePatterns: [...formData.excludePatterns!, '']
-                      });
-                    }}
-                    className="text-[#B692F6] hover:text-white transition-colors text-xs"
-                  >
-                    Add Pattern
-                  </button>
+            {/* Operational Settings */}
+            <div className="border-t border-[#2C2B33] pt-4">
+              <h3 className="text-md font-medium mb-4 text-[#B692F6]">Operational Settings</h3>
+              
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Max URLs per Batch</label>
+                  <input
+                    type="number"
+                    value={formData.maxUrlsPerBatch}
+                    onChange={(e) => setFormData({ ...formData, maxUrlsPerBatch: parseInt(e.target.value) || 10 })}
+                    className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
+                    min="1"
+                    max="50"
+                  />
                 </div>
-                {formData.excludePatterns?.map((pattern, index) => (
-                  <div key={index} className="flex items-center gap-2 mb-2">
-                    <input
-                      type="text"
-                      value={pattern}
-                      onChange={(e) => {
-                        const newPatterns = [...formData.excludePatterns!];
-                        newPatterns[index] = e.target.value;
-                        setFormData({
-                          ...formData,
-                          excludePatterns: newPatterns
-                        });
-                      }}
-                      className="flex-1 bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
-                      placeholder="e.g., /tag/*, /category/*"
-                    />
-                    {formData.excludePatterns!.length > 1 && (
-                      <button
-                        onClick={() => {
-                          const newPatterns = formData.excludePatterns!.filter((_, i) => i !== index);
-                          setFormData({
-                            ...formData,
-                            excludePatterns: newPatterns
-                          });
-                        }}
-                        className="text-red-400 hover:text-red-300 transition-colors"
-                      >
-                        <XMarkIcon className="h-5 w-5" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {/* Pagination Patterns */}
-              <div className="mb-4">
-                <div className="flex justify-between items-center mb-2">
-                  <label className="block text-xs text-gray-400">Pagination Patterns</label>
-                  <button
-                    onClick={() => {
-                      setFormData({
-                        ...formData,
-                        paginationPatterns: [...formData.paginationPatterns!, '']
-                      });
-                    }}
-                    className="text-[#B692F6] hover:text-white transition-colors text-xs"
-                  >
-                    Add Pattern
-                  </button>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Scraping Interval (seconds)</label>
+                  <input
+                    type="number"
+                    value={formData.scrapingInterval}
+                    onChange={(e) => setFormData({ ...formData, scrapingInterval: parseInt(e.target.value) || 3600 })}
+                    className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
+                    min="60"
+                  />
                 </div>
-                {formData.paginationPatterns?.map((pattern, index) => (
-                  <div key={index} className="flex items-center gap-2 mb-2">
-                    <input
-                      type="text"
-                      value={pattern}
-                      onChange={(e) => {
-                        const newPatterns = [...formData.paginationPatterns!];
-                        newPatterns[index] = e.target.value;
-                        setFormData({
-                          ...formData,
-                          paginationPatterns: newPatterns
-                        });
-                      }}
-                      className="flex-1 bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
-                      placeholder="e.g., /page/{num}, ?page={num}"
-                    />
-                    {formData.paginationPatterns!.length > 1 && (
-                      <button
-                        onClick={() => {
-                          const newPatterns = formData.paginationPatterns!.filter((_, i) => i !== index);
-                          setFormData({
-                            ...formData,
-                            paginationPatterns: newPatterns
-                          });
-                        }}
-                        className="text-red-400 hover:text-red-300 transition-colors"
-                      >
-                        <XMarkIcon className="h-5 w-5" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {/* Sample Article URLs */}
-              <div className="mb-4">
-                <div className="flex justify-between items-center mb-2">
-                  <label className="block text-xs text-gray-400">Sample Article URLs</label>
-                  <button
-                    onClick={() => {
-                      setFormData({
-                        ...formData,
-                        sampleArticleUrls: [...formData.sampleArticleUrls!, '']
-                      });
-                    }}
-                    className="text-[#B692F6] hover:text-white transition-colors text-xs"
-                  >
-                    Add URL
-                  </button>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Priority (1-10)</label>
+                  <input
+                    type="number"
+                    value={formData.priority}
+                    onChange={(e) => setFormData({ ...formData, priority: Math.min(10, Math.max(1, parseInt(e.target.value) || 5)) })}
+                    className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
+                    min="1"
+                    max="10"
+                  />
                 </div>
-                {formData.sampleArticleUrls?.map((url, index) => (
-                  <div key={index} className="flex items-center gap-2 mb-2">
-                    <input
-                      type="text"
-                      value={url}
-                      onChange={(e) => {
-                        const newUrls = [...formData.sampleArticleUrls!];
-                        newUrls[index] = e.target.value;
-                        setFormData({
-                          ...formData,
-                          sampleArticleUrls: newUrls
-                        });
-                      }}
-                      className="flex-1 bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
-                      placeholder="e.g., https://example.com/posts/sample-1"
-                    />
-                    {formData.sampleArticleUrls!.length > 1 && (
-                      <button
-                        onClick={() => {
-                          const newUrls = formData.sampleArticleUrls!.filter((_, i) => i !== index);
-                          setFormData({
-                            ...formData,
-                            sampleArticleUrls: newUrls
-                          });
-                        }}
-                        className="text-red-400 hover:text-red-300 transition-colors"
-                      >
-                        <XMarkIcon className="h-5 w-5" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {/* Geolocation Filter */}
-              <div className="mb-4">
-                <label className="block text-xs text-gray-400 mb-1">Geolocation Filter</label>
-                <input
-                  type="text"
-                  value={formData.geolocationFilter}
-                  onChange={(e) => setFormData({ ...formData, geolocationFilter: e.target.value })}
-                  className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
-                  placeholder="e.g., US, Europe, Asia"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Specify a region to filter nodes for this topic (e.g., "US", "Europe").
-                </p>
-              </div>
-
-              {/* Percentage Nodes */}
-              <div className="mb-4">
-                <label className="block text-xs text-gray-400 mb-1">Percentage of Nodes</label>
-                <input
-                  type="number"
-                  value={formData.percentageNodes}
-                  onChange={(e) => setFormData({ ...formData, percentageNodes: parseInt(e.target.value) })}
-                  className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
-                  placeholder="e.g., 50"
-                  min="0"
-                  max="100"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Percentage of available nodes to assign this topic to (0-100).
-                </p>
-              </div>
-
-              {/* Randomization Mode */}
-              <div className="mb-4">
-                <label className="block text-xs text-gray-400 mb-1">Randomization Mode</label>
-                <select
-                  value={formData.randomizationMode}
-                  onChange={(e) => setFormData({ ...formData, randomizationMode: e.target.value })}
-                  className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
-                >
-                  <option value="none">None</option>
-                  <option value="shuffle">Shuffle</option>
-                </select>
-                <p className="text-xs text-gray-500 mt-1">
-                  How to randomize topic assignment among selected nodes.
-                </p>
               </div>
             </div>
 
@@ -1033,7 +505,7 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
             )}
 
             {/* Action Buttons */}
-            <div className="flex justify-end gap-4 mt-6">
+            <div className="flex justify-end gap-4 mt-6 pt-4 border-t border-[#2C2B33]">
               <button
                 onClick={onClose}
                 className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
@@ -1052,13 +524,6 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
           </div>
         </div>
       </div>
-      {showTestRules && (
-        <ExtractionTester
-          isOpen={showTestRules}
-          onClose={() => setShowTestRules(false)}
-          rules={formData.extractionRules!}
-        />
-      )}
     </Dialog>
   );
 };

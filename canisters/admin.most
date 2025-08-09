@@ -1,0 +1,55 @@
+// Version: 1.0.0
+type GlobalAIConfig__646520299 =
+  {
+    apiKey : ?Text;
+    enabled : Bool;
+    features :
+      {
+        categorization : Bool;
+        keywordExtraction : Bool;
+        sentimentAnalysis : Bool;
+        summarization : Bool
+      };
+    maxTokensPerRequest : Nat;
+    model : Text;
+    provider : Text
+  };
+type ScrapingTopic__1059847016 =
+  {
+    contentSelectors : [Text];
+    createdAt : Int;
+    description : Text;
+    excludeDomains : ?[Text];
+    excludeKeywords : ?[Text];
+    excludeSelectors : [Text];
+    id : Text;
+    lastScraped : Int;
+    maxContentLength : Nat;
+    maxUrlsPerBatch : Nat;
+    minContentLength : Nat;
+    name : Text;
+    preferredDomains : ?[Text];
+    priority : Nat;
+    requiredKeywords : [Text];
+    scrapingInterval : Nat;
+    searchQueries : [Text];
+    status : Text;
+    titleSelectors : ?[Text];
+    totalUrlsScraped : Nat
+  };
+type Time__675845290 = Int;
+type UserRole__359493379 = {#Admin; #Operator; #SuperAdmin};
+type User__212829345 =
+  {
+    addedAt : Time__675845290;
+    addedBy : Principal;
+    principal : Principal;
+    role : UserRole__359493379
+  };
+actor {
+  stable var globalAIConfig : ?GlobalAIConfig__646520299;
+  stable var initialized : Bool;
+  stable var stableAdmins : [(Principal, Bool)];
+  stable var stableTopics : [(Text, ScrapingTopic__1059847016)];
+  stable var stableUsers : [(Principal, User__212829345)]
+};

@@ -1,6 +1,6 @@
 {
   "canisters": {
-    "admin": {
+    "admin_frontend": {
       "frontend": {
         "entrypoint": "apps/admin/dist/index.html"
       },
@@ -8,6 +8,10 @@
         "apps/admin/dist/"
       ],
       "type": "assets"
+    },
+    "admin_backend": {
+      "main": "canisters/admin/main.mo",
+      "type": "motoko"
     },
     "storage": {
       "main": "canisters/storage/main.mo",

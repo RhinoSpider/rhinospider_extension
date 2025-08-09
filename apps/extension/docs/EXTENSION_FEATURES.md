@@ -156,7 +156,7 @@ Your Browser → Extension → Consumer Canister → Storage Canister
 ### Canisters (Blockchain Components)
 - **Consumer**: `tgyl5-yyaaa-aaaaj-az4wq-cai` - Handles user data
 - **Storage**: `hhaip-uiaaa-aaaao-a4khq-cai` - Stores scraped data
-- **Admin**: `444wf-gyaaa-aaaaj-az5sq-cai` - Administrative interface
+- **Admin Backend**: `wvset-niaaa-aaaao-a4osa-cai` - Administrative backend API
 
 ### Security
 - All data encrypted in transit
@@ -225,7 +225,7 @@ A: Yes, we only scrape public data following robots.txt and terms of service.
 
 - **GitHub Issues**: https://github.com/RhinoSpider/rhinospider_extension/issues
 - **Documentation**: This file and `/docs` folder
-- **Admin Dashboard**: https://444wf-gyaaa-aaaaj-az5sq-cai.icp0.io/
+- **Admin Dashboard**: https://sxsvc-aqaaa-aaaaj-az4ta-cai.icp0.io/
 
 ## 🚀 Future Features
 

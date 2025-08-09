@@ -92,7 +92,7 @@ actor class Storage() = this {
         false
     };
 
-    private let adminCanisterId: Text = "444wf-gyaaa-aaaaj-az5sq-cai"; // Updated to match the actual admin canister ID
+    private let adminCanisterId: Text = "wvset-niaaa-aaaao-a4osa-cai"; // New admin backend canister
     private let consumerCanisterId: Text = "tgyl5-yyaaa-aaaaj-az4wq-cai"; // Consumer canister ID
     
     // Admin principals

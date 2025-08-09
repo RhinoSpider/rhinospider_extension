@@ -444,10 +444,13 @@ async function initializeExtension() {
         logger.log('Initializing extension');
 
         // Get authentication state and scraping state
-        const { principalId, enabled, isScrapingActive, extensionEnabled } = await chrome.storage.local.get(['principalId', 'enabled', 'isScrapingActive', 'extensionEnabled']);
+        const { principalId, enabled, isScrapingActive, scrapingEnabled } = await chrome.storage.local.get(['principalId', 'enabled', 'isScrapingActive', 'scrapingEnabled']);
 
-        // Handle legacy storage key if it exists
-        const isEnabled = enabled !== false || extensionEnabled === true;
+        // Check if user is authenticated first
+        const isUserAuthenticated = !!principalId;
+        
+        // ONLY enable if user is authenticated AND explicitly enabled
+        const isEnabled = isUserAuthenticated && (scrapingEnabled === true || enabled === true);
 
         // Update badge to reflect current state
         chrome.action.setBadgeText({ text: isEnabled ? 'ON' : 'OFF' });
@@ -457,6 +460,7 @@ async function initializeExtension() {
 
         // Ensure storage has consistent values
         chrome.storage.local.set({
+            scrapingEnabled: isEnabled,
             enabled: isEnabled,
             isScrapingActive: isEnabled // Default to matching enabled state
         });
@@ -473,9 +477,9 @@ async function initializeExtension() {
             logger.log('[AUTH] Initializing topics and config');
             await initializeTopicsAndConfig();
 
-            // Check if extension is enabled
-            const { extensionEnabled, enabled } = await chrome.storage.local.get(['extensionEnabled', 'enabled']);
-            const isEnabled = enabled !== false || extensionEnabled === true;
+            // Check if extension is enabled - DEFAULT TO FALSE
+            const { scrapingEnabled, enabled } = await chrome.storage.local.get(['scrapingEnabled', 'enabled']);
+            const isEnabled = scrapingEnabled === true || enabled === true;
             if (isEnabled) {
                 logger.log('[STATUS] Extension enabled, checking topics');
 
@@ -586,7 +590,7 @@ async function getTopics(forceRefresh = false) {
                 // If API URL is set, use it to fetch topics
                 if (apiUrl) {
                     // Construct topics URL
-                    const topicsUrl = `${apiUrl}/topics`;
+                    const topicsUrl = `${apiUrl}/api/topics`;
                     logger.log(`[TOPICS] API endpoint: ${topicsUrl}`);
 
                     // Fetch topics from API
@@ -1856,11 +1860,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     switch (message.type) {
         case 'GET_SCRAPING_CONFIG':
             // Return the current scraping configuration
-            chrome.storage.local.get(['scrapingEnabled', 'enabled'], (result) => {
+            chrome.storage.local.get(['scrapingEnabled', 'enabled', 'principalId'], (result) => {
+                // Only return enabled as true if user is authenticated AND scraping is enabled
+                const isAuthenticated = !!result.principalId;
+                const isEnabled = isAuthenticated && (result.scrapingEnabled === true || result.enabled === true);
+                
                 sendResponse({ 
                     success: true, 
                     data: { 
-                        enabled: result.scrapingEnabled || false // Default to false
+                        enabled: isEnabled,
+                        maxRequestsPerDay: 1000,
+                        maxBandwidthPerDay: 100 * 1024 * 1024
                     } 
                 });
             });
@@ -1868,19 +1878,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             
         case 'UPDATE_SCRAPING_CONFIG':
             // Update the scraping configuration
-            const newEnabled = message.data?.enabled || false;
-            chrome.storage.local.set({ 
-                scrapingEnabled: newEnabled,
-                enabled: newEnabled,
-                isScrapingActive: newEnabled 
-            }, () => {
-                if (newEnabled) {
-                    startScraping();
-                } else {
-                    stopScraping();
+            (async () => {
+                // Check if user is authenticated first
+                const authResult = await chrome.storage.local.get(['principalId']);
+                const newEnabled = message.data?.enabled || false;
+                
+                if (!authResult.principalId && newEnabled) {
+                    logger.warn('Cannot enable scraping - user not authenticated');
+                    sendResponse({ success: false, error: 'Not authenticated' });
+                    return;
                 }
-                sendResponse({ success: true });
-            });
+                
+                chrome.storage.local.set({ 
+                    scrapingEnabled: newEnabled,
+                    enabled: newEnabled,
+                    isScrapingActive: newEnabled 
+                }, () => {
+                    // Update badge
+                    chrome.action.setBadgeText({ text: newEnabled ? 'ON' : 'OFF' });
+                    chrome.action.setBadgeBackgroundColor({ color: newEnabled ? '#4CAF50' : '#9E9E9E' });
+                    
+                    if (newEnabled) {
+                        startScraping();
+                    } else {
+                        stopScraping();
+                    }
+                    sendResponse({ success: true });
+                });
+            })();
             return true; // Will respond asynchronously
             
         case 'PROXY_REQUEST':
@@ -2881,8 +2906,13 @@ async function initializeOnInstall(details) {
     }
 }
 
-// Initialize the extension on startup
-initializeExtension();
+// Initialize the extension on startup - ALWAYS start with badge OFF
+(async () => {
+    // Set badge to OFF immediately on startup
+    await chrome.action.setBadgeText({ text: 'OFF' });
+    await chrome.action.setBadgeBackgroundColor({ color: '#9E9E9E' });
+    await initializeExtension();
+})();
 
 // Fetch page content for testing
 async function fetchPageContent(url) {

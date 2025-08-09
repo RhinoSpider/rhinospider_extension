@@ -65,37 +65,20 @@ function Settings() {
         <h2 className="text-lg font-semibold">Settings</h2>
 
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="font-medium text-white">Enable RhinoSpider Extension</div>
-              <div className="text-sm text-gray-400">Toggle data scraping on/off</div>
+          <div className="bg-white/5 rounded-lg p-4">
+            <div className="flex items-center mb-2">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mr-2">
+                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+              </svg>
+              <div className="font-medium text-white">Extension Status</div>
             </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={config?.enabled || false}
-                onChange={async () => {
-                  try {
-                    const newState = !config?.enabled;
-                    const response = await chrome.runtime.sendMessage({
-                      type: 'UPDATE_SCRAPING_CONFIG',
-                      data: { enabled: newState }
-                    });
-                    if (response.success) {
-                      setConfig(prev => ({ ...prev, enabled: newState }));
-                      // Also update storage for consistency
-                      chrome.storage.local.set({ 
-                        scrapingEnabled: newState 
-                      });
-                    }
-                  } catch (error) {
-                    console.error('Failed to update config:', error);
-                  }
-                }}
-                className="sr-only peer"
-              />
-              <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
-            </label>
+            <div className="text-sm text-gray-400">
+              {config?.enabled ? (
+                <span className="text-green-400">✓ Extension is active and scraping data</span>
+              ) : (
+                <span className="text-gray-400">Extension is inactive. Use the power button on the home screen to activate.</span>
+              )}
+            </div>
           </div>
 
           <div>

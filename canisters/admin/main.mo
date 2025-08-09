@@ -29,66 +29,51 @@ actor Admin {
         addedAt: Time.Time;
     };
 
-    type ExtractionField = {
-        name: Text;
-        fieldType: Text;
-        required: Bool;
-        aiPrompt: ?Text;
-    };
-
-    type ExtractionRules = {
-        fields: [ExtractionField];
-        customPrompt: ?Text;
-    };
-
-    type CostLimits = {
-        maxDailyCost: Float;
-        maxMonthlyCost: Float;
-        maxConcurrent: Nat;
-    };
-
-    type AIConfig = {
-        apiKey: Text;
-        model: Text;
-        costLimits: CostLimits;
-        temperature: Float;
-        maxTokens: Nat;
-    };
-
-    type ContentIdentifiers = {
-        selectors: [Text];
-        keywords: [Text];
+    // Simplified types for search-based scraping
+    type GlobalAIConfig = {
+        enabled: Bool;
+        provider: Text; // "openai" | "anthropic" | "mock"
+        apiKey: ?Text;
+        model: Text; // "gpt-3.5-turbo" for cheapest
+        maxTokensPerRequest: Nat;
+        features: {
+            summarization: Bool;
+            categorization: Bool;
+            sentimentAnalysis: Bool;
+            keywordExtraction: Bool;
+        };
     };
 
     type ScrapingTopic = {
         id: Text;
         name: Text;
         description: Text;
-        urlPatterns: [Text];
-        status: Text;
-        extractionRules: ExtractionRules;
-        aiConfig: AIConfig;
-        scrapingInterval: Nat;
-        activeHours: {
-            start: Nat;
-            end: Nat;
-        };
-        maxRetries: Nat;
-        articleUrlPatterns: ?[Text];
-        siteTypeClassification: ?Text;
-        contentIdentifiers: ?ContentIdentifiers;
-        paginationPatterns: ?[Text];
-        sampleArticleUrls: ?[Text];
-        urlGenerationStrategy: ?Text;
-        excludePatterns: ?[Text];
-        geolocationFilter: ?Text; // New field
-        percentageNodes: ?Nat; // New field
-        randomizationMode: ?Text; // New field
+        status: Text; // "active" | "inactive"
+        
+        // Search Configuration
+        searchQueries: [Text]; // What to search for
+        preferredDomains: ?[Text]; // Optional preferred domains
+        excludeDomains: ?[Text]; // Domains to never scrape
+        requiredKeywords: [Text]; // Must contain these
+        excludeKeywords: ?[Text]; // Skip if contains these
+        
+        // Extraction Configuration
+        contentSelectors: [Text]; // CSS selectors for content
+        titleSelectors: ?[Text]; // CSS selectors for title
+        excludeSelectors: [Text]; // CSS selectors to exclude
+        minContentLength: Nat; // Minimum content length
+        maxContentLength: Nat; // Maximum content length
+        
+        // Operational Settings
+        maxUrlsPerBatch: Nat; // URLs per search batch
+        scrapingInterval: Nat; // Seconds between scrapes
+        priority: Nat; // 1-10 priority level
+        
+        // Tracking
         createdAt: Int;
         lastScraped: Int;
+        totalUrlsScraped: Nat;
     };
-
-    
 
     type NodeCharacteristics = {
         ipAddress: Text;
@@ -97,7 +82,7 @@ actor Admin {
         randomizationMode: ?Text;
     };
 
-    private stable var registeredNodes : HashMap.HashMap<Principal, NodeCharacteristics> = HashMap.HashMap<Principal, NodeCharacteristics>(0, Principal.equal, Principal.hash);
+    private var registeredNodes : HashMap.HashMap<Principal, NodeCharacteristics> = HashMap.HashMap<Principal, NodeCharacteristics>(0, Principal.equal, Principal.hash);
 
     public shared({ caller }) func registerNode(nodePrincipal: Principal, characteristics: NodeCharacteristics) : async Result.Result<(), Text> {
         if (not _isAuthorized(caller)) {
@@ -145,24 +130,13 @@ actor Admin {
     private stable var stableUsers : [(Principal, User)] = [];
     private stable var stableAdmins : [(Principal, Bool)] = [];
     private stable var stableTopics : [(Text, ScrapingTopic)] = [];
-    private stable var stableAIConfig : ?AIConfig = null;
+    private stable var globalAIConfig : ?GlobalAIConfig = null;
     private stable var initialized : Bool = false;
 
     // Runtime state
     private var users = HashMap.HashMap<Principal, User>(10, Principal.equal, Principal.hash);
     private var admins = HashMap.HashMap<Principal, Bool>(10, Principal.equal, Principal.hash);
     private var topics = HashMap.HashMap<Text, ScrapingTopic>(10, Text.equal, Text.hash);
-    private var aiConfig : AIConfig = {
-        apiKey = ""; // API key should be set via updateAIConfig, not hardcoded
-        model = "gpt-3.5-turbo";
-        costLimits = {
-            maxDailyCost = 10.0;
-            maxMonthlyCost = 100.0;
-            maxConcurrent = 5;
-        };
-        temperature = 0.7;
-        maxTokens = 4000;
-    };
 
     // Canister references
     private let storage: StorageActor = actor(STORAGE_CANISTER_ID);
@@ -178,61 +152,53 @@ actor Admin {
         // Add admin principal 1
         let adminPrincipal1 = Principal.fromText(ADMIN_PRINCIPAL_1);
         admins.put(adminPrincipal1, true);
-        let admin1 : User = {
-            principal = adminPrincipal1;
-            role = #SuperAdmin;
-            addedBy = userPrincipal;
-            addedAt = Time.now();
-        };
-        users.put(adminPrincipal1, admin1);
         
         // Add admin principal 2
         let adminPrincipal2 = Principal.fromText(ADMIN_PRINCIPAL_2);
         admins.put(adminPrincipal2, true);
-        let admin2 : User = {
-            principal = adminPrincipal2;
-            role = #SuperAdmin;
-            addedBy = userPrincipal;
-            addedAt = Time.now();
-        };
-        users.put(adminPrincipal2, admin2);
         
-        // Add the user as a SuperAdmin
-        let user : User = {
+        // Also add to users collection as SuperAdmins
+        users.put(userPrincipal, {
             principal = userPrincipal;
             role = #SuperAdmin;
             addedBy = userPrincipal;
             addedAt = Time.now();
-        };
-        users.put(userPrincipal, user);
+        });
         
-        Debug.print("Added user principal to admins: " # USER_PRINCIPAL_ID);
-        Debug.print("Added admin principal 1: " # ADMIN_PRINCIPAL_1);
-        Debug.print("Added admin principal 2: " # ADMIN_PRINCIPAL_2);
+        users.put(adminPrincipal1, {
+            principal = adminPrincipal1;
+            role = #SuperAdmin;
+            addedBy = adminPrincipal1;
+            addedAt = Time.now();
+        });
+        
+        users.put(adminPrincipal2, {
+            principal = adminPrincipal2;
+            role = #SuperAdmin;
+            addedBy = adminPrincipal2;
+            addedAt = Time.now();
+        });
         
         initialized := true;
+        Debug.print("Admin canister initialized with default admins");
     };
 
-    // Lifecycle hooks
+    // System functions
     system func preupgrade() {
         stableUsers := Iter.toArray(users.entries());
         stableAdmins := Iter.toArray(admins.entries());
         stableTopics := Iter.toArray(topics.entries());
-        stableAIConfig := ?aiConfig;
     };
 
     system func postupgrade() {
-        users := HashMap.fromIter<Principal, User>(stableUsers.vals(), 10, Principal.equal, Principal.hash);
-        admins := HashMap.fromIter<Principal, Bool>(stableAdmins.vals(), 10, Principal.equal, Principal.hash);
-        topics := HashMap.fromIter<Text, ScrapingTopic>(stableTopics.vals(), 10, Text.equal, Text.hash);
+        users := HashMap.fromIter(stableUsers.vals(), stableUsers.size(), Principal.equal, Principal.hash);
+        admins := HashMap.fromIter(stableAdmins.vals(), stableAdmins.size(), Principal.equal, Principal.hash);
+        topics := HashMap.fromIter(stableTopics.vals(), stableTopics.size(), Text.equal, Text.hash);
         
-        switch (stableAIConfig) {
-            case (?config) { aiConfig := config; };
-            case (null) {};
+        // Ensure initialization after upgrade
+        if (not initialized) {
+            initializeAdmin();
         };
-
-        // Always initialize admin on postupgrade
-        initializeAdmin();
     };
 
     // Authorization check
@@ -253,44 +219,43 @@ actor Admin {
         
         // Explicitly allow the user principal
         if (Text.equal(callerStr, USER_PRINCIPAL_ID)) {
-            Debug.print("User principal explicitly authorized");
+            Debug.print("User principal authorized via Text.equal");
             return true;
         };
         
         // Explicitly allow admin principal 1
         if (Text.equal(callerStr, ADMIN_PRINCIPAL_1)) {
-            Debug.print("Admin principal 1 explicitly authorized");
+            Debug.print("Admin principal 1 authorized via Text.equal");
             return true;
         };
         
         // Explicitly allow admin principal 2
         if (Text.equal(callerStr, ADMIN_PRINCIPAL_2)) {
-            Debug.print("Admin principal 2 explicitly authorized");
+            Debug.print("Admin principal 2 authorized via Text.equal");
             return true;
         };
         
-        
-        
-        // Allow anonymous principal for testing
-        if (Principal.isAnonymous(caller)) {
-            Debug.print("Anonymous principal authorized for testing");
-            return true;
+        // Check in the admins map
+        switch (admins.get(caller)) {
+            case (?isAdmin) {
+                Debug.print("Caller found in admins map: " # Bool.toText(isAdmin));
+                return isAdmin;
+            };
+            case null {
+                // Check in users collection
+                switch (users.get(caller)) {
+                    case (?user) {
+                        let authorized = user.role == #SuperAdmin or user.role == #Admin;
+                        Debug.print("Caller found in users map with role, authorized: " # Bool.toText(authorized));
+                        return authorized;
+                    };
+                    case null {
+                        Debug.print("Caller not found in admins or users map");
+                        return false;
+                    };
+                };
+            };
         };
-        
-        switch (users.get(caller)) {
-            case (?user) {
-                Debug.print("User found: " # Principal.toText(user.principal));
-                switch (user.role) {
-                    case (#SuperAdmin) { true };
-                    case (#Admin) { true };
-                    case (#Operator) { false };
-                }
-            };
-            case null { 
-                Debug.print("User not found: " # callerStr);
-                admins.get(caller) == ?true 
-            };
-        }
     };
 
     // Consumer canister check
@@ -307,47 +272,44 @@ actor Admin {
             return #err("Unauthorized");
         };
         
-        let user : User = {
+        users.put(p, {
             principal = p;
             role = role;
             addedBy = caller;
             addedAt = Time.now();
+        });
+        
+        // If SuperAdmin or Admin, also add to admins map
+        if (role == #SuperAdmin or role == #Admin) {
+            admins.put(p, true);
         };
-        users.put(p, user);
+        
         #ok()
+    };
+
+    public query({ caller }) func get_users() : async Result.Result<[User], Text> {
+        if (not _isAuthorized(caller)) {
+            return #err("Unauthorized");
+        };
+        #ok(Iter.toArray(users.vals()))
     };
 
     public shared({ caller }) func remove_user(p: Principal) : async Result.Result<(), Text> {
         if (not _isAuthorized(caller)) {
             return #err("Unauthorized");
         };
+        
         users.delete(p);
+        admins.delete(p);
         #ok()
     };
 
-    public shared({ caller }) func get_users() : async Result.Result<[User], Text> {
-        if (not _isAuthorized(caller)) {
-            return #err("Unauthorized");
-        };
-        let result = Buffer.Buffer<User>(0);
-        for ((_, user) in users.entries()) {
-            result.add(user);
-        };
-        #ok(Buffer.toArray(result))
-    };
-
-    // Topic management
-    public query({ caller }) func getTopics() : async Result.Result<[ScrapingTopic], Text> {
-        if (not _isAuthorized(caller)) {
-            Debug.print("getTopics: Unauthorized");
-            return #err("Unauthorized");
-        };
-        
-        Debug.print("getTopics: Authorized, returning topics");
+    // Public method to get topics (no authorization check for query)
+    public query func getTopics() : async Result.Result<[ScrapingTopic], Text> {
+        Debug.print("getTopics: Returning " # Nat.toText(topics.size()) # " topics");
         #ok(Iter.toArray(topics.vals()))
     };
-
-    // Public method to get all topics (simplified for frontend)
+    
     public query func getAllTopics() : async [ScrapingTopic] {
         Iter.toArray(topics.vals())
     };
@@ -363,314 +325,170 @@ actor Admin {
         };
 
         Debug.print("Admin getTopics_with_caller: Authorization successful");
+        Debug.print("Admin getTopics_with_caller: Returning " # Nat.toText(topics.size()) # " topics");
         #ok(Iter.toArray(topics.vals()))
     };
 
-    public shared({ caller }) func getAssignedTopics(nodeCharacteristics: NodeCharacteristics) : async Result.Result<[ScrapingTopic], Text> {
-        if (not _isAuthorized(caller)) { // Assuming nodes will be authorized
-            return #err("Unauthorized");
-        };
-
-        let filteredTopics = Buffer.Buffer<ScrapingTopic>(0);
-        for ((_, topic) in topics.entries()) {
-            var includeTopic = true;
-
-            // Geolocation filtering
-            switch (topic.geolocationFilter) {
-                case (?filterRegion) {
-                    if (not Text.equal(filterRegion, nodeCharacteristics.region)) {
-                        includeTopic := false;
-                    };
-                };
-                case (null) {}; // No geolocation filter, so include by default
-            };
-
-            if (includeTopic) {
-                filteredTopics.add(topic);
-            };
-        };
-
-        var finalTopics = Iter.toArray(filteredTopics.vals());
-
-        // Percentage Nodes filtering
-        switch (nodeCharacteristics.percentageNodes) { // Assuming nodeCharacteristics can also have percentageNodes
-            case (?percentage) {
-                if (percentage >= 0 and percentage <= 100) {
-                    let numTopics = Array.size(finalTopics);
-                    let topicsToSelect = Nat.toNat(Float.round(Float.fromNat(numTopics) * (Float.fromNat(percentage) / 100.0)));
-                    
-                    // Simple pseudo-random selection for percentage
-                    // NOTE: This is a very basic PRNG. For production environments requiring
-                    // strong randomness or cryptographic security, a more robust solution
-                    // (e.g., integration with a randomness oracle or a more sophisticated
-                    // state-based PRNG) would be necessary.
-                    var seed = Time.now();
-                    let nextRandom = func() : Nat {
-                        seed := (seed * 1103515245 + 12345) % 2147483647;
-                        return Nat.abs(seed);
-                    };
-
-                    let selectedTopics = Buffer.Buffer<ScrapingTopic>(0);
-                    var indices = Buffer.Buffer<Nat>(0);
-                    for (i in Iter.range(0, numTopics - 1)) {
-                        indices.add(i);
-                    };
-                    
-                    // Shuffle indices (Fisher-Yates-like)
-                    for (i in Iter.range(numTopics - 1, 1)) {
-                        let j = nextRandom() % (i + 1);
-                        let temp = indices.get(i);
-                        indices.set(i, indices.get(j));
-                        indices.set(j, temp);
-                    };
-
-                    for (i in Iter.range(0, topicsToSelect - 1)) {
-                        if (i < Array.size(Iter.toArray(indices.vals()))) { // Ensure index is within bounds
-                            selectedTopics.add(finalTopics[indices.get(i)]);
-                        };
-                    };
-                    finalTopics := Iter.toArray(selectedTopics.vals());
-                };
-            };
-            case (null) {};
-        };
-
-        // Randomization Mode
-        switch (nodeCharacteristics.randomizationMode) { // Assuming nodeCharacteristics can also have randomizationMode
-            case (?mode) {
-                if (Text.equal(mode, "shuffle")) {
-                    // Re-shuffle the finalTopics array
-                    var seed = Time.now();
-                    let nextRandom = func() : Nat {
-                        seed := (seed * 1103515245 + 12345) % 2147483647;
-                        return Nat.abs(seed);
-                    };
-
-                    let numTopics = Array.size(finalTopics);
-                    for (i in Iter.range(numTopics - 1, 1)) {
-                        let j = nextRandom() % (i + 1);
-                        let temp = finalTopics[i];
-                        finalTopics[i] := finalTopics[j];
-                        finalTopics[j] := temp;
-                    };
-                };
-            };
-            case (null) {};
-        };
-
-        #ok(finalTopics)
-    };
-
-    public shared({ caller }) func addTopic(topic: ScrapingTopic) : async Result.Result<(), Text> {
+    public shared({ caller }) func createTopic(topic: ScrapingTopic) : async Result.Result<ScrapingTopic, Text> {
         if (not _isAuthorized(caller)) {
             return #err("Unauthorized");
         };
+        
+        // Validate topic
+        if (topic.searchQueries.size() == 0) {
+            return #err("At least one search query is required");
+        };
+        
+        if (topic.contentSelectors.size() == 0) {
+            return #err("At least one content selector is required");
+        };
+        
         topics.put(topic.id, topic);
-        #ok()
+        #ok(topic)
     };
 
-    public shared({ caller }) func updateTopic(topic: ScrapingTopic) : async Result.Result<(), Text> {
+    public shared({ caller }) func updateTopic(id: Text, updates: {
+        name: ?Text;
+        description: ?Text;
+        status: ?Text;
+        searchQueries: ?[Text];
+        preferredDomains: ?[Text];
+        excludeDomains: ?[Text];
+        requiredKeywords: ?[Text];
+        excludeKeywords: ?[Text];
+        contentSelectors: ?[Text];
+        titleSelectors: ?[Text];
+        excludeSelectors: ?[Text];
+        minContentLength: ?Nat;
+        maxContentLength: ?Nat;
+        maxUrlsPerBatch: ?Nat;
+        scrapingInterval: ?Nat;
+        priority: ?Nat;
+    }) : async Result.Result<ScrapingTopic, Text> {
         if (not _isAuthorized(caller)) {
             return #err("Unauthorized");
         };
-        topics.put(topic.id, topic);
-        #ok()
+        
+        switch (topics.get(id)) {
+            case null { #err("Topic not found") };
+            case (?topic) {
+                let updatedTopic : ScrapingTopic = {
+                    id = topic.id;
+                    name = Option.get(updates.name, topic.name);
+                    description = Option.get(updates.description, topic.description);
+                    status = Option.get(updates.status, topic.status);
+                    searchQueries = Option.get(updates.searchQueries, topic.searchQueries);
+                    preferredDomains = updates.preferredDomains;
+                    excludeDomains = updates.excludeDomains;
+                    requiredKeywords = Option.get(updates.requiredKeywords, topic.requiredKeywords);
+                    excludeKeywords = updates.excludeKeywords;
+                    contentSelectors = Option.get(updates.contentSelectors, topic.contentSelectors);
+                    titleSelectors = updates.titleSelectors;
+                    excludeSelectors = Option.get(updates.excludeSelectors, topic.excludeSelectors);
+                    minContentLength = Option.get(updates.minContentLength, topic.minContentLength);
+                    maxContentLength = Option.get(updates.maxContentLength, topic.maxContentLength);
+                    maxUrlsPerBatch = Option.get(updates.maxUrlsPerBatch, topic.maxUrlsPerBatch);
+                    scrapingInterval = Option.get(updates.scrapingInterval, topic.scrapingInterval);
+                    priority = Option.get(updates.priority, topic.priority);
+                    createdAt = topic.createdAt;
+                    lastScraped = topic.lastScraped;
+                    totalUrlsScraped = topic.totalUrlsScraped;
+                };
+                topics.put(id, updatedTopic);
+                #ok(updatedTopic)
+            };
+        };
     };
 
     public shared({ caller }) func deleteTopic(id: Text) : async Result.Result<(), Text> {
         if (not _isAuthorized(caller)) {
             return #err("Unauthorized");
         };
-        topics.delete(id);
-        #ok()
-    };
-
-    // AI Config management
-    public shared({ caller }) func getAIConfig() : async Result.Result<AIConfig, Text> {
-        if (not _isAuthorized(caller)) {
-            return #err("Unauthorized");
+        
+        switch (topics.get(id)) {
+            case null { #err("Topic not found") };
+            case (?_) {
+                topics.delete(id);
+                #ok()
+            };
         };
-        #ok(aiConfig)
     };
 
-    public shared({ caller }) func updateAIConfig(config: AIConfig) : async Result.Result<(), Text> {
-        if (not _isAuthorized(caller)) {
-            return #err("Unauthorized");
-        };
-        aiConfig := config;
-        #ok()
-    };
-
-    // Topic status management
-    public shared({ caller }) func setTopicActive(id: Text, active: Bool): async Result.Result<(), Text> {
+    public shared({ caller }) func setTopicActive(id: Text, active: Bool) : async Result.Result<(), Text> {
         if (not _isAuthorized(caller)) {
             return #err("Unauthorized");
         };
         
         switch (topics.get(id)) {
+            case null { #err("Topic not found") };
             case (?topic) {
                 let updatedTopic = {
-                    id = topic.id;
-                    name = topic.name;
-                    description = topic.description;
-                    urlPatterns = topic.urlPatterns;
-                    aiConfig = topic.aiConfig;
+                    topic with
                     status = if (active) "active" else "inactive";
-                    extractionRules = topic.extractionRules;
-                    scrapingInterval = topic.scrapingInterval;
-                    lastScraped = topic.lastScraped;
-                    activeHours = topic.activeHours;
-                    maxRetries = topic.maxRetries;
-                    createdAt = topic.createdAt;
-                    siteTypeClassification = topic.siteTypeClassification;
-                    urlGenerationStrategy = topic.urlGenerationStrategy;
-                    articleUrlPatterns = topic.articleUrlPatterns;
-                    contentIdentifiers = topic.contentIdentifiers;
-                    paginationPatterns = topic.paginationPatterns;
-                    sampleArticleUrls = topic.sampleArticleUrls;
-                    excludePatterns = topic.excludePatterns;
-                    geolocationFilter = topic.geolocationFilter;
-                    percentageNodes = topic.percentageNodes;
-                    randomizationMode = topic.randomizationMode;
                 };
                 topics.put(id, updatedTopic);
                 #ok()
             };
-            case (null) {
-                #err("Topic not found")
-            };
-        }
+        };
     };
 
-    // Update last scraped time
-    public shared({ caller }) func updateLastScraped(id: Text): async Result.Result<(), Text> {
+    // Global AI Configuration
+    public shared({ caller }) func setGlobalAIConfig(config: ?GlobalAIConfig) : async Result.Result<(), Text> {
         if (not _isAuthorized(caller)) {
             return #err("Unauthorized");
         };
-        
-        switch (topics.get(id)) {
-            case (?topic) {
-                let updatedTopic = {
-                    id = topic.id;
-                    name = topic.name;
-                    description = topic.description;
-                    urlPatterns = topic.urlPatterns;
-                    aiConfig = topic.aiConfig;
-                    status = topic.status;
-                    extractionRules = topic.extractionRules;
-                    scrapingInterval = topic.scrapingInterval;
-                    lastScraped = Time.now();
-                    activeHours = topic.activeHours;
-                    maxRetries = topic.maxRetries;
-                    createdAt = topic.createdAt;
-                    siteTypeClassification = topic.siteTypeClassification;
-                    urlGenerationStrategy = topic.urlGenerationStrategy;
-                    articleUrlPatterns = topic.articleUrlPatterns;
-                    contentIdentifiers = topic.contentIdentifiers;
-                    paginationPatterns = topic.paginationPatterns;
-                    sampleArticleUrls = topic.sampleArticleUrls;
-                    excludePatterns = topic.excludePatterns;
-                    geolocationFilter = topic.geolocationFilter;
-                    percentageNodes = topic.percentageNodes;
-                    randomizationMode = topic.randomizationMode;
-                };
-                topics.put(id, updatedTopic);
-                #ok()
-            };
-            case (null) {
-                #err("Topic not found")
-            };
-        }
+        globalAIConfig := config;
+        #ok()
     };
 
-    // Get scraped data
-    public shared({ caller }) func getScrapedData(topicIds: [Text]): async Result.Result<[ScrapedData], Text> {
+    public query func getGlobalAIConfig() : async Result.Result<?GlobalAIConfig, Text> {
+        #ok(globalAIConfig)
+    };
+    
+    // Deprecated - for backwards compatibility
+    public query func getAIConfig() : async Result.Result<?GlobalAIConfig, Text> {
+        #ok(globalAIConfig)
+    };
+
+    // Get scraped data from storage
+    public shared({ caller }) func getScrapedData(ids: [Text]) : async Result.Result<[ScrapedData], Text> {
         if (not _isAuthorized(caller)) {
             return #err("Unauthorized");
         };
         
         try {
-            let result = await storage.getScrapedData(topicIds);
-            return result;
+            let result = await storage.getScrapedData(ids);
+            switch (result) {
+                case (#ok(data)) { #ok(data) };
+                case (#err(e)) { #err(e) };
+            };
         } catch (e) {
-            return #err("Error calling storage canister: " # Error.message(e));
+            #err("Failed to fetch data from storage: " # Error.message(e))
         };
     };
 
-    // Test extraction
-    public shared({ caller }) func testExtraction(url: Text, topic: ScrapingTopic): async Result.Result<Text, Text> {
+    // Test extraction (mock implementation for now)
+    public shared({ caller }) func testExtraction(url: Text, topicId: Text) : async Result.Result<Text, Text> {
         if (not _isAuthorized(caller)) {
             return #err("Unauthorized");
         };
         
-        // This is just a placeholder - in a real implementation, this would
-        // actually test the extraction rules on the given URL
-        #ok("Extraction test successful. URL: " # url # ", Topic: " # topic.name)
+        #ok("Test extraction for " # url # " with topic " # topicId # " would be performed here")
     };
 
-    // Create topic with request
-    type CreateTopicRequest = {
-        name: Text;
-        description: Text;
-        urlPatterns: [Text];
-        extractionRules: ExtractionRules;
-        scrapingInterval: Nat;
-        activeHours: {
-            start: Nat;
-            end: Nat;
-        };
-        maxRetries: Nat;
-        siteTypeClassification: ?Text;
-        urlGenerationStrategy: ?Text;
-        articleUrlPatterns: ?[Text];
-        contentIdentifiers: ?ContentIdentifiers;
-        paginationPatterns: ?[Text];
-        sampleArticleUrls: ?[Text];
-        excludePatterns: ?[Text];
-        geolocationFilter: ?Text;
-        percentageNodes: ?Nat;
-        randomizationMode: ?Text;
-    };
-
-    public shared({ caller }) func createTopic(request: CreateTopicRequest): async Result.Result<ScrapingTopic, Text> {
+    // Get assigned topics based on node characteristics
+    public query({ caller }) func getAssignedTopics(characteristics: NodeCharacteristics) : async Result.Result<[ScrapingTopic], Text> {
         if (not _isAuthorized(caller)) {
             return #err("Unauthorized");
         };
         
-        let id = Text.concat(request.name, "-" # Int.toText(Time.now()));
+        // For now, return all active topics
+        // In the future, this could filter based on node characteristics
+        let activeTopics = Array.filter<ScrapingTopic>(
+            Iter.toArray(topics.vals()),
+            func(t) = t.status == "active"
+        );
         
-        let topic: ScrapingTopic = {
-            id = id;
-            name = request.name;
-            description = request.description;
-            urlPatterns = request.urlPatterns;
-            aiConfig = aiConfig;
-            status = "active";
-            extractionRules = request.extractionRules;
-            scrapingInterval = request.scrapingInterval;
-            lastScraped = Time.now();
-            activeHours = request.activeHours;
-            maxRetries = request.maxRetries;
-            createdAt = Time.now();
-            siteTypeClassification = request.siteTypeClassification;
-            urlGenerationStrategy = request.urlGenerationStrategy;
-            articleUrlPatterns = request.articleUrlPatterns;
-            contentIdentifiers = request.contentIdentifiers;
-            paginationPatterns = request.paginationPatterns;
-            sampleArticleUrls = request.sampleArticleUrls;
-            excludePatterns = request.excludePatterns;
-            geolocationFilter = request.geolocationFilter;
-            percentageNodes = request.percentageNodes;
-            randomizationMode = request.randomizationMode;
-        };
-        
-        topics.put(id, topic);
-        #ok(topic)
-    };
-
-    // Utility methods
-    public query({ caller }) func isAuthorized() : async Bool {
-        Debug.print("isAuthorized check for: " # Principal.toText(caller));
-        _isAuthorized(caller)
+        #ok(activeTopics)
     };
 }

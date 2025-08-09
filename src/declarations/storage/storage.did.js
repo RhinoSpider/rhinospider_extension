@@ -18,6 +18,10 @@ export const idlFactory = ({ IDL }) => {
     'apiKey' : IDL.Text,
   });
   const Result_3 = IDL.Variant({ 'ok' : AIConfig, 'err' : Error });
+  const Result_2 = IDL.Variant({
+    'ok' : IDL.Vec(IDL.Principal),
+    'err' : Error,
+  });
   const ScrapedData = IDL.Record({
     'id' : IDL.Text,
     'url' : IDL.Text,
@@ -29,7 +33,6 @@ export const idlFactory = ({ IDL }) => {
     'client_id' : IDL.Principal,
     'scraping_time' : IDL.Int,
   });
-  const Result_2 = IDL.Variant({ 'ok' : IDL.Vec(ScrapedData), 'err' : Error });
   const ScrapingField = IDL.Record({
     'name' : IDL.Text,
     'aiPrompt' : IDL.Opt(IDL.Text),
@@ -47,8 +50,11 @@ export const idlFactory = ({ IDL }) => {
     'createdAt' : IDL.Int,
     'scrapingInterval' : IDL.Nat,
     'description' : IDL.Text,
+    'randomizationMode' : IDL.Opt(IDL.Text),
     'maxRetries' : IDL.Nat,
+    'percentageNodes' : IDL.Opt(IDL.Nat),
     'activeHours' : IDL.Record({ 'end' : IDL.Nat, 'start' : IDL.Nat }),
+    'geolocationFilter' : IDL.Opt(IDL.Text),
     'urlPatterns' : IDL.Vec(IDL.Text),
     'extractionRules' : ExtractionRules,
     'aiConfig' : AIConfig,
@@ -59,13 +65,24 @@ export const idlFactory = ({ IDL }) => {
   });
   const Storage = IDL.Service({
     'addAuthorizedCanister' : IDL.Func([IDL.Principal], [Result], []),
+    'clearAllData' : IDL.Func([], [Result], []),
+    'deleteScrapedData' : IDL.Func([IDL.Text], [Result], []),
+    'deleteTopic' : IDL.Func([IDL.Text], [Result], []),
+    'forwardCycles' : IDL.Func([IDL.Principal, IDL.Nat], [Result], []),
     'getAIConfig' : IDL.Func([], [Result_3], ['query']),
-    'getScrapedData' : IDL.Func([IDL.Vec(IDL.Text)], [Result_2], ['query']),
+    'getAuthorizedCanisters' : IDL.Func([], [Result_2], ['query']),
+    'getCycleBalance' : IDL.Func([], [IDL.Nat], ['query']),
+    'getScrapedData' : IDL.Func(
+        [IDL.Vec(IDL.Text)],
+        [IDL.Vec(ScrapedData)],
+        ['query'],
+      ),
     'getTopics' : IDL.Func([], [Result_1], ['query']),
     'removeAuthorizedCanister' : IDL.Func([IDL.Principal], [Result], []),
-    'submitScrapedData' : IDL.Func([ScrapedData], [Result], []),
+    'storeScrapedData' : IDL.Func([ScrapedData], [Result], []),
     'updateAIConfig' : IDL.Func([AIConfig], [Result], []),
     'updateTopic' : IDL.Func([ScrapingTopic], [Result], []),
+    'wallet_receive' : IDL.Func([], [], []),
   });
   return Storage;
 };

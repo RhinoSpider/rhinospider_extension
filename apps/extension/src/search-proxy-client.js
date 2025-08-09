@@ -10,7 +10,7 @@ import config from './config';
 import connectionHandler from './connection-handler';
 
 // Constants
-const API_KEY = config.searchProxy?.apiKey || 'test-api-key';
+const API_KEY = config.searchProxy?.apiKey || '';
 
 /**
  * Search Proxy Client
@@ -152,6 +152,49 @@ class SearchProxyClient {
       return [];
     }
   }
+
+  /**
+   * Get URLs for topics (wrapper for compatibility)
+   * This method is kept for backward compatibility but now uses search
+   */
+  async getUrlsForTopics(topics, limit = 5) {
+    console.log('[SearchProxyClient] getUrlsForTopics called with topics:', topics);
+    // This will be handled by the new URLFinder class
+    return {};
+  }
+
+  /**
+   * Prefetch URLs for all topics (wrapper for compatibility)
+   */
+  async prefetchUrlsForAllTopics(topics) {
+    console.log('[SearchProxyClient] prefetchUrlsForAllTopics called');
+    // This will be handled by the new URLFinder class
+    return {};
+  }
+
+  /**
+   * Check proxy health
+   */
+  async checkProxyHealth() {
+    return this.isAvailable();
+  }
+
+  /**
+   * Get URL for topic (wrapper for compatibility)
+   */
+  async getUrlForTopic(topic) {
+    console.log('[SearchProxyClient] getUrlForTopic called for topic:', topic);
+    // This will be handled by the new URLFinder class
+    return null;
+  }
 }
 
-export default new SearchProxyClient();
+// Create instance
+const searchProxyClient = new SearchProxyClient();
+
+// Export both the instance and the methods for backward compatibility
+export default searchProxyClient;
+export const getUrlsForTopics = searchProxyClient.getUrlsForTopics.bind(searchProxyClient);
+export const prefetchUrlsForAllTopics = searchProxyClient.prefetchUrlsForAllTopics.bind(searchProxyClient);
+export const checkProxyHealth = searchProxyClient.checkProxyHealth.bind(searchProxyClient);
+export const getUrlForTopic = searchProxyClient.getUrlForTopic.bind(searchProxyClient);

@@ -19,6 +19,7 @@ const Referrals = () => {
     totalReferrals: 0,
     activeReferrals: 0,
     pointsEarned: 0,
+    referralBonus: 0,
   });
 
   useEffect(() => {
@@ -52,10 +53,21 @@ const Referrals = () => {
         const userResult = await actor.getUserByPrincipal(principal);
         if (userResult && userResult.length > 0) {
           const user = userResult[0];
+          // Calculate referral bonus based on tiers
+          const referralCount = Number(user.referralCount || 0);
+          let bonusPerReferral = 100; // Default
+          if (referralCount >= 50) bonusPerReferral = 500;
+          else if (referralCount >= 20) bonusPerReferral = 300;
+          else if (referralCount >= 10) bonusPerReferral = 200;
+          else if (referralCount >= 5) bonusPerReferral = 150;
+          
+          const totalReferralBonus = referralCount * bonusPerReferral;
+          
           setReferralStats({
-            totalReferrals: Number(user.referralCount || 0),
-            activeReferrals: Number(user.referralCount || 0), // All referrals are considered active for now
+            totalReferrals: referralCount,
+            activeReferrals: referralCount, // All referrals are considered active for now
             pointsEarned: Number(user.points || 0),
+            referralBonus: totalReferralBonus,
           });
         }
       } catch (error) {
@@ -115,8 +127,8 @@ const Referrals = () => {
                 <div className="text-sm text-gray-400">Active Users</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold text-white">{referralStats.pointsEarned}</div>
-                <div className="text-sm text-gray-400">Points Earned</div>
+                <div className="text-2xl font-bold text-white">{referralStats.referralBonus}</div>
+                <div className="text-sm text-gray-400">Referral Points</div>
               </div>
             </div>
           </div>
@@ -125,8 +137,16 @@ const Referrals = () => {
         <div className="space-y-4">
           <h3 className="text-lg font-medium text-white">Your Referral Link</h3>
           <p className="text-sm text-gray-400">
-            Share your referral link to earn bonus points! You'll receive points when your referrals contribute data.
+            Share your referral link to earn bonus points! You'll receive:
           </p>
+          <ul className="text-sm text-gray-300 mt-2 space-y-1">
+            <li>• 100 points for 1-4 referrals</li>
+            <li>• 150 points for 5-9 referrals</li>
+            <li>• 200 points for 10-19 referrals</li>
+            <li>• 300 points for 20-49 referrals</li>
+            <li>• 500 points for 50+ referrals</li>
+            <li>• Plus 10% of points your referrals earn!</li>
+          </ul>
           <div className="bg-white/5 rounded-lg p-4">
             <div className="flex space-x-2">
               <input
@@ -155,26 +175,40 @@ const Referrals = () => {
         </div>
 
         <div className="space-y-4">
-          <h3 className="text-lg font-medium text-white">Recent Referrals</h3>
-          <div className="bg-white/5 rounded-lg divide-y divide-white/5">
-            {[
-              { name: 'John D.', date: '2 days ago', status: 'active' },
-              { name: 'Sarah M.', date: '5 days ago', status: 'active' },
-              { name: 'Mike R.', date: '1 week ago', status: 'pending' },
-            ].map((referral, index) => (
-              <div key={index} className="p-4 flex items-center justify-between">
-                <div>
-                  <div className="font-medium text-white">{referral.name}</div>
-                  <div className="text-sm text-gray-400">{referral.date}</div>
-                </div>
-                <div className={`text-sm ${
-                  referral.status === 'active' ? 'text-green-400' : 'text-yellow-400'
-                }`}>
-                  {referral.status === 'active' ? 'Active' : 'Pending'}
-                </div>
-              </div>
-            ))}
+          <h3 className="text-lg font-medium text-white">Referral System Info</h3>
+          <div className="bg-white/5 rounded-lg p-4 space-y-3">
+            <div className="text-sm text-gray-300">
+              <strong className="text-white">How it works:</strong>
+            </div>
+            <ol className="text-sm text-gray-400 space-y-2 list-decimal list-inside">
+              <li>Share your unique referral link with friends</li>
+              <li>When they sign up using your link, you both benefit</li>
+              <li>You earn bonus points based on your total referral count</li>
+              <li>You also earn 10% of all points your referrals generate</li>
+              <li>The more people you refer, the higher your bonus tier!</li>
+            </ol>
           </div>
+          {referralStats.totalReferrals > 0 && (
+            <div className="bg-white/5 rounded-lg divide-y divide-white/5">
+              <h4 className="text-md font-medium text-white p-4">Your Referrals ({referralStats.totalReferrals})</h4>
+              {[...Array(Math.min(referralStats.totalReferrals, 3))].map((_, index) => (
+                <div key={index} className="p-4 flex items-center justify-between">
+                  <div>
+                    <div className="font-medium text-white">User {index + 1}</div>
+                    <div className="text-sm text-gray-400">Contributing data</div>
+                  </div>
+                  <div className="text-sm text-green-400">
+                    Active
+                  </div>
+                </div>
+              ))}
+              {referralStats.totalReferrals > 3 && (
+                <div className="p-4 text-center text-sm text-gray-400">
+                  And {referralStats.totalReferrals - 3} more...
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

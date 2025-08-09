@@ -65,7 +65,7 @@ export const Overview: React.FC = () => {
       const consumerCanisterId = 'tgyl5-yyaaa-aaaaj-az4wq-cai';
       
       // Admin canister ID  
-      const adminCanisterId = '444wf-gyaaa-aaaaj-az5sq-cai';
+      const adminCanisterId = 'wvset-niaaa-aaaao-a4osa-cai';
       
       // Storage canister ID
       const storageCanisterId = 'hhaip-uiaaa-aaaao-a4khq-cai';

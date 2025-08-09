@@ -169,7 +169,7 @@ export const PointsManagement: React.FC = () => {
           : 'https://ic0.app',
       });
 
-      const adminCanisterId = '444wf-gyaaa-aaaaj-az5sq-cai';
+      const adminCanisterId = 'wvset-niaaa-aaaao-a4osa-cai';
       
       // Call through admin canister to award points
       const idlFactory = ({ IDL }: any) => {
