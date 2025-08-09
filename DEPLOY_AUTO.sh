@@ -10,13 +10,32 @@ echo ""
 # Check if sshpass is installed
 if ! command -v sshpass &> /dev/null; then
     echo "⚠️  sshpass not installed. Install with: brew install hudochenkov/sshpass/sshpass"
-    echo "   Or upload files manually and run REMOTE_DEPLOY.sh on server"
+    echo "   Or use DEPLOY_ALL.sh for manual password entry"
     exit 1
 fi
 
 # Server details
 SERVER="143.244.133.154"
 PASSWORD="DON'T BELIEVE EVERYTHING YOU THINK, EXPANDED EDITION"
+
+# Test connection first
+echo "🔐 Testing connection to server..."
+sshpass -p "$PASSWORD" ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no root@$SERVER "echo 'Connection successful'" > /dev/null 2>&1
+
+if [ $? -ne 0 ]; then
+    echo "❌ Failed to connect to server!"
+    echo ""
+    echo "Possible issues:"
+    echo "1. Password might be incorrect"
+    echo "2. Server might be down"
+    echo "3. SSH access might be blocked"
+    echo ""
+    echo "Try using ./DEPLOY_ALL.sh for manual password entry"
+    exit 1
+fi
+
+echo "✅ Connection successful"
+echo ""
 
 # Step 1: Create packages
 echo "📦 Creating deployment packages..."
@@ -72,11 +91,24 @@ EOF
 
 # Step 3: Upload files
 echo "📤 Uploading files to server..."
-sshpass -p "$PASSWORD" scp deployment-packages/*.tar.gz deployment-packages/deploy.sh root@$SERVER:~/
+sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no deployment-packages/*.tar.gz deployment-packages/deploy.sh root@$SERVER:~/
+
+if [ $? -ne 0 ]; then
+    echo "❌ Failed to upload files!"
+    exit 1
+fi
+
+echo "✅ Files uploaded"
+echo ""
 
 # Step 4: Execute deployment
 echo "🚀 Running deployment on server..."
-sshpass -p "$PASSWORD" ssh root@$SERVER "chmod +x deploy.sh && ./deploy.sh"
+sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no root@$SERVER "chmod +x deploy.sh && ./deploy.sh"
+
+if [ $? -ne 0 ]; then
+    echo "❌ Deployment script failed!"
+    exit 1
+fi
 
 echo ""
 echo "✅ DEPLOYMENT COMPLETE!"
