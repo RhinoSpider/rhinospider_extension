@@ -55,11 +55,10 @@ function Settings() {
       isScrapingActive: newState 
     });
     
-    // Notify background script
+    // Notify background script - use UPDATE_SCRAPING_CONFIG for consistency
     await chrome.runtime.sendMessage({
-      type: 'SET_STATE',
-      enabled: newState,
-      isScrapingActive: newState
+      type: 'UPDATE_SCRAPING_CONFIG',
+      data: { enabled: newState }
     });
   };
 

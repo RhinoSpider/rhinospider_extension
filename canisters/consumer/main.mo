@@ -339,8 +339,8 @@ actor ConsumerBackend {
         try {
             Debug.print("Getting location for IP: " # ip);
             
-            // Using ip-api.com for free GeoIP lookup (no API key required)
-            let url = "http://ip-api.com/json/" # ip # "?fields=status,country,regionName,city,lat,lon,countryCode";
+            // Using ipapi.co for free GeoIP lookup (supports HTTPS, no API key required for limited use)
+            let url = "https://ipapi.co/" # ip # "/json/";
             
             let ic : ICManagement = actor("aaaaa-aa");
             let request = {

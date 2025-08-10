@@ -429,10 +429,10 @@ const Popup = () => {
       
       console.log('Background script response:', response);
       
-      // Also update the storage state
+      // Also update the storage state - use 'enabled' key for consistency
       await chrome.storage.local.set({ 
-        isActive: newState,
-        scrapingEnabled: newState 
+        enabled: newState,
+        isScrapingActive: newState 
       });
       
       // If we want to trigger an immediate scrape when activated
