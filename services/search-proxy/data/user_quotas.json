@@ -1,1 +1,96 @@
-{}
+{
+  "test": {
+    "userId": "test",
+    "dailyUrlsScraped": 15,
+    "totalUrlsScraped": 15,
+    "totalPointsEarned": 15,
+    "lastReset": 1754826654341,
+    "tier": "basic",
+    "bandwidthUsed": 15693,
+    "requestsMade": 2,
+    "topicsSearched": {
+      "ai": {
+        "name": "AI technology",
+        "count": 10,
+        "points": 10
+      }
+    },
+    "urlsByHour": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      15,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "pointsByDay": {
+      "2025-08-10": 15
+    },
+    "lastSync": 1754826664675
+  },
+  "test123": {
+    "userId": "test123",
+    "dailyUrlsScraped": 20,
+    "totalUrlsScraped": 20,
+    "totalPointsEarned": 20,
+    "lastReset": 1754826862131,
+    "tier": "basic",
+    "bandwidthUsed": 15495,
+    "requestsMade": 2,
+    "topicsSearched": {
+      "tech": {
+        "name": "artificial intelligence",
+        "count": 10,
+        "points": 10
+      }
+    },
+    "urlsByHour": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      20,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "pointsByDay": {
+      "2025-08-10": 20
+    },
+    "lastSync": 1754826865906
+  }
+}

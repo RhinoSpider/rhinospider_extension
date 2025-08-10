@@ -81,11 +81,9 @@ const Popup = () => {
           console.log('User is already authenticated, getting identity...');
           await handleAuthenticated(client);
           
-          // Load scraping state from background
-          const response = await chrome.runtime.sendMessage({ type: 'GET_SCRAPING_CONFIG' });
-          if (response.success && response.data) {
-            setIsPluginActive(response.data.enabled || false);
-          }
+          // Load scraping state from storage
+          const storageData = await chrome.storage.local.get(['enabled']);
+          setIsPluginActive(storageData.enabled === true);
         } else {
           console.log('User is not authenticated');
           // Ensure plugin is off when not authenticated
@@ -115,11 +113,21 @@ const Popup = () => {
       }
     };
 
-    chrome.runtime.onMessage.addListener(messageListener);
+    // Listen for storage changes to sync toggle state
+    const storageListener = (changes, areaName) => {
+      if (areaName === 'local' && changes.enabled) {
+        console.log('Storage changed, updating plugin state:', changes.enabled.newValue);
+        setIsPluginActive(changes.enabled.newValue === true);
+      }
+    };
 
-    // Cleanup listener on unmount
+    chrome.runtime.onMessage.addListener(messageListener);
+    chrome.storage.onChanged.addListener(storageListener);
+
+    // Cleanup listeners on unmount
     return () => {
       chrome.runtime.onMessage.removeListener(messageListener);
+      chrome.storage.onChanged.removeListener(storageListener);
     };
   }, []);
 
