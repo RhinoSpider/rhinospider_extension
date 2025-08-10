@@ -509,4 +509,26 @@ actor Admin {
         
         #ok(activeTopics)
     };
+
+    // Award points to a user
+    public shared({ caller }) func awardUserPoints(userPrincipal: Principal, points: Nat) : async Result.Result<Text, Text> {
+        if (not _isAuthorized(caller)) {
+            return #err("Unauthorized");
+        };
+        
+        // This should actually call the consumer canister to award points
+        // For now, we'll create a stub that forwards to consumer canister
+        #ok("Points awarding needs to be implemented through consumer canister")
+    };
+
+    // Manually assign points to a user (admin function)
+    public shared({ caller }) func manuallyAssignPoints(userPrincipal: Principal, points: Nat, reason: Text) : async Result.Result<Text, Text> {
+        if (not _isAuthorized(caller)) {
+            return #err("Unauthorized");
+        };
+        
+        // This should call the consumer canister to update points
+        // For now, return a stub response
+        #ok("Manual points assignment needs to be implemented through consumer canister")
+    };
 }

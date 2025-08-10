@@ -1,10 +1,9 @@
 // Background script for RhinoSpider extension
 import submissionHelper from './submission-helper';
-import searchProxyClient from './search-proxy-client.js';
+import searchProxyClient, { getUrlsForTopics, prefetchUrlsForAllTopics, checkProxyHealth, getUrlForTopic } from './search-proxy-client.js';
 import proxyClient from './proxy-client.js';
 import connectionHandler from './connection-handler.js';
 import connectionTest from './connection-test.js';
-const { getUrlsForTopics, prefetchUrlsForAllTopics, checkProxyHealth, getUrlForTopic } = searchProxyClient;
 import config from './config.js';
 import debugTools from './debug-tools.js';
 import serviceWorkerAdapter from './service-worker-adapter.js';
@@ -1309,7 +1308,22 @@ async function forceScrape() {
 // Start the scraping process
 async function startScraping() {
     try {
-        // Always update badge to reflect current state
+        // Check authentication and enabled state first
+        const { principalId, enabled } = await chrome.storage.local.get(['principalId', 'enabled']);
+        if (!principalId) {
+            chrome.action.setBadgeText({ text: 'OFF' });
+            chrome.action.setBadgeBackgroundColor({ color: '#9E9E9E' });
+            return { success: false, error: 'Not authenticated' };
+        }
+
+        // Check if extension is enabled
+        if (enabled === false) {
+            chrome.action.setBadgeText({ text: 'OFF' });
+            chrome.action.setBadgeBackgroundColor({ color: '#9E9E9E' });
+            return { success: false, error: 'Extension disabled' };
+        }
+
+        // Now update badge to show scraping is active
         chrome.action.setBadgeText({ text: 'ON' });
         chrome.action.setBadgeBackgroundColor({ color: '#4CAF50' });
 
@@ -1317,17 +1331,6 @@ async function startScraping() {
         if (isScrapingActive) {
             // Even if active, ensure the state is properly saved
             chrome.storage.local.set({ enabled: true, isScrapingActive: true, lastStartTime: Date.now() });
-        }
-
-        // Check authentication
-        const { principalId, enabled } = await chrome.storage.local.get(['principalId', 'enabled']);
-        if (!principalId) {
-            return { success: false, error: 'Not authenticated' };
-        }
-
-        // Check if extension is enabled
-        if (enabled === false) {
-            return { success: false, error: 'Extension disabled' };
         }
 
         // Check if topics are loaded
@@ -2389,11 +2392,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                                     logger.log(`Empty topics array initialized (${topics.length} topics)`);
                                 }
 
-                                // Schedule scraping to start after a short delay
-                                setTimeout(async () => {
-                                    // Start the actual scraping process, not just a single scrape
-                                    await startScraping();
-                                }, 5000); // 5 second delay
+                                // Don't start scraping automatically - extension is disabled by default
+                                logger.log('Topics loaded but extension is disabled - user must enable it manually');
                             } catch (error) {
                                 logger.error('Error loading topics after login:', error);
 
@@ -2408,19 +2408,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
                                 logger.log(`Empty topics array initialized (${topics.length} topics)`);
 
-                                // Schedule scraping to start after a short delay
-                                setTimeout(async () => {
-                                    // Start the actual scraping process, not just a single scrape
-                                    await startScraping();
-                                }, 5000); // 5 second delay
+                                // Don't start scraping automatically - extension is disabled by default
+                                logger.log('Topics loaded but extension is disabled - user must enable it manually');
                             }
                         } else {
                             logger.log(`Topics already loaded (${topics.length} topics)`);
-                            // Schedule scraping to start after a short delay
-                            setTimeout(async () => {
-                                // Start the actual scraping process, not just a single scrape
-                                await startScraping();
-                            }, 5000); // 5 second delay
+                            // Don't start scraping automatically - extension is disabled by default
+                            logger.log('Extension is disabled by default - user must enable it manually');
                         }
 
                         // Send response back to dashboard

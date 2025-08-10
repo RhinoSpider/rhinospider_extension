@@ -17,6 +17,7 @@ L.Icon.Default.mergeOptions({
 const countryCoordinates = {
   'United States': [39.8283, -98.5795],
   'Canada': [56.1304, -106.3468],
+  'Kazakhstan': [48.0196, 66.9237],
   'United Kingdom': [55.3781, -3.4360],
   'Germany': [51.1657, 10.4515],
   'France': [46.2276, 2.2137],

@@ -1,30 +1,31 @@
 import React, { useState, useEffect } from 'react';
-import { Actor, HttpAgent } from '@dfinity/agent';
-import { AuthClient } from '@dfinity/auth-client';
+import { getExtensionUsers } from '../lib/admin';
 
-interface UserProfile {
-  principal: string;
-  devices: string[];
-  created: bigint;
-  lastLogin: bigint;
-  ipAddress?: string;
-  country?: string;
-  region?: string;
-  city?: string;
-  referralCode: string;
-  referralCount: bigint;
-  points: bigint;
-  totalDataScraped: bigint;
-  dataVolumeKB: bigint;
+interface ExtensionUser {
+  id: string;
+  principalId: string;
+  deviceId: string;
+  dataContributed: number;
+  lastActive: string;
+  joinDate: string;
   isActive: boolean;
+  ipAddress: string;
+  location: string;
+  points?: number;
+  referralCount?: number;
+  referralCode?: string;
 }
 
-// Utility function to format BigInt timestamps
-const formatTimestamp = (timestamp: bigint): string => {
+// Utility function to format ISO date strings
+const formatTimestamp = (timestamp: string): string => {
   try {
-    // Convert nanoseconds to milliseconds
-    const milliseconds = Number(timestamp / BigInt(1_000_000));
-    const date = new Date(milliseconds);
+    const date = new Date(timestamp);
+    
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      return "Invalid Date";
+    }
+    
     return date.toLocaleString();
   } catch (e) {
     console.error("Error formatting timestamp:", e);
@@ -32,109 +33,33 @@ const formatTimestamp = (timestamp: bigint): string => {
   }
 };
 
-const formatNumber = (num: bigint | number): string => {
-  return new Intl.NumberFormat().format(Number(num));
+const formatNumber = (num: number): string => {
+  return new Intl.NumberFormat().format(num);
 };
 
-const formatDataSize = (kb: bigint): string => {
-  const kbNum = Number(kb);
-  if (kbNum < 1024) return `${kbNum} KB`;
-  const mb = kbNum / 1024;
+const formatDataSize = (bytes: number): string => {
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb.toFixed(2)} KB`;
+  const mb = kb / 1024;
   if (mb < 1024) return `${mb.toFixed(2)} MB`;
   const gb = mb / 1024;
   return `${gb.toFixed(2)} GB`;
 };
 
 export const ExtensionUsers: React.FC = () => {
-  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [users, setUsers] = useState<ExtensionUser[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortBy, setSortBy] = useState<'points' | 'data' | 'lastLogin'>('lastLogin');
+  const [sortBy, setSortBy] = useState<'data' | 'lastActive'>('lastActive');
 
   const fetchUsers = async () => {
     setLoading(true);
     setError(null);
     try {
-      const authClient = await AuthClient.create();
-      const identity = authClient.getIdentity();
-      
-      const agent = new HttpAgent({
-        identity,
-        host: process.env.DFX_NETWORK === 'local' 
-          ? 'http://localhost:4943' 
-          : 'https://ic0.app',
-      });
-
-      if (process.env.DFX_NETWORK === 'local') {
-        await agent.fetchRootKey();
-      }
-
-      const consumerCanisterId = 't3pjp-kqaaa-aaaao-a4ooq-cai';
-      
-      // Create actor for consumer canister
-      const idlFactory = ({ IDL }: any) => {
-        const UserProfile = IDL.Record({
-          principal: IDL.Principal,
-          devices: IDL.Vec(IDL.Text),
-          created: IDL.Int,
-          lastLogin: IDL.Int,
-          ipAddress: IDL.Opt(IDL.Text),
-          country: IDL.Opt(IDL.Text),
-          region: IDL.Opt(IDL.Text),
-          city: IDL.Opt(IDL.Text),
-          latitude: IDL.Opt(IDL.Float64),
-          longitude: IDL.Opt(IDL.Float64),
-          lastActive: IDL.Int,
-          isActive: IDL.Bool,
-          dataVolumeKB: IDL.Nat,
-          referralCode: IDL.Text,
-          referralCount: IDL.Nat,
-          points: IDL.Nat,
-          totalDataScraped: IDL.Nat,
-          referredBy: IDL.Opt(IDL.Principal),
-          preferences: IDL.Record({
-            notificationsEnabled: IDL.Bool,
-            theme: IDL.Text,
-          }),
-        });
-
-        return IDL.Service({
-          getAllUsers: IDL.Func([], [IDL.Vec(IDL.Tuple(IDL.Principal, UserProfile))], ['query']),
-        });
-      };
-
-      const consumerActor = Actor.createActor(idlFactory, {
-        agent,
-        canisterId: consumerCanisterId,
-      });
-
-      // Fetch all users
-      try {
-        const allUsers = await consumerActor.getAllUsers() as [any, any][];
-        
-        // Process users
-        const processedUsers: UserProfile[] = allUsers.map(([principal, profile]) => ({
-          principal: principal.toString(),
-          devices: profile.devices,
-          created: Number(profile.created),
-          lastLogin: Number(profile.lastLogin),
-          ipAddress: profile.ipAddress?.[0],
-          country: profile.country?.[0],
-          region: profile.region?.[0],
-          city: profile.city?.[0],
-          referralCode: profile.referralCode,
-          referralCount: Number(profile.referralCount),
-          points: Number(profile.points),
-          totalDataScraped: Number(profile.totalDataScraped),
-          dataVolumeKB: Number(profile.dataVolumeKB),
-          isActive: profile.isActive,
-        }));
-
-        setUsers(processedUsers);
-      } catch (err) {
-        setUsers([]);
-      }
+      const extensionUsers = await getExtensionUsers();
+      setUsers(extensionUsers);
     } catch (err) {
       console.error("Failed to fetch users:", err);
       setError("Failed to fetch extension users from consumer canister.");
@@ -149,19 +74,16 @@ export const ExtensionUsers: React.FC = () => {
 
   const filteredUsers = users
     .filter(user => 
-      user.principal.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.referralCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (user.country?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-      (user.city?.toLowerCase() || '').includes(searchTerm.toLowerCase())
+      user.principalId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (user.referralCode?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+      user.location.toLowerCase().includes(searchTerm.toLowerCase())
     )
     .sort((a, b) => {
       switch (sortBy) {
-        case 'points':
-          return Number(b.points) - Number(a.points);
         case 'data':
-          return Number(b.dataVolumeKB) - Number(a.dataVolumeKB);
-        case 'lastLogin':
-          return Number(b.lastLogin) - Number(a.lastLogin);
+          return b.dataContributed - a.dataContributed;
+        case 'lastActive':
+          return new Date(b.lastActive).getTime() - new Date(a.lastActive).getTime();
         default:
           return 0;
       }
@@ -202,11 +124,10 @@ export const ExtensionUsers: React.FC = () => {
           />
           <select
             value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as 'points' | 'data' | 'lastLogin')}
+            onChange={(e) => setSortBy(e.target.value as 'data' | 'lastActive')}
             className="px-4 py-2 bg-[#131217] text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-[#B692F6]"
           >
-            <option value="lastLogin">Sort by Last Login</option>
-            <option value="points">Sort by Points</option>
+            <option value="lastActive">Sort by Last Active</option>
             <option value="data">Sort by Data Contributed</option>
           </select>
         </div>
@@ -224,38 +145,32 @@ export const ExtensionUsers: React.FC = () => {
                   Location
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-[#B692F6] uppercase tracking-wider">
-                  Points
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-[#B692F6] uppercase tracking-wider">
                   Data Contributed
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-[#B692F6] uppercase tracking-wider">
-                  Referral Code
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-[#B692F6] uppercase tracking-wider">
-                  Referrals
+                  IP Address
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-[#B692F6] uppercase tracking-wider">
                   Status
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-[#B692F6] uppercase tracking-wider">
-                  Last Login
+                  Last Active
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-[#B692F6] uppercase tracking-wider">
-                  Created
+                  Join Date
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#131217]">
               {loading ? (
                 <tr>
-                  <td colSpan={9} className="px-6 py-4 text-center text-gray-400">
+                  <td colSpan={6} className="px-6 py-4 text-center text-gray-400">
                     Loading extension users...
                   </td>
                 </tr>
               ) : filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-6 py-4 text-center text-gray-400">
+                  <td colSpan={6} className="px-6 py-4 text-center text-gray-400">
                     {searchTerm ? 'No users found matching your search' : 'No extension users registered yet'}
                   </td>
                 </tr>
@@ -263,22 +178,16 @@ export const ExtensionUsers: React.FC = () => {
                 filteredUsers.map((user, index) => (
                   <tr key={index} className="hover:bg-[#360D68] hover:bg-opacity-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-white font-mono">
-                      {user.principal.substring(0, 8)}...{user.principal.substring(user.principal.length - 6)}
+                      {user.principalId.substring(0, 8)}...{user.principalId.substring(user.principalId.length - 6)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
-                      {user.city && user.country ? `${user.city}, ${user.country}` : user.country || 'Unknown'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-white font-semibold">
-                      {formatNumber(user.points)}
+                      {user.location}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
-                      {formatDataSize(user.dataVolumeKB)}
+                      {formatDataSize(user.dataContributed)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-[#B692F6] font-mono">
-                      {user.referralCode}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
-                      {formatNumber(user.referralCount)}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
+                      {user.ipAddress}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-2 py-1 text-xs rounded-full ${
@@ -290,10 +199,10 @@ export const ExtensionUsers: React.FC = () => {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
-                      {formatTimestamp(user.lastLogin)}
+                      {formatTimestamp(user.lastActive)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
-                      {formatTimestamp(user.created)}
+                      {formatTimestamp(user.joinDate)}
                     </td>
                   </tr>
                 ))
@@ -306,23 +215,19 @@ export const ExtensionUsers: React.FC = () => {
       {filteredUsers.length > 0 && (
         <div className="bg-[#1E1E2E] rounded-lg p-6">
           <h2 className="text-xl font-semibold text-white mb-4">User Statistics</h2>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div>
-              <div className="text-gray-400 text-sm">Total Points</div>
-              <div className="text-2xl font-bold text-white">
-                {formatNumber(filteredUsers.reduce((sum, u) => sum + Number(u.points), 0))}
-              </div>
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <div className="text-gray-400 text-sm">Total Data</div>
               <div className="text-2xl font-bold text-white">
-                {formatDataSize(filteredUsers.reduce((sum, u) => sum + Number(u.dataVolumeKB), 0))}
+                {formatDataSize(filteredUsers.reduce((sum, u) => sum + u.dataContributed, 0))}
               </div>
             </div>
             <div>
-              <div className="text-gray-400 text-sm">Total Referrals</div>
+              <div className="text-gray-400 text-sm">Average Data per User</div>
               <div className="text-2xl font-bold text-white">
-                {formatNumber(filteredUsers.reduce((sum, u) => sum + Number(u.referralCount), 0))}
+                {filteredUsers.length > 0 
+                  ? formatDataSize(filteredUsers.reduce((sum, u) => sum + u.dataContributed, 0) / filteredUsers.length)
+                  : formatDataSize(0)}
               </div>
             </div>
             <div>

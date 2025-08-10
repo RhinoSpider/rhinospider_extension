@@ -889,10 +889,17 @@ actor ConsumerBackend {
                         }
                     };
                     case null {
+                        // Try to determine country from IP pattern
+                        let defaultCountry = if (Text.startsWith(ipAddress, #text "185.18.")) {
+                            "Kazakhstan" // 185.18.x.x is allocated to Kazakhstan
+                        } else {
+                            "Unknown" // Don't assume United States
+                        };
+                        
                         {
                             profile with
                             ipAddress = ?ipAddress;
-                            country = ?"United States"; // Default to USA if lookup fails
+                            country = ?defaultCountry;
                             lastLogin = Time.now();
                             lastActive = Time.now();
                             isActive = true;
@@ -902,6 +909,79 @@ actor ConsumerBackend {
                 
                 userProfiles.put(caller, updatedProfile);
                 return #ok();
+            };
+        }
+    };
+    
+    // Fix all users with Kazakhstan IPs
+    public shared(msg) func fixAllKazakhstanUsers(): async Result.Result<Text, Text> {
+        // Temporarily allow any authorized admin to fix
+        let callerText = Principal.toText(msg.caller);
+        if (callerText != ADMIN_CANISTER_ID and 
+            callerText != "p6gaf-qjt3x-6q6ci-ro7nd-aklhp-6hgfo-4dljo-busl6-3ftgp-iliyi-zqe" and // ic-prod principal
+            callerText != "t52au-jmmys-xpd7e-f2cc7-xgsya-2ajbl-22leo-e7hep-kclwp-kqzoq-jae") { // admin principal
+            return #err("Not authorized");
+        };
+        
+        var fixedCount = 0;
+        for ((principal, profile) in userProfiles.entries()) {
+            switch (profile.ipAddress) {
+                case (?ip) {
+                    if (Text.startsWith(ip, #text "185.18.") and 
+                        (profile.country == ?"United States" or profile.country == ?"Unknown" or profile.country == null)) {
+                        let updatedProfile = {
+                            profile with
+                            country = ?"Kazakhstan";
+                            city = ?"Almaty";
+                            region = ?"Almaty Province";
+                            latitude = ?43.25;
+                            longitude = ?76.9167;
+                        };
+                        userProfiles.put(principal, updatedProfile);
+                        fixedCount += 1;
+                    };
+                };
+                case null {};
+            };
+        };
+        
+        return #ok("Fixed " # Nat.toText(fixedCount) # " users with Kazakhstan IPs");
+    };
+    
+    // Fix geolocation for existing users with Kazakhstan IPs
+    public shared(msg) func fixUserGeolocation(principalId: Principal): async Result.Result<(), Text> {
+        // Only allow admin canister to fix geolocation
+        if (Principal.toText(msg.caller) != ADMIN_CANISTER_ID) {
+            return #err("Not authorized");
+        };
+        
+        switch (userProfiles.get(principalId)) {
+            case (?profile) {
+                // Check if user has Kazakhstan IP but wrong country
+                switch (profile.ipAddress) {
+                    case (?ip) {
+                        if (Text.startsWith(ip, #text "185.18.") and 
+                            (profile.country == ?"United States" or profile.country == ?"Unknown")) {
+                            let updatedProfile = {
+                                profile with
+                                country = ?"Kazakhstan";
+                                city = ?"Almaty";
+                                region = ?"Almaty Province";
+                                latitude = ?43.25;
+                                longitude = ?76.9167;
+                            };
+                            userProfiles.put(principalId, updatedProfile);
+                            return #ok();
+                        };
+                        return #ok(); // No update needed
+                    };
+                    case null {
+                        return #err("No IP address stored");
+                    };
+                };
+            };
+            case null {
+                return #err("User not found");
             };
         }
     };

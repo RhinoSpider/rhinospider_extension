@@ -243,7 +243,7 @@ const searchProxyClient = new SearchProxyClient();
 
 // Export both the instance and the methods for backward compatibility
 export default searchProxyClient;
-export const getUrlsForTopics = searchProxyClient.getUrlsForTopics.bind(searchProxyClient);
-export const prefetchUrlsForAllTopics = searchProxyClient.prefetchUrlsForAllTopics.bind(searchProxyClient);
-export const checkProxyHealth = searchProxyClient.checkProxyHealth.bind(searchProxyClient);
-export const getUrlForTopic = searchProxyClient.getUrlForTopic.bind(searchProxyClient);
+export const getUrlsForTopics = (topics, limit) => searchProxyClient.getUrlsForTopics(topics, limit);
+export const prefetchUrlsForAllTopics = (topics) => searchProxyClient.prefetchUrlsForAllTopics(topics);
+export const checkProxyHealth = () => searchProxyClient.checkProxyHealth();
+export const getUrlForTopic = (topic) => searchProxyClient.getUrlForTopic(topic);
