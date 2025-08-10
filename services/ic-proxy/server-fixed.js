@@ -31,23 +31,35 @@ console.log('Storage Canister ID:', STORAGE_CANISTER_ID);
 // Create agent
 const agent = new HttpAgent({ host: IC_HOST });
 
-// Storage canister IDL
+// Storage canister IDL - EXACT match to deployed canister
 const storageIdlFactory = ({ IDL }) => {
+  const Error = IDL.Variant({
+    'NotFound': IDL.Null,
+    'AlreadyExists': IDL.Null,
+    'NotAuthorized': IDL.Null,
+    'InvalidInput': IDL.Text,
+    'SystemError': IDL.Text
+  });
+  
+  const Result = IDL.Variant({
+    'ok': IDL.Null,
+    'err': Error
+  });
+  
+  const ScrapedData = IDL.Record({
+    'client_id': IDL.Principal,
+    'content': IDL.Text,
+    'id': IDL.Text,
+    'scraping_time': IDL.Int,
+    'source': IDL.Text,
+    'status': IDL.Text,
+    'timestamp': IDL.Int,
+    'topic': IDL.Text,
+    'url': IDL.Text
+  });
+  
   return IDL.Service({
-    storeScrapedData: IDL.Func([IDL.Record({
-      id: IDL.Text,
-      url: IDL.Text,
-      topic: IDL.Text,
-      content: IDL.Text,
-      source: IDL.Text,
-      timestamp: IDL.Int,
-      client_id: IDL.Principal,
-      status: IDL.Text,
-      scraping_time: IDL.Int
-    })], [IDL.Variant({ 
-      Ok: IDL.Text, 
-      Err: IDL.Text 
-    })], []),
+    'storeScrapedData': IDL.Func([ScrapedData], [Result], [])
   });
 };
 
@@ -133,6 +145,18 @@ const consumerIdlFactory = ({ IDL }) => {
     ok: IDL.Null,
     err: IDL.Text
   });
+
+  const ScrapedData = IDL.Record({
+    id: IDL.Text,
+    url: IDL.Text,
+    topic: IDL.Text,
+    content: IDL.Text,
+    source: IDL.Text,
+    timestamp: IDL.Int,
+    client_id: IDL.Principal,
+    status: IDL.Text,
+    scraping_time: IDL.Int
+  });
   
   return IDL.Service({
     getReferralCode: IDL.Func([], [ResultText], []),
@@ -140,7 +164,8 @@ const consumerIdlFactory = ({ IDL }) => {
     getUserData: IDL.Func([], [ResultUserProfile], []),
     getProfile: IDL.Func([], [ResultUserProfile], []),
     updateUserLogin: IDL.Func([IDL.Text], [ResultUnit], []),
-    getAllUsers: IDL.Func([], [IDL.Vec(IDL.Tuple(IDL.Principal, UserProfile))], ['query'])
+    getAllUsers: IDL.Func([], [IDL.Vec(IDL.Tuple(IDL.Principal, UserProfile))], ['query']),
+    submitScrapedData: IDL.Func([ScrapedData], [ResultUnit], [])
   });
 };
 
@@ -211,7 +236,7 @@ app.post('/api/consumer-submit', authenticateApiKey, async (req, res) => {
   console.log('==== /api/consumer-submit endpoint called ====');
   
   try {
-    const { url, content, topicId, topic, principalId, status, extractedData, scraping_time } = req.body;
+    const { id, url, content, topic, topicId, client_id, principalId, status, extractedData, scraping_time, timestamp } = req.body;
     
     // Handle user stats tracking - skip data storage
     if (req.body.type === 'user_stats_update') {
@@ -223,9 +248,12 @@ app.post('/api/consumer-submit', authenticateApiKey, async (req, res) => {
       });
     }
 
-    // Generate a unique submission ID
-    const submissionId = req.body.id || `submission-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    // Use the provided ID or generate one
+    const submissionId = id || `submission-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
     const contentValue = content || (extractedData && extractedData.content) || '<html><body><p>No content available</p></body></html>';
+
+    // Use client_id or fallback to principalId 
+    const clientPrincipal = client_id || principalId;
 
     // Prepare data for storage canister - SIMPLE and CLEAN
     const storageData = {
@@ -234,37 +262,52 @@ app.post('/api/consumer-submit', authenticateApiKey, async (req, res) => {
       topic: topic || topicId || '',
       content: contentValue,
       source: 'extension',
-      timestamp: BigInt(Date.now() * 1000000), // nanoseconds
-      client_id: principalId ? Principal.fromText(principalId) : Principal.anonymous(),
+      timestamp: BigInt(timestamp || Math.floor(Date.now() / 1000)), // Use seconds timestamp
+      client_id: clientPrincipal ? Principal.fromText(clientPrincipal) : Principal.anonymous(),
       status: status || 'completed',
       scraping_time: BigInt(scraping_time || 500)
     };
 
     console.log('[/api/consumer-submit] Submitting to storage canister');
+    console.log('[DEBUG] Storage data structure:', JSON.stringify(storageData, (key, value) => 
+      typeof value === 'bigint' ? value.toString() + 'n' : 
+      (value && typeof value === 'object' && value.constructor?.name === 'Principal') ? value.toString() : value
+    ));
 
-    // Submit directly to storage canister - NO FALLBACKS, NO COMPLEXITY
+    // Submit directly to storage canister
     try {
       const result = await storageActor.storeScrapedData(storageData);
       
-      console.log('[/api/consumer-submit] Storage submission successful');
+      console.log('[/api/consumer-submit] Storage submission result:', result);
       
-      return res.status(200).json({
-        success: true,
-        submissionId,
-        url,
-        topic: topic || topicId,
-        timestamp: Date.now(),
-        method: 'storage-canister'
-      });
-      
+      if (result.ok !== undefined) {
+        // Success
+        return res.status(200).json({
+          success: true,
+          submissionId,
+          message: 'Data stored successfully',
+          url,
+          topic: topic || topicId,
+          timestamp: Date.now(),
+          method: 'storage-canister'
+        });
+      } else if (result.err) {
+        // Handle storage error
+        console.error('[/api/consumer-submit] Storage error:', result.err);
+        return res.status(200).json({
+          success: false,
+          submissionId,
+          message: 'Storage error',
+          error: result.err,
+          timestamp: Date.now()
+        });
+      }
     } catch (storageError) {
       console.error('[/api/consumer-submit] Storage submission error:', storageError);
-      
-      // Return success anyway to keep extension working
-      return res.status(200).json({
-        success: true,
+      return res.status(500).json({
+        success: false,
         submissionId,
-        message: 'Data received (storage error logged)',
+        message: 'Storage submission failed',
         error: storageError.message,
         timestamp: Date.now()
       });

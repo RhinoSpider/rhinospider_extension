@@ -100,14 +100,16 @@ class ServiceWorkerAdapter {
    */
   async submitScrapedData(data) {
     try {
-      // Prepare the request body
+      // Prepare the request body with all required fields
       const body = {
+        id: `scrape_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, // Generate unique ID
         url: data.url,
         content: data.content,
         topic: data.topic,
-        client_id: data.principalId, // Changed from principalId to client_id
+        client_id: data.principalId, // Will be converted to Principal by IC proxy
         status: data.status || 'completed',
         source: data.source || 'extension',
+        timestamp: Math.floor(Date.now() / 1000), // Unix timestamp in seconds
         scraping_time: data.scraping_time || 0
       };
 

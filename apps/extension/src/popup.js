@@ -20,6 +20,8 @@ async function initialize() {
         principalId: document.getElementById('principalId'),
         pointsEarned: document.getElementById('pointsEarned'),
         pagesScraped: document.getElementById('pagesScraped'),
+        bandwidthUsedPopup: document.getElementById('bandwidthUsedPopup'),
+        currentSpeedPopup: document.getElementById('currentSpeedPopup'),
         scrapingToggle: document.getElementById('scrapingToggle')
     };
     
@@ -158,7 +160,9 @@ async function loadState() {
             'enabled',
             'isScrapingActive',
             'totalPointsEarned',
-            'totalPagesScraped'
+            'totalPagesScraped',
+            'totalBandwidthUsed',
+            'currentInternetSpeed'
         ]);
         
         // Update principal display
@@ -174,6 +178,21 @@ async function loadState() {
         // Update stats
         elements.pointsEarned.textContent = state.totalPointsEarned || '0';
         elements.pagesScraped.textContent = state.totalPagesScraped || '0';
+        
+        // Update bandwidth and speed
+        if (elements.bandwidthUsedPopup) {
+            const bandwidth = state.totalBandwidthUsed || 0;
+            elements.bandwidthUsedPopup.textContent = formatBandwidth(bandwidth);
+        }
+        if (elements.currentSpeedPopup) {
+            const speed = state.currentInternetSpeed;
+            if (speed && speed.speedMbps) {
+                elements.currentSpeedPopup.textContent = `${speed.speedMbps} Mbps`;
+                elements.currentSpeedPopup.style.color = getSpeedColor(speed.bandwidthScore);
+            } else {
+                elements.currentSpeedPopup.textContent = 'Testing...';
+            }
+        }
         
     } catch (error) {
         console.error('Error loading state:', error);
@@ -219,6 +238,22 @@ function hideError() {
     elements.loginError.style.display = 'none';
 }
 
+function formatBandwidth(bytes) {
+    if (bytes === 0) return '0 B';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+function getSpeedColor(score) {
+    if (score >= 80) return '#00FF88';  // Green - Excellent
+    if (score >= 60) return '#FFD700';  // Yellow - Good  
+    if (score >= 40) return '#FF9500';  // Orange - Average
+    if (score >= 20) return '#FF6B6B';  // Red - Poor
+    return '#9CA3AF';                   // Gray - Very Poor
+}
+
 // Listen for state updates from background script
 chrome.storage.onChanged.addListener((changes, namespace) => {
     if (namespace === 'local') {
@@ -228,6 +263,18 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
         }
         if (changes.totalPagesScraped) {
             elements.pagesScraped.textContent = changes.totalPagesScraped.newValue || '0';
+        }
+        // Update bandwidth and speed display
+        if (changes.totalBandwidthUsed && elements.bandwidthUsedPopup) {
+            const bandwidth = changes.totalBandwidthUsed.newValue || 0;
+            elements.bandwidthUsedPopup.textContent = formatBandwidth(bandwidth);
+        }
+        if (changes.currentInternetSpeed && elements.currentSpeedPopup) {
+            const speed = changes.currentInternetSpeed.newValue;
+            if (speed && speed.speedMbps) {
+                elements.currentSpeedPopup.textContent = `${speed.speedMbps} Mbps`;
+                elements.currentSpeedPopup.style.color = getSpeedColor(speed.bandwidthScore);
+            }
         }
         // Update toggle if state changed externally
         if (changes.enabled) {

@@ -21,6 +21,8 @@ let extensionStatusText;
 let userProfileElement;
 let pointsElement;
 let pagesElement;
+let bandwidthUsedElement;
+let currentSpeedElement;
 let referralCodeDisplay;
 let referralStats;
 
@@ -45,6 +47,8 @@ async function initialize() {
     userProfileElement = document.getElementById('userProfile');
     pointsElement = document.getElementById('pointsEarned');
     pagesElement = document.getElementById('pagesScraped');
+    bandwidthUsedElement = document.getElementById('bandwidthUsed');
+    currentSpeedElement = document.getElementById('currentSpeed');
     
     // Set up event listeners
     if (loginButton) loginButton.addEventListener('click', handleLogin);
@@ -232,12 +236,25 @@ async function loadDashboardData() {
         }
         
         // Load stats from storage
-        const stats = await chrome.storage.local.get(['totalPointsEarned', 'totalPagesScraped']);
+        const stats = await chrome.storage.local.get(['totalPointsEarned', 'totalPagesScraped', 'totalBandwidthUsed', 'currentInternetSpeed']);
         if (pointsElement) {
             pointsElement.textContent = stats.totalPointsEarned || 0;
         }
         if (pagesElement) {
             pagesElement.textContent = stats.totalPagesScraped || 0;
+        }
+        if (bandwidthUsedElement) {
+            const bandwidth = stats.totalBandwidthUsed || 0;
+            bandwidthUsedElement.textContent = formatBandwidth(bandwidth);
+        }
+        if (currentSpeedElement) {
+            const speed = stats.currentInternetSpeed;
+            if (speed && speed.speedMbps) {
+                currentSpeedElement.textContent = `${speed.speedMbps} Mbps`;
+                currentSpeedElement.style.color = getSpeedColor(speed.bandwidthScore);
+            } else {
+                currentSpeedElement.textContent = 'Testing...';
+            }
         }
         
     } catch (error) {
@@ -250,6 +267,22 @@ function updateExtensionStatusText(enabled) {
         extensionStatusText.textContent = enabled ? 'ON' : 'OFF';
         extensionStatusText.style.color = enabled ? '#4CAF50' : '#9CA3AF';
     }
+}
+
+function formatBandwidth(bytes) {
+    if (bytes === 0) return '0 B';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+function getSpeedColor(score) {
+    if (score >= 80) return '#00FF88';  // Green - Excellent
+    if (score >= 60) return '#FFD700';  // Yellow - Good  
+    if (score >= 40) return '#FF9500';  // Orange - Average
+    if (score >= 20) return '#FF6B6B';  // Red - Poor
+    return '#9CA3AF';                   // Gray - Very Poor
 }
 
 async function loadReferralData() {

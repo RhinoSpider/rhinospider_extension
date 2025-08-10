@@ -259,6 +259,59 @@ const logger = {
     }
 };
 
+// Retry queue for failed operations
+const retryQueue = [];
+const RETRY_INTERVAL = 30000; // 30 seconds
+const MAX_RETRIES = 5;
+
+function addToRetryQueue(operation, params, error) {
+    retryQueue.push({
+        operation,
+        params,
+        error: error?.toString() || 'Unknown error',
+        retryCount: 0,
+        lastAttempt: Date.now(),
+        nextRetry: Date.now() + RETRY_INTERVAL
+    });
+    logger.warn(`Added ${operation} to retry queue. Queue size: ${retryQueue.length}`);
+}
+
+async function processRetryQueue() {
+    if (retryQueue.length === 0) return;
+
+    const now = Date.now();
+    for (let i = retryQueue.length - 1; i >= 0; i--) {
+        const item = retryQueue[i];
+        
+        if (now >= item.nextRetry && item.retryCount < MAX_RETRIES) {
+            item.retryCount++;
+            item.lastAttempt = now;
+            item.nextRetry = now + (RETRY_INTERVAL * Math.pow(2, item.retryCount)); // Exponential backoff
+            
+            try {
+                if (item.operation === 'updateUserLogin' && serviceWorkerAdapter.updateUserLogin) {
+                    const result = await serviceWorkerAdapter.updateUserLogin(item.params.ipAddress);
+                    if (result && result.ok !== undefined) {
+                        logger.log(`Retry successful: ${item.operation} for IP ${item.params.ipAddress}`);
+                        retryQueue.splice(i, 1); // Remove from queue on success
+                    }
+                }
+            } catch (retryError) {
+                logger.warn(`Retry ${item.retryCount}/${MAX_RETRIES} failed for ${item.operation}:`, retryError.toString());
+                if (item.retryCount >= MAX_RETRIES) {
+                    logger.error(`Max retries exceeded for ${item.operation}, removing from queue`);
+                    retryQueue.splice(i, 1);
+                }
+            }
+        } else if (item.retryCount >= MAX_RETRIES) {
+            retryQueue.splice(i, 1); // Clean up failed items
+        }
+    }
+}
+
+// Start retry queue processor
+setInterval(processRetryQueue, RETRY_INTERVAL);
+
 // Scraping state
 let isScrapingActive = false;
 let isEnabled = false; // Track if extension is enabled
@@ -2341,20 +2394,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                                         userIpAddress: ipAddress 
                                     });
                                     
-                                    // Update user's IP address in the canister
+                                    // Update user's IP address in the canister (non-blocking)
                                     if (ipAddress && serviceWorkerAdapter.updateUserLogin) {
-                                        try {
-                                            const updateResult = await serviceWorkerAdapter.updateUserLogin(ipAddress);
-                                            if (updateResult && updateResult.ok !== undefined) {
-                                                logger.log('User IP address updated in canister:', ipAddress);
-                                            } else if (updateResult && updateResult.err) {
-                                                logger.warn('Failed to update IP address in canister:', updateResult.err);
-                                            } else {
-                                                logger.warn('Failed to update IP address in canister:', updateResult);
-                                            }
-                                        } catch (updateError) {
-                                            logger.error('Error updating user login info:', updateError);
-                                        }
+                                        serviceWorkerAdapter.updateUserLogin(ipAddress)
+                                            .then(updateResult => {
+                                                if (updateResult && updateResult.ok !== undefined) {
+                                                    logger.log('User IP address updated in canister:', ipAddress);
+                                                } else if (updateResult && updateResult.err) {
+                                                    logger.warn('Failed to update IP address in canister:', updateResult.err);
+                                                } else {
+                                                    logger.warn('Failed to update IP address in canister:', updateResult);
+                                                }
+                                            })
+                                            .catch(updateError => {
+                                                logger.error('Error updating user login info:', updateError);
+                                                // Add to retry queue for later attempt
+                                                addToRetryQueue('updateUserLogin', { ipAddress }, updateError);
+                                            });
                                     }
                                     
                                     logger.log('User referral code:', result.ok);

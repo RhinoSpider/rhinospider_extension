@@ -26,7 +26,7 @@ module.exports = ({ IDL }) => {
   });
   
   const Result = IDL.Variant({
-    'ok': IDL.Record({ 'id': IDL.Text }),
+    'ok': IDL.Null,
     'err': Error
   });
   
