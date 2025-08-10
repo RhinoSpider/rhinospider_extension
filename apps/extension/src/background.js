@@ -15,7 +15,7 @@ const enhancedLogging = {
 
     logConnectionAttempt(url, success, error = null) {
         this.connectionAttempts.push({
-            timestamp: new Date().toISOString(),
+            timestamp: Date.now(),
             url,
             success,
             error: error ? error.toString() : null
@@ -32,7 +32,7 @@ const enhancedLogging = {
 
     logCertificateError(operation, error) {
         this.certificateErrors.push({
-            timestamp: new Date().toISOString(),
+            timestamp: Date.now(),
             operation,
             error: error.toString()
         });
@@ -1097,7 +1097,7 @@ async function performScrape() {
             contentQuality,
             contentLength: extractedData?.content?.length || 0,
             hasKeywords: !!extractedData?.keywordsFound,
-            timestamp: new Date().toISOString(),
+            timestamp: Date.now(),
             topicId: selectedTopic.id,
             topicName: selectedTopic.name,
             url: selectedUrl,

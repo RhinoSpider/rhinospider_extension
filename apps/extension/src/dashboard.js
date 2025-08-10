@@ -66,6 +66,39 @@ async function initialize() {
     
     // Check authentication status
     await checkAuthStatus();
+    
+    // Listen for storage changes to update the dashboard in real-time
+    chrome.storage.onChanged.addListener((changes, area) => {
+        if (area === 'local') {
+            // Update extension status if it changes
+            if (changes.enabled || changes.isScrapingActive) {
+                const enabled = changes.enabled?.newValue || changes.isScrapingActive?.newValue || false;
+                if (extensionToggle) {
+                    extensionToggle.checked = enabled;
+                }
+                updateExtensionStatusText(enabled);
+            }
+            
+            // Update stats if they change
+            if (changes.totalPointsEarned && pointsElement) {
+                pointsElement.textContent = changes.totalPointsEarned.newValue || 0;
+            }
+            if (changes.totalPagesScraped && pagesElement) {
+                pagesElement.textContent = changes.totalPagesScraped.newValue || 0;
+            }
+            if (changes.totalBandwidthUsed && bandwidthUsedElement) {
+                const bandwidth = changes.totalBandwidthUsed.newValue || 0;
+                bandwidthUsedElement.textContent = formatBandwidth(bandwidth);
+            }
+            if (changes.currentInternetSpeed && currentSpeedElement) {
+                const speed = changes.currentInternetSpeed.newValue;
+                if (speed && speed.speedMbps) {
+                    currentSpeedElement.textContent = `${speed.speedMbps} Mbps`;
+                    currentSpeedElement.style.color = getSpeedColor(speed.bandwidthScore);
+                }
+            }
+        }
+    });
 }
 
 async function checkAuthStatus() {

@@ -40,25 +40,9 @@ class DirectStorageClient {
    * @returns {Promise<boolean>} True if the service is available
    */
   async isAvailable() {
-    try {
-      const response = await fetch(`${this.storageUrl}/api/health`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-device-id': this.deviceId || await this.getOrCreateDeviceId(),
-          'Authorization': `Bearer ${this.apiKey}`
-        }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        return data.status === 'ok';
-      }
-      return false;
-    } catch (error) {
-      console.error('Error checking direct storage availability:', error);
-      return false;
-    }
+    // Direct storage is not available in this configuration
+    // We always use the proxy client for data submission
+    return false;
   }
 
   /**
