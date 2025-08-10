@@ -1,6 +1,7 @@
 const { rssSearchForUrls } = require('./rssUrlGenerator');
 const { newsApiSearchForUrls } = require('./newsApiGenerator');
 const { googleSearchForUrls } = require('./googleSearchGenerator');
+const { serpApiSearchForUrls } = require('./serpApiGenerator');
 const { checkUserQuota, updateUserQuota } = require('./userQuotaManager');
 const { hasUrlBeenScraped, markUrlAsScraped, filterScrapedUrls } = require('./scrapedUrlsTracker');
 const NodeCache = require('node-cache');
@@ -46,20 +47,21 @@ async function searchForUrls(topic, keywords = [], page = 0, userId = 'anonymous
   try {
     console.log(`Searching for URLs for topic: ${topic} (page ${page}) for user: ${userId}`);
     
-    // Use RSS feeds, NewsAPI, and Google Search for maximum URL variety
+    // Use RSS feeds, NewsAPI, Google Search, and SerpAPI for maximum URL variety
     const rssResult = await rssSearchForUrls(topic, keywords, page, userId, topicId, options);
     const newsResult = await newsApiSearchForUrls(topic, keywords, page, userId, topicId, options);
     const googleResult = await googleSearchForUrls(topic, keywords, page, userId, topicId, options);
+    const serpResult = await serpApiSearchForUrls(topic, keywords, page, userId, topicId, options);
     
     // Combine URLs from all sources
-    const combinedUrls = [...(rssResult.urls || []), ...(newsResult.urls || []), ...(googleResult.urls || [])];
+    const combinedUrls = [...(rssResult.urls || []), ...(newsResult.urls || []), ...(googleResult.urls || []), ...(serpResult.urls || [])];
     // Remove duplicates
     const uniqueUrls = [...new Set(combinedUrls)];
     
     const result = {
-      urls: uniqueUrls.slice(0, 15), // Limit to 15 URLs per topic (more sources now)
-      source: `rss+newsapi+google (${rssResult.urls?.length || 0} RSS + ${newsResult.urls?.length || 0} NewsAPI + ${googleResult.urls?.length || 0} Google)`,
-      quotaInfo: rssResult.quotaInfo || newsResult.quotaInfo || googleResult.quotaInfo
+      urls: uniqueUrls.slice(0, 20), // Limit to 20 URLs per topic (4 sources now)
+      source: `rss+newsapi+google+serp (${rssResult.urls?.length || 0} RSS + ${newsResult.urls?.length || 0} NewsAPI + ${googleResult.urls?.length || 0} Google + ${serpResult.urls?.length || 0} SerpAPI)`,
+      quotaInfo: rssResult.quotaInfo || newsResult.quotaInfo || googleResult.quotaInfo || serpResult.quotaInfo
     };
     
     // Track URLs for this user
