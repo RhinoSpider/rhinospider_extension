@@ -56,9 +56,7 @@ const enhancedLogging = {
     async testConnections() {
         const endpoints = [
             'https://ic-proxy.rhinospider.com/api/health',
-            'http://ic-proxy.rhinospider.com/api/health',
-            'https://search-proxy.rhinospider.com/api/health',
-            'http://search-proxy.rhinospider.com/api/health'
+            'https://search-proxy.rhinospider.com/api/health'
         ];
 
         console.log('[RhinoSpider] Starting connection tests...');

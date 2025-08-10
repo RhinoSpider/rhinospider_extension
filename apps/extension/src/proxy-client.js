@@ -8,8 +8,7 @@ import connectionHandler from './connection-handler';
 class ProxyClient {
   constructor() {
     this.proxyUrl = config.icProxy?.url || 'https://ic-proxy.rhinospider.com';
-    this.httpFallbackUrl = config.icProxy?.httpFallbackUrl || 'http://ic-proxy.rhinospider.com';
-    this.apiKey = config.icProxy?.apiKey || 'test-api-key';
+    this.apiKey = config.icProxy?.apiKey || 'rhinospider-api-key-2024';
     this.deviceId = null;
     this.initializeDeviceId();
   }

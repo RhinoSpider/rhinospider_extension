@@ -17,12 +17,10 @@
   ],
   "host_permissions": [
     "https://*.ic0.app/*",
-    "https://icp0.io/*",
+    "https://*.icp0.io/*",
     "https://identity.ic0.app/*",
     "https://ic-proxy.rhinospider.com/*",
-    "http://ic-proxy.rhinospider.com/*",
-    "https://search-proxy.rhinospider.com/*",
-    "http://search-proxy.rhinospider.com/*"
+    "https://search-proxy.rhinospider.com/*"
   ],
   "background": {
     "service_worker": "src/background.js",
