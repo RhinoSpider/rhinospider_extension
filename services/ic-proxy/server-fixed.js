@@ -387,15 +387,18 @@ app.get('/api/consumer-users', authenticateApiKey, async (req, res) => {
     console.log(`[/api/consumer-users] Found ${users.length} users`);
     
     // Convert BigInt values to strings for JSON serialization
-    const serializedUsers = users.map(user => ({
-      ...user,
-      principal: user.principal.toString(),
-      created: user.created ? user.created.toString() : '0',
-      lastLogin: user.lastLogin ? user.lastLogin.toString() : '0',
-      dataVolumeKB: user.dataVolumeKB ? Number(user.dataVolumeKB) : 0,
-      referralCount: user.referralCount ? Number(user.referralCount) : 0,
-      points: user.points ? Number(user.points) : 0,
-      totalDataScraped: user.totalDataScraped ? Number(user.totalDataScraped) : 0
+    // Users are returned as tuples [Principal, UserProfile]
+    const serializedUsers = users.map(([principal, profile]) => ({
+      ...profile,
+      principal: principal.toString(),
+      created: profile.created ? profile.created.toString() : '0',
+      lastLogin: profile.lastLogin ? profile.lastLogin.toString() : '0',
+      lastActive: profile.lastActive ? profile.lastActive.toString() : '0',
+      dataVolumeKB: profile.dataVolumeKB ? Number(profile.dataVolumeKB) : 0,
+      referralCount: profile.referralCount ? Number(profile.referralCount) : 0,
+      points: profile.points ? Number(profile.points) : 0,
+      totalDataScraped: profile.totalDataScraped ? Number(profile.totalDataScraped) : 0,
+      referredBy: profile.referredBy && profile.referredBy.length > 0 ? profile.referredBy[0].toString() : null
     }));
     
     res.json({
