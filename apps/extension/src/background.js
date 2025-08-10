@@ -494,6 +494,11 @@ async function initializeExtension() {
     try {
         logger.log('Initializing extension');
 
+        // Run initial speed test in background (don't await)
+        measureInternetSpeed().catch(error => {
+            logger.error('Initial speed test failed:', error);
+        });
+
         // Get authentication state and scraping state
         const { principalId, enabled, isScrapingActive, scrapingEnabled } = await chrome.storage.local.get(['principalId', 'enabled', 'isScrapingActive', 'scrapingEnabled']);
 
@@ -846,10 +851,13 @@ async function measureInternetSpeed() {
         // Speed test results logged in a more concise format
         logger.log(`Speed Test: ${result.speedMbps}Mbps | Score=${result.bandwidthScore}/100 | Rating=${result.metrics.rating}`);
 
+        // Save speed test results to storage for popup display
+        chrome.storage.local.set({ currentInternetSpeed: result });
+
         return result;
     } catch (error) {
         logger.error('Error measuring internet speed:', error);
-        return {
+        const defaultResult = {
             speedMbps: 0,
             bandwidthScore: 0,
             metrics: {
@@ -858,6 +866,9 @@ async function measureInternetSpeed() {
                 rating: 'Error'
             }
         };
+        // Save default result to storage so popup doesn't show "Testing..."
+        chrome.storage.local.set({ currentInternetSpeed: defaultResult });
+        return defaultResult;
     }
 }
 
