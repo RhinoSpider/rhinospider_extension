@@ -142,13 +142,20 @@ export const RhinoScan = () => {
     geoData.forEach((geo) => {
       let coords = null;
       
-      if (geo.coordinates) {
+      if (geo.coordinates && geo.coordinates.lat !== undefined && geo.coordinates.lng !== undefined) {
         coords = [geo.coordinates.lat, geo.coordinates.lng];
-      } else if (countryCoordinates[geo.country]) {
-        coords = countryCoordinates[geo.country];
+      } else if (geo.country && countryCoordinates[geo.country]) {
+        const countryCoords = countryCoordinates[geo.country];
+        if (countryCoords && countryCoords[0] !== undefined && countryCoords[1] !== undefined) {
+          coords = countryCoords;
+        }
       }
 
-      if (coords) {
+      // Validate coordinates before using them
+      if (coords && coords.length === 2 && coords[0] !== undefined && coords[1] !== undefined && 
+          !isNaN(coords[0]) && !isNaN(coords[1]) && 
+          coords[0] >= -90 && coords[0] <= 90 && 
+          coords[1] >= -180 && coords[1] <= 180) {
         const nodeCount = Number(geo.nodeCount);
         const dataVolume = Number(geo.dataVolumeKB);
         
@@ -171,15 +178,16 @@ export const RhinoScan = () => {
         }
 
         // Create pulsing circle marker
-        const marker = L.circleMarker(coords, {
-          radius: radius,
-          fillColor: fillColor,
-          color: '#fff',
-          weight: 2,
-          opacity: 0.9,
-          fillOpacity: 0.6,
-          className: glowClass
-        });
+        try {
+          const marker = L.circleMarker(coords, {
+            radius: radius,
+            fillColor: fillColor,
+            color: '#fff',
+            weight: 2,
+            opacity: 0.9,
+            fillOpacity: 0.6,
+            className: glowClass
+          });
 
         // Enhanced popup with activity indicators
         marker.bindPopup(`
@@ -195,6 +203,9 @@ export const RhinoScan = () => {
         `);
 
         marker.addTo(map);
+        } catch (err) {
+          console.error('Failed to create marker for geo:', geo, 'coords:', coords, 'error:', err);
+        }
       }
     });
 

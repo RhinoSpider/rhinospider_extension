@@ -2342,10 +2342,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                                     if (ipAddress && serviceWorkerAdapter.updateUserLogin) {
                                         try {
                                             const updateResult = await serviceWorkerAdapter.updateUserLogin(ipAddress);
-                                            if (updateResult && updateResult.ok) {
+                                            if (updateResult && updateResult.ok !== undefined) {
                                                 logger.log('User IP address updated in canister:', ipAddress);
+                                            } else if (updateResult && updateResult.err) {
+                                                logger.warn('Failed to update IP address in canister:', updateResult.err);
                                             } else {
-                                                logger.warn('Failed to update IP address in canister:', updateResult?.err);
+                                                logger.warn('Failed to update IP address in canister:', updateResult);
                                             }
                                         } catch (updateError) {
                                             logger.error('Error updating user login info:', updateError);
