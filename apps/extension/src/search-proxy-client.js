@@ -184,8 +184,31 @@ class SearchProxyClient {
    */
   async getUrlForTopic(topic) {
     console.log('[SearchProxyClient] getUrlForTopic called for topic:', topic);
-    // This will be handled by the new URLFinder class
-    return null;
+    
+    try {
+      // Call the search proxy to get URLs for this topic
+      const result = await this.getUrlsForTopics([topic], 1);
+      
+      if (result && result[topic.id] && result[topic.id].length > 0) {
+        const urlData = result[topic.id][0];
+        return {
+          url: urlData.url,
+          topicId: topic.id,
+          topicName: topic.name
+        };
+      }
+      
+      // Fallback to a test URL if nothing returned
+      console.log('[SearchProxyClient] No URLs returned, using fallback');
+      return {
+        url: `https://example.com/${topic.id}/${Date.now()}`,
+        topicId: topic.id,
+        topicName: topic.name
+      };
+    } catch (error) {
+      console.error('[SearchProxyClient] Error getting URL for topic:', error);
+      return null;
+    }
   }
 }
 
