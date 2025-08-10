@@ -92,33 +92,49 @@ const adminActor = Actor.createActor(adminIdlFactory, {
   canisterId: ADMIN_CANISTER_ID,
 });
 
-// Consumer canister IDL
+// Consumer canister IDL - Fixed to match deployed canister
 const consumerIdlFactory = ({ IDL }) => {
+  // Define Result types using lowercase 'ok' and 'err' to match Motoko
+  const ResultText = IDL.Variant({ ok: IDL.Text, err: IDL.Text });
+  const ResultNat = IDL.Variant({ ok: IDL.Nat, err: IDL.Text });
+  
+  const UserProfile = IDL.Record({
+    principal: IDL.Principal,
+    devices: IDL.Vec(IDL.Text),
+    created: IDL.Int,
+    lastLogin: IDL.Int,
+    ipAddress: IDL.Opt(IDL.Text),
+    country: IDL.Opt(IDL.Text),
+    region: IDL.Opt(IDL.Text),
+    city: IDL.Opt(IDL.Text),
+    latitude: IDL.Opt(IDL.Float64),
+    longitude: IDL.Opt(IDL.Float64),
+    lastActive: IDL.Int,
+    isActive: IDL.Bool,
+    dataVolumeKB: IDL.Nat,
+    referralCode: IDL.Text,
+    referralCount: IDL.Nat,
+    points: IDL.Nat,
+    totalDataScraped: IDL.Nat,
+    referredBy: IDL.Opt(IDL.Principal),
+    scrapedUrls: IDL.Vec(IDL.Text),
+    preferences: IDL.Record({
+      notificationsEnabled: IDL.Bool,
+      theme: IDL.Text
+    })
+  });
+  
+  const ResultUserProfile = IDL.Variant({ 
+    ok: UserProfile,
+    err: IDL.Text 
+  });
+  
   return IDL.Service({
-    getReferralCode: IDL.Func([], [IDL.Variant({ Ok: IDL.Text, Err: IDL.Text })], []),
-    useReferralCode: IDL.Func([IDL.Text], [IDL.Variant({ Ok: IDL.Text, Err: IDL.Text })], []),
-    getUserData: IDL.Func([], [IDL.Variant({ 
-      Ok: IDL.Record({
-        principal: IDL.Principal,
-        referralCode: IDL.Text,
-        referralCount: IDL.Nat,
-        points: IDL.Nat,
-        totalDataScraped: IDL.Nat
-      }), 
-      Err: IDL.Text 
-    })], ['query']),
-    awardPoints: IDL.Func([IDL.Nat], [IDL.Variant({ Ok: IDL.Nat, Err: IDL.Text })], []),
-    getAllUsers: IDL.Func([], [IDL.Vec(IDL.Record({
-      principal: IDL.Principal,
-      created: IDL.Int,
-      lastLogin: IDL.Int,
-      isActive: IDL.Bool,
-      dataVolumeKB: IDL.Nat,
-      referralCode: IDL.Text,
-      referralCount: IDL.Nat,
-      points: IDL.Nat,
-      totalDataScraped: IDL.Nat
-    }))], ['query'])
+    getReferralCode: IDL.Func([], [ResultText], []),
+    useReferralCode: IDL.Func([IDL.Text], [ResultText], []),
+    getUserData: IDL.Func([], [ResultUserProfile], []),
+    getProfile: IDL.Func([], [ResultUserProfile], []),
+    getAllUsers: IDL.Func([], [IDL.Vec(IDL.Tuple(IDL.Principal, UserProfile))], ['query'])
   });
 };
 
@@ -311,7 +327,27 @@ app.post('/api/consumer-user-data', authenticateApiKey, async (req, res) => {
   try {
     const result = await consumerActor.getUserData();
     console.log('[/api/consumer-user-data] Result:', result);
-    res.json(result);
+    
+    // Convert BigInt values to strings
+    if (result.ok) {
+      const serialized = {
+        ok: {
+          ...result.ok,
+          created: result.ok.created ? result.ok.created.toString() : '0',
+          lastLogin: result.ok.lastLogin ? result.ok.lastLogin.toString() : '0',
+          lastActive: result.ok.lastActive ? result.ok.lastActive.toString() : '0',
+          dataVolumeKB: result.ok.dataVolumeKB ? Number(result.ok.dataVolumeKB) : 0,
+          referralCount: result.ok.referralCount ? Number(result.ok.referralCount) : 0,
+          points: result.ok.points ? Number(result.ok.points) : 0,
+          totalDataScraped: result.ok.totalDataScraped ? Number(result.ok.totalDataScraped) : 0,
+          principal: result.ok.principal ? result.ok.principal.toString() : '',
+          referredBy: result.ok.referredBy ? result.ok.referredBy.toString() : null
+        }
+      };
+      res.json(serialized);
+    } else {
+      res.json(result);
+    }
   } catch (error) {
     console.error('[/api/consumer-user-data] Error:', error);
     res.status(500).json({ err: error.message });
