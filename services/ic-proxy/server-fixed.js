@@ -134,6 +134,7 @@ const consumerIdlFactory = ({ IDL }) => {
     useReferralCode: IDL.Func([IDL.Text], [ResultText], []),
     getUserData: IDL.Func([], [ResultUserProfile], []),
     getProfile: IDL.Func([], [ResultUserProfile], []),
+    updateUserLogin: IDL.Func([IDL.Text], [ResultText], []),
     getAllUsers: IDL.Func([], [IDL.Vec(IDL.Tuple(IDL.Principal, UserProfile))], ['query'])
   });
 };
@@ -362,6 +363,18 @@ app.post('/api/consumer-award-points', authenticateApiKey, async (req, res) => {
     res.json(result);
   } catch (error) {
     console.error('[/api/consumer-award-points] Error:', error);
+    res.status(500).json({ err: error.message });
+  }
+});
+
+app.post('/api/consumer-update-login', authenticateApiKey, async (req, res) => {
+  console.log('[/api/consumer-update-login] Updating login with IP:', req.body.ipAddress);
+  try {
+    const result = await consumerActor.updateUserLogin(req.body.ipAddress || '');
+    console.log('[/api/consumer-update-login] Result:', result);
+    res.json(result);
+  } catch (error) {
+    console.error('[/api/consumer-update-login] Error:', error);
     res.status(500).json({ err: error.message });
   }
 });

@@ -169,6 +169,35 @@ class ServiceWorkerAdapter {
   }
 
   /**
+   * Update user login with IP address
+   * @param {string} ipAddress IP address
+   * @returns {Promise<Object>} Result
+   */
+  async updateUserLogin(ipAddress) {
+    try {
+      const response = await fetch(`${IC_PROXY_URL}/api/consumer-update-login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ ipAddress })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('Update user login result:', result);
+        return result;
+      } else {
+        console.error('Update user login error:', response.status, response.statusText);
+        throw new Error(`Update user login error: ${response.status} ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error('Error updating user login:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Get topics for a principal
    * @param {string} principalId Principal ID
    * @returns {Promise<Array>} Topics

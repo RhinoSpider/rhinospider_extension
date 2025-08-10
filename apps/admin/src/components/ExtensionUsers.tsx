@@ -316,7 +316,7 @@ export const ExtensionUsers: React.FC = () => {
             <div>
               <div className="text-gray-400 text-sm">Total Data</div>
               <div className="text-2xl font-bold text-white">
-                {formatDataSize(filteredUsers.reduce((sum, u) => sum + Number(u.dataVolumeKB), 0n))}
+                {formatDataSize(filteredUsers.reduce((sum, u) => sum + Number(u.dataVolumeKB), 0))}
               </div>
             </div>
             <div>

@@ -10,10 +10,10 @@ export function Dashboard() {
     console.log('Dashboard mounted');
     
     // Get initial state - DEFAULT TO FALSE
-    chrome.storage.local.get(['scrapingEnabled', 'startTime'], (result) => {
+    chrome.storage.local.get(['enabled', 'startTime'], (result) => {
       console.log('Got storage state:', result);
-      setIsEnabled(result.scrapingEnabled === true); // Only true if explicitly set
-      if (result.startTime && result.scrapingEnabled) {
+      setIsEnabled(result.enabled === true); // Only true if explicitly set
+      if (result.startTime && result.enabled) {
         setUptime(Math.floor((Date.now() - result.startTime) / 1000));
       }
     });
@@ -27,8 +27,16 @@ export function Dashboard() {
       }
     };
     
-    console.log('Adding message listener');
+    // Listen for storage changes
+    const handleStorageChange = (changes, areaName) => {
+      if (areaName === 'local' && changes.enabled) {
+        setIsEnabled(changes.enabled.newValue === true);
+      }
+    };
+    
+    console.log('Adding listeners');
     chrome.runtime.onMessage.addListener(handleMessage);
+    chrome.storage.onChanged.addListener(handleStorageChange);
 
     // Update uptime every second
     const uptimeInterval = setInterval(() => {
@@ -36,8 +44,9 @@ export function Dashboard() {
     }, 1000);
 
     return () => {
-      console.log('Removing message listener');
+      console.log('Removing listeners');
       chrome.runtime.onMessage.removeListener(handleMessage);
+      chrome.storage.onChanged.removeListener(handleStorageChange);
       clearInterval(uptimeInterval);
     };
   }, []);
