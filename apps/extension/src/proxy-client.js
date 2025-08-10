@@ -118,20 +118,18 @@ class ProxyClient {
   async getTopics(principalId) {
     try {
       const options = {
-        method: 'POST',
+        method: 'GET',
         headers: {
-          'Content-Type': 'application/json',
           'x-device-id': this.deviceId || await this.getOrCreateDeviceId(),
           'Authorization': `Bearer ${this.apiKey}`
-        },
-        body: JSON.stringify({ principalId })
+        }
       };
 
       const response = await this.makeRequest('/api/topics', options);
 
       if (response.ok) {
         const data = await response.json();
-        return data.ok || [];
+        return data.topics || data.ok || [];
       } else {
         console.error('Error getting topics:', response.status, response.statusText);
         throw new Error(`Error getting topics: ${response.status} ${response.statusText}`);

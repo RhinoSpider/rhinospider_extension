@@ -449,20 +449,23 @@ async function initializeExtension() {
         // Check if user is authenticated first
         const isUserAuthenticated = !!principalId;
         
-        // ONLY enable if user is authenticated AND explicitly enabled
-        const isEnabled = isUserAuthenticated && (scrapingEnabled === true || enabled === true);
+        // Check actual enabled state from storage (not tied to authentication)
+        const isActuallyEnabled = scrapingEnabled === true || enabled === true;
+        
+        // Only show ON if BOTH authenticated AND enabled
+        const shouldShowOn = isUserAuthenticated && isActuallyEnabled;
 
         // Update badge to reflect current state
-        chrome.action.setBadgeText({ text: isEnabled ? 'ON' : 'OFF' });
+        chrome.action.setBadgeText({ text: shouldShowOn ? 'ON' : 'OFF' });
         chrome.action.setBadgeBackgroundColor({
-            color: isEnabled ? '#4CAF50' : '#9E9E9E'
+            color: shouldShowOn ? '#4CAF50' : '#9E9E9E'
         });
 
         // Ensure storage has consistent values
         chrome.storage.local.set({
-            scrapingEnabled: isEnabled,
-            enabled: isEnabled,
-            isScrapingActive: isEnabled // Default to matching enabled state
+            scrapingEnabled: isActuallyEnabled,
+            enabled: isActuallyEnabled,
+            isScrapingActive: isActuallyEnabled // Default to matching enabled state
         });
 
         // Set authentication state
@@ -477,10 +480,8 @@ async function initializeExtension() {
             logger.log('[AUTH] Initializing topics and config');
             await initializeTopicsAndConfig();
 
-            // Check if extension is enabled - DEFAULT TO FALSE
-            const { scrapingEnabled, enabled } = await chrome.storage.local.get(['scrapingEnabled', 'enabled']);
-            const isEnabled = scrapingEnabled === true || enabled === true;
-            if (isEnabled) {
+            // Check if extension is enabled - use the already calculated value
+            if (isActuallyEnabled) {
                 logger.log('[STATUS] Extension enabled, checking topics');
 
                 // Check if topics are loaded
