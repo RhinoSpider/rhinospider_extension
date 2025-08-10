@@ -129,12 +129,17 @@ const consumerIdlFactory = ({ IDL }) => {
     err: IDL.Text 
   });
   
+  const ResultUnit = IDL.Variant({
+    ok: IDL.Null,
+    err: IDL.Text
+  });
+  
   return IDL.Service({
     getReferralCode: IDL.Func([], [ResultText], []),
     useReferralCode: IDL.Func([IDL.Text], [ResultText], []),
     getUserData: IDL.Func([], [ResultUserProfile], []),
     getProfile: IDL.Func([], [ResultUserProfile], []),
-    updateUserLogin: IDL.Func([IDL.Text], [ResultText], []),
+    updateUserLogin: IDL.Func([IDL.Text], [ResultUnit], []),
     getAllUsers: IDL.Func([], [IDL.Vec(IDL.Tuple(IDL.Principal, UserProfile))], ['query'])
   });
 };

@@ -181,13 +181,15 @@ export const RhinoScan: React.FC = () => {
     geoData.forEach((geo) => {
       let coords: [number, number] | null = null;
       
-      if (geo.coordinates) {
+      if (geo.coordinates && geo.coordinates.lat !== undefined && geo.coordinates.lng !== undefined) {
         coords = [geo.coordinates.lat, geo.coordinates.lng];
       } else if (countryCoordinates[geo.country]) {
         coords = countryCoordinates[geo.country];
       }
 
-      if (coords) {
+      // Validate coordinates before using them
+      if (coords && coords[0] !== undefined && coords[1] !== undefined && 
+          !isNaN(coords[0]) && !isNaN(coords[1])) {
         const nodeCount = Number(geo.nodeCount);
         const dataVolume = Number(geo.dataVolumeKB);
         
