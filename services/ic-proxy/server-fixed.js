@@ -120,10 +120,23 @@ app.get('/api/topics', async (req, res) => {
     
     console.log(`Fetched ${topics.length} topics`);
     
+    // Convert BigInt values to strings for JSON serialization
+    const serializedTopics = topics.map(topic => ({
+      ...topic,
+      createdAt: topic.createdAt ? topic.createdAt.toString() : '0',
+      lastScraped: topic.lastScraped ? topic.lastScraped.toString() : '0',
+      minContentLength: topic.minContentLength ? Number(topic.minContentLength) : 100,
+      maxContentLength: topic.maxContentLength ? Number(topic.maxContentLength) : 10000,
+      maxUrlsPerBatch: topic.maxUrlsPerBatch ? Number(topic.maxUrlsPerBatch) : 50,
+      scrapingInterval: topic.scrapingInterval ? Number(topic.scrapingInterval) : 3600,
+      priority: topic.priority ? Number(topic.priority) : 1,
+      totalUrlsScraped: topic.totalUrlsScraped ? Number(topic.totalUrlsScraped) : 0
+    }));
+    
     res.json({
       success: true,
-      topics: topics,
-      count: topics.length
+      topics: serializedTopics,
+      count: serializedTopics.length
     });
   } catch (error) {
     console.error('Error fetching topics:', error);

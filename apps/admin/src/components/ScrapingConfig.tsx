@@ -19,6 +19,12 @@ export const ScrapingConfig: React.FC = () => {
   const [isTopicModalOpen, setIsTopicModalOpen] = useState(false);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [selectedTopic, setSelectedTopic] = useState<ScrapingTopic | null>(null);
+  
+  // Pagination and search states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const topicsPerPage = 10;
   const [, setUpdating] = useState(false);
   const [, setError] = useState<string | null>(null);
   const [togglingTopics, setTogglingTopics] = useState<Record<string, boolean>>({});
@@ -214,6 +220,30 @@ export const ScrapingConfig: React.FC = () => {
     }
   };
 
+  // Filter and paginate topics
+  const filteredTopics = topics.filter(topic => {
+    const matchesSearch = searchTerm === '' || 
+      topic.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      topic.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      topic.searchQueries?.some(q => q.toLowerCase().includes(searchTerm.toLowerCase()));
+    
+    const matchesStatus = statusFilter === 'all' || 
+      (statusFilter === 'active' && topic.status === 'active') ||
+      (statusFilter === 'inactive' && topic.status === 'inactive');
+    
+    return matchesSearch && matchesStatus;
+  });
+
+  const totalPages = Math.ceil(filteredTopics.length / topicsPerPage);
+  const startIndex = (currentPage - 1) * topicsPerPage;
+  const endIndex = startIndex + topicsPerPage;
+  const paginatedTopics = filteredTopics.slice(startIndex, endIndex);
+
+  // Reset to first page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter]);
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -279,26 +309,59 @@ export const ScrapingConfig: React.FC = () => {
         </div>
       )}
 
+      {/* Search and Filter Controls */}
+      {topics.length > 0 && (
+        <div className="bg-[#1C1B23] rounded-lg p-4">
+          <div className="flex flex-wrap gap-4">
+            <div className="flex-1 min-w-[200px]">
+              <input
+                type="text"
+                placeholder="Search topics..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full px-4 py-2 bg-[#131217] border border-[#2C2B33] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-[#B692F6]"
+              />
+            </div>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as 'all' | 'active' | 'inactive')}
+              className="px-4 py-2 bg-[#131217] border border-[#2C2B33] rounded-lg text-white focus:outline-none focus:border-[#B692F6]"
+            >
+              <option value="all">All Status</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+            <div className="text-sm text-gray-400 flex items-center">
+              {filteredTopics.length} {filteredTopics.length === 1 ? 'topic' : 'topics'} found
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Topics List */}
       {topicsLoading ? (
         <div className="text-center py-8 text-gray-400">Loading topics...</div>
       ) : (
         <div className="space-y-4">
-          {topics.length === 0 ? (
+          {filteredTopics.length === 0 ? (
             <div className="bg-[#1C1B23] rounded-lg p-8 text-center">
-              <p className="text-gray-400 mb-4">No topics have been created yet.</p>
-              <button
-                onClick={() => {
-                  setSelectedTopic(null);
-                  setIsTopicModalOpen(true);
-                }}
-                className="text-[#B692F6] hover:text-white transition-colors"
-              >
-                Create your first topic
-              </button>
+              <p className="text-gray-400 mb-4">
+                {topics.length === 0 ? 'No topics have been created yet.' : 'No topics match your search criteria.'}
+              </p>
+              {topics.length === 0 && (
+                <button
+                  onClick={() => {
+                    setSelectedTopic(null);
+                    setIsTopicModalOpen(true);
+                  }}
+                  className="text-[#B692F6] hover:text-white transition-colors"
+                >
+                  Create your first topic
+                </button>
+              )}
             </div>
           ) : (
-            topics.map(topic => (
+            paginatedTopics.map(topic => (
               <div key={topic.id} className="bg-[#1C1B23] rounded-lg p-6">
                 <div className="flex justify-between items-start mb-4">
                   <div className="flex-1">
@@ -400,6 +463,63 @@ export const ScrapingConfig: React.FC = () => {
                 </div>
               </div>
             ))
+          )}
+          
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="flex justify-center items-center space-x-2 pt-4">
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-1 bg-[#2C2B33] text-white rounded-lg hover:bg-[#3C3B43] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Previous
+              </button>
+              
+              <div className="flex space-x-1">
+                {[...Array(totalPages)].map((_, index) => {
+                  const page = index + 1;
+                  // Show first page, last page, current page, and pages around current
+                  if (
+                    page === 1 ||
+                    page === totalPages ||
+                    (page >= currentPage - 1 && page <= currentPage + 1)
+                  ) {
+                    return (
+                      <button
+                        key={page}
+                        onClick={() => setCurrentPage(page)}
+                        className={`px-3 py-1 rounded-lg transition-colors ${
+                          currentPage === page
+                            ? 'bg-[#B692F6] text-[#131217]'
+                            : 'bg-[#2C2B33] text-white hover:bg-[#3C3B43]'
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    );
+                  } else if (
+                    page === currentPage - 2 ||
+                    page === currentPage + 2
+                  ) {
+                    return (
+                      <span key={page} className="px-2 text-gray-500">
+                        ...
+                      </span>
+                    );
+                  }
+                  return null;
+                })}
+              </div>
+              
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+                className="px-3 py-1 bg-[#2C2B33] text-white rounded-lg hover:bg-[#3C3B43] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Next
+              </button>
+            </div>
           )}
         </div>
       )}
