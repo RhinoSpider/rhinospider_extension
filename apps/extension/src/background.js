@@ -2513,6 +2513,44 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             }
             return true;
 
+        case 'SET_STATE':
+        case 'TOGGLE_SCRAPING':
+            // Handle toggle from popup
+            logger.log('Received toggle request, enabled:', message.enabled);
+            (async () => {
+                try {
+                    const enabled = message.enabled || false;
+                    
+                    // Update storage
+                    await chrome.storage.local.set({ 
+                        enabled: enabled,
+                        isScrapingActive: enabled,
+                        scrapingEnabled: enabled
+                    });
+                    
+                    // Update badge
+                    await chrome.action.setBadgeText({ text: enabled ? 'ON' : 'OFF' });
+                    await chrome.action.setBadgeBackgroundColor({ 
+                        color: enabled ? '#4CAF50' : '#9E9E9E' 
+                    });
+                    
+                    // Start or stop scraping
+                    if (enabled) {
+                        logger.log('Starting scraping from toggle');
+                        startScraping();
+                    } else {
+                        logger.log('Stopping scraping from toggle');
+                        stopScraping();
+                    }
+                    
+                    sendResponse({ success: true });
+                } catch (error) {
+                    logger.error('Error handling toggle:', error);
+                    sendResponse({ success: false, error: error.message });
+                }
+            })();
+            return true; // Will respond asynchronously
+
         case 'GET_TOPICS':
             // Return current topics
             sendResponse({
