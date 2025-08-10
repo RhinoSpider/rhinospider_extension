@@ -128,8 +128,8 @@ export const ScrapingConfig: React.FC = () => {
       setFetchDataError(null);
       setFetchDataStatus('Fetching data from storage canister...');
       
-      // Call the storage access function
-      const data = await getScrapedData(topicId ? [topicId] : []);
+      // Call the storage access function - pass undefined for all data
+      const data = await getScrapedData(topicId);
       setScrapedData(data);
       
       setFetchDataStatus(`Successfully fetched ${data.length} items from storage canister`);

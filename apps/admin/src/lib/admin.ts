@@ -355,19 +355,31 @@ export async function getScrapedData(topicId?: string): Promise<ScrapedData[]> {
   try {
     const storageActor = await getStorageActor();
     
-    // If a specific topic is provided, convert to array format
-    const topicIds = topicId ? [topicId] : [];
-    console.log(`[admin.ts] getScrapedData called with topicIds:`, topicIds);
-    
-    const result = await storageActor.getScrapedData(topicIds);
-    
-    if ('err' in result) {
-      console.error('[admin.ts] Error from storage canister:', result.err);
-      return [];
+    // If no topic is provided, use getAllData to fetch everything
+    if (!topicId) {
+      console.log(`[admin.ts] getScrapedData called with no topicId, fetching all data`);
+      const allData = await storageActor.getAllData();
+      
+      // getAllData returns an array of tuples [id, data], we need just the data
+      const dataArray = allData.map((tuple: [string, any]) => tuple[1]);
+      
+      console.log(`[admin.ts] getAllData returned ${dataArray.length} items`);
+      return dataArray;
+    } else {
+      // If a specific topic is provided, use getScrapedData with array format
+      const topicIds = [topicId];
+      console.log(`[admin.ts] getScrapedData called with topicIds:`, topicIds);
+      
+      const result = await storageActor.getScrapedData(topicIds);
+      
+      if ('err' in result) {
+        console.error('[admin.ts] Error from storage canister:', result.err);
+        return [];
+      }
+      
+      console.log(`[admin.ts] getScrapedData returned ${result.ok?.length || 0} items`);
+      return result.ok || [];
     }
-    
-    console.log(`[admin.ts] getScrapedData returned ${result.ok?.length || 0} items`);
-    return result.ok || [];
   } catch (error) {
     console.error('[admin.ts] Error fetching scraped data:', error);
     return [];
