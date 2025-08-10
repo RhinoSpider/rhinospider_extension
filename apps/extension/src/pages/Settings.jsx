@@ -6,12 +6,17 @@ import { useAuth } from '@rhinospider/web3-client';
 function Settings() {
   const [config, setConfig] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isEnabled, setIsEnabled] = useState(false);
   const navigate = useNavigate();
   const { logout, user } = useAuth();
 
   useEffect(() => {
     const loadConfig = async () => {
       try {
+        // Get extension state
+        const state = await chrome.storage.local.get(['enabled', 'isScrapingActive']);
+        setIsEnabled(state.enabled === true);
+        
         const response = await chrome.runtime.sendMessage({ type: 'GET_SCRAPING_CONFIG' });
         if (response.success) {
           setConfig(response.data);
@@ -25,7 +30,38 @@ function Settings() {
     };
 
     loadConfig();
+    
+    // Listen for state changes
+    const handleStorageChange = (changes, areaName) => {
+      if (areaName === 'local' && changes.enabled) {
+        setIsEnabled(changes.enabled.newValue === true);
+      }
+    };
+    
+    chrome.storage.onChanged.addListener(handleStorageChange);
+    
+    return () => {
+      chrome.storage.onChanged.removeListener(handleStorageChange);
+    };
   }, []);
+  
+  const handleToggle = async () => {
+    const newState = !isEnabled;
+    setIsEnabled(newState);
+    
+    // Update storage
+    await chrome.storage.local.set({ 
+      enabled: newState, 
+      isScrapingActive: newState 
+    });
+    
+    // Notify background script
+    await chrome.runtime.sendMessage({
+      type: 'SET_STATE',
+      enabled: newState,
+      isScrapingActive: newState
+    });
+  };
 
   const handleLogout = async () => {
     try {
@@ -66,17 +102,31 @@ function Settings() {
 
         <div className="space-y-4">
           <div className="bg-white/5 rounded-lg p-4">
-            <div className="flex items-center mb-2">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mr-2">
-                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-              </svg>
-              <div className="font-medium text-white">Extension Status</div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mr-2">
+                  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                </svg>
+                <div className="font-medium text-white">Extension Status</div>
+              </div>
+              <button
+                onClick={handleToggle}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  isEnabled ? 'bg-green-600' : 'bg-gray-600'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    isEnabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
             </div>
             <div className="text-sm text-gray-400">
-              {config?.enabled ? (
+              {isEnabled ? (
                 <span className="text-green-400">✓ Extension is active and scraping data</span>
               ) : (
-                <span className="text-gray-400">Extension is inactive. Use the power button on the home screen to activate.</span>
+                <span className="text-gray-400">Extension is inactive. Click the toggle to activate.</span>
               )}
             </div>
           </div>

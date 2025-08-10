@@ -7,7 +7,7 @@ import connectionTest from './connection-test.js';
 const { getUrlsForTopics, prefetchUrlsForAllTopics, checkProxyHealth, getUrlForTopic } = searchProxyClient;
 import config from './config.js';
 import debugTools from './debug-tools.js';
-import ServiceWorkerAdapter from './service-worker-adapter.js';
+import serviceWorkerAdapter from './service-worker-adapter.js';
 
 // Enhanced logging for connection tracking
 const enhancedLogging = {
@@ -281,8 +281,7 @@ const TOPICS_CACHE_DURATION = 30 * 60 * 1000; // 30 minutes in milliseconds
 // Authentication state
 let isAuthenticated = false;
 
-// Service worker adapter instance
-let serviceWorkerAdapter = null;
+// Service worker adapter is imported above, no need to declare it again
 
 // Load last scraped URLs from storage
 async function loadLastScrapedUrls() {
@@ -2322,10 +2321,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                             const ipAddress = await getIPAddress();
                             logger.log('User IP address:', ipAddress);
                             
-                            // Initialize service worker adapter if needed
-                            if (!serviceWorkerAdapter) {
-                                serviceWorkerAdapter = new ServiceWorkerAdapter();
-                                await serviceWorkerAdapter.init();
+                            // Service worker adapter is already initialized as an imported instance
+                            if (serviceWorkerAdapter && serviceWorkerAdapter.initializeDeviceId) {
+                                await serviceWorkerAdapter.initializeDeviceId();
                             }
                             
                             // Create user by getting referral code (this creates the user if not exists)
