@@ -159,8 +159,38 @@ class SearchProxyClient {
    */
   async getUrlsForTopics(topics, limit = 5) {
     console.log('[SearchProxyClient] getUrlsForTopics called with topics:', topics);
-    // This will be handled by the new URLFinder class
-    return {};
+    
+    try {
+      const body = {
+        extensionId: chrome.runtime.id,
+        topics: topics,
+        batchSize: limit * topics.length
+      };
+
+      const options = {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-device-id': this.deviceId,
+          'Authorization': `Bearer ${API_KEY}`
+        },
+        body: JSON.stringify(body)
+      };
+
+      const response = await this.makeRequest('/api/search/urls', options);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('[SearchProxyClient] Got URLs response:', data);
+        return data.urls || {};
+      } else {
+        console.error('[SearchProxyClient] Error response:', response.status);
+        return {};
+      }
+    } catch (error) {
+      console.error('[SearchProxyClient] Error getting URLs for topics:', error);
+      return {};
+    }
   }
 
   /**
@@ -198,13 +228,9 @@ class SearchProxyClient {
         };
       }
       
-      // Fallback to a test URL if nothing returned
-      console.log('[SearchProxyClient] No URLs returned, using fallback');
-      return {
-        url: `https://example.com/${topic.id}/${Date.now()}`,
-        topicId: topic.id,
-        topicName: topic.name
-      };
+      // No URLs returned
+      console.log('[SearchProxyClient] No URLs returned for topic:', topic.name);
+      return null;
     } catch (error) {
       console.error('[SearchProxyClient] Error getting URL for topic:', error);
       return null;
