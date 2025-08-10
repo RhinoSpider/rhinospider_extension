@@ -71,8 +71,8 @@ const adminIdlFactory = ({ IDL }) => {
     maxUrlsPerBatch: IDL.Nat,
     scrapingInterval: IDL.Nat,
     priority: IDL.Nat,
-    createdAt: IDL.Nat,
-    lastScraped: IDL.Nat,
+    createdAt: IDL.Int,
+    lastScraped: IDL.Int,
     totalUrlsScraped: IDL.Nat,
   });
 
