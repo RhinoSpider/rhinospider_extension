@@ -1,16 +1,21 @@
 {
   "test": {
     "userId": "test",
-    "dailyUrlsScraped": 15,
-    "totalUrlsScraped": 15,
-    "totalPointsEarned": 15,
+    "dailyUrlsScraped": 30,
+    "totalUrlsScraped": 30,
+    "totalPointsEarned": 30,
     "lastReset": 1754826654341,
     "tier": "basic",
-    "bandwidthUsed": 15693,
-    "requestsMade": 2,
+    "bandwidthUsed": 20675,
+    "requestsMade": 4,
     "topicsSearched": {
       "ai": {
         "name": "AI technology",
+        "count": 10,
+        "points": 10
+      },
+      "web3_security_1": {
+        "name": "blockchain security",
         "count": 10,
         "points": 10
       }
@@ -34,7 +39,7 @@
       0,
       0,
       15,
-      0,
+      15,
       0,
       0,
       0,
@@ -42,7 +47,7 @@
       0
     ],
     "pointsByDay": {
-      "2025-08-10": 15
+      "2025-08-10": 30
     },
     "lastSync": 1754826664675
   },
