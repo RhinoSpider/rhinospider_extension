@@ -17,6 +17,7 @@ let logoutButton;
 let navItems;
 let contentSections;
 let extensionToggle;
+let extensionStatusText;
 let userProfileElement;
 let pointsElement;
 let pagesElement;
@@ -40,6 +41,7 @@ async function initialize() {
     navItems = document.querySelectorAll('.nav-item');
     contentSections = document.querySelectorAll('.content-section');
     extensionToggle = document.getElementById('extensionStatus');
+    extensionStatusText = document.getElementById('extensionStatusText');
     userProfileElement = document.getElementById('userProfile');
     pointsElement = document.getElementById('pointsEarned');
     pagesElement = document.getElementById('pagesScraped');
@@ -202,6 +204,9 @@ async function handleExtensionToggle() {
             isScrapingActive: enabled
         });
         
+        // Update status text immediately
+        updateExtensionStatusText(enabled);
+        
         // Update badge
         chrome.action.setBadgeText({ text: enabled ? 'ON' : 'OFF' });
         chrome.action.setBadgeBackgroundColor({ color: enabled ? '#4CAF50' : '#9E9E9E' });
@@ -214,9 +219,12 @@ async function loadDashboardData() {
     try {
         // Load extension state
         const state = await chrome.storage.local.get(['enabled', 'isScrapingActive']);
+        const isEnabled = state.enabled !== false;
         if (extensionToggle) {
-            extensionToggle.checked = state.enabled !== false;
+            extensionToggle.checked = isEnabled;
         }
+        // Update status text
+        updateExtensionStatusText(isEnabled);
         
         // Load user profile
         if (userProfileElement) {
@@ -234,6 +242,13 @@ async function loadDashboardData() {
         
     } catch (error) {
         console.error('Error loading dashboard data:', error);
+    }
+}
+
+function updateExtensionStatusText(enabled) {
+    if (extensionStatusText) {
+        extensionStatusText.textContent = enabled ? 'ON' : 'OFF';
+        extensionStatusText.style.color = enabled ? '#4CAF50' : '#9CA3AF';
     }
 }
 

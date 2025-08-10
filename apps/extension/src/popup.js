@@ -15,6 +15,7 @@ async function initialize() {
         statusText: document.getElementById('statusText'),
         loginButton: document.getElementById('loginButton'),
         logoutButton: document.getElementById('logoutButton'),
+        dashboardButton: document.getElementById('dashboardButton'),
         loginError: document.getElementById('loginError'),
         principalId: document.getElementById('principalId'),
         pointsEarned: document.getElementById('pointsEarned'),
@@ -50,6 +51,9 @@ function setupEventListeners() {
     // Logout button
     elements.logoutButton?.addEventListener('click', handleLogout);
     
+    // Dashboard button
+    elements.dashboardButton?.addEventListener('click', handleDashboard);
+    
     // Scraping toggle
     elements.scrapingToggle?.addEventListener('change', handleToggle);
 }
@@ -82,6 +86,21 @@ async function handleLogin() {
     } catch (error) {
         console.error('Error opening dashboard:', error);
         showError('Failed to open login page');
+    }
+}
+
+async function handleDashboard() {
+    try {
+        // Open dashboard in new tab
+        await chrome.tabs.create({
+            url: chrome.runtime.getURL('pages/dashboard.html')
+        });
+        
+        // Close popup
+        window.close();
+    } catch (error) {
+        console.error('Error opening dashboard:', error);
+        showError('Failed to open dashboard');
     }
 }
 
