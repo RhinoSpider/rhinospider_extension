@@ -45,6 +45,10 @@ router.post('/urls', async (req, res, next) => {
   try {
     const { extensionId, topics, batchSize = 500, reset = false } = req.body;
     
+    console.log(`[/api/search/urls] Request from extension: ${extensionId}`);
+    console.log(`[/api/search/urls] Topics requested:`, JSON.stringify(topics ? topics.map(t => ({id: t.id, name: t.name})) : []));
+    console.log(`[/api/search/urls] Batch size: ${batchSize}`);
+    
     if (!extensionId) {
       return res.status(400).json({ error: 'Missing extensionId' });
     }

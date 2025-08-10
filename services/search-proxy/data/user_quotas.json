@@ -97,5 +97,46 @@
       "2025-08-10": 20
     },
     "lastSync": 1754826865906
+  },
+  "test-ext-123": {
+    "userId": "test-ext-123",
+    "dailyUrlsScraped": 10,
+    "totalUrlsScraped": 10,
+    "totalPointsEarned": 10,
+    "lastReset": 1754837564791,
+    "tier": "basic",
+    "bandwidthUsed": 0,
+    "requestsMade": 1,
+    "topicsSearched": {},
+    "urlsByHour": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      10,
+      0,
+      0,
+      0
+    ],
+    "pointsByDay": {
+      "2025-08-10": 10
+    },
+    "lastSync": 1754837567773
   }
 }

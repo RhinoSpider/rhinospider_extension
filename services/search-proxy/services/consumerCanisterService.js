@@ -4,9 +4,12 @@ const { setTimeout } = require('timers/promises');
 // Config for IC proxy (which communicates with the consumer canister)
 // In production, this would be ic-proxy.rhinospider.com:3001
 // For local development, we can use a mock or the actual IC proxy URL
-const IC_PROXY_URL = process.env.IC_PROXY_URL || 'http://ic-proxy.rhinospider.com';
+const IC_PROXY_URL = process.env.IC_PROXY_URL || 'https://ic-proxy.rhinospider.com';
 const IC_PROXY_PORT = process.env.IC_PROXY_PORT || '3001';
-const IC_PROXY_API = `${IC_PROXY_URL}:${IC_PROXY_PORT}/api`;
+// For HTTPS, don't append port (nginx handles routing)
+const IC_PROXY_API = IC_PROXY_URL.startsWith('https') 
+  ? `${IC_PROXY_URL}/api`
+  : `${IC_PROXY_URL}:${IC_PROXY_PORT}/api`;
 
 // Retry configuration
 const MAX_RETRIES = 3;
