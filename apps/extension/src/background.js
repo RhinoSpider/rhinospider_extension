@@ -448,10 +448,10 @@ async function initializeExtension() {
         // Check if user is authenticated first
         const isUserAuthenticated = !!principalId;
         
-        // Check actual enabled state from storage (not tied to authentication)
-        const isActuallyEnabled = scrapingEnabled === true || enabled === true;
+        // Check actual enabled state from storage - must be explicitly true
+        const isActuallyEnabled = enabled === true;
         
-        // Only show ON if BOTH authenticated AND enabled
+        // Only show ON if BOTH authenticated AND explicitly enabled
         const shouldShowOn = isUserAuthenticated && isActuallyEnabled;
 
         // Update badge to reflect current state
@@ -2889,8 +2889,8 @@ async function initializeOnInstall(details) {
         // Check if we have topics loaded
         const hasTopics = result.topics && Array.isArray(result.topics) && result.topics.length > 0;
 
-        // Only start scraping if we have authentication, topics are loaded, and scraping is enabled
-        if (result.principalId && result.enabled !== false && hasTopics) {
+        // Only start scraping if we have authentication, topics are loaded, and scraping is explicitly enabled
+        if (result.principalId && result.enabled === true && hasTopics) {
             logger.log('User is authenticated, topics are loaded, and scraping is enabled - automatic scraping disabled');
             // Removed automatic scraping on install
         } else if (!result.principalId) {
