@@ -117,17 +117,17 @@ export const ExtensionUsers: React.FC = () => {
         const processedUsers: UserProfile[] = allUsers.map(([principal, profile]) => ({
           principal: principal.toString(),
           devices: profile.devices,
-          created: profile.created,
-          lastLogin: profile.lastLogin,
+          created: Number(profile.created),
+          lastLogin: Number(profile.lastLogin),
           ipAddress: profile.ipAddress?.[0],
           country: profile.country?.[0],
           region: profile.region?.[0],
           city: profile.city?.[0],
           referralCode: profile.referralCode,
-          referralCount: profile.referralCount,
-          points: profile.points,
-          totalDataScraped: profile.totalDataScraped,
-          dataVolumeKB: profile.dataVolumeKB,
+          referralCount: Number(profile.referralCount),
+          points: Number(profile.points),
+          totalDataScraped: Number(profile.totalDataScraped),
+          dataVolumeKB: Number(profile.dataVolumeKB),
           isActive: profile.isActive,
         }));
 
