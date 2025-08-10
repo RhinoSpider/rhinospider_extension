@@ -91,11 +91,23 @@ async function testSearchProxy() {
   return testConnection('searchProxy');
 }
 
+/**
+ * Get the best URL for a service (for compatibility with existing code)
+ * In HTTPS-only mode, this is the same as getSecureUrl
+ * @param {string} service - 'icProxy' or 'searchProxy'
+ * @param {string} endpoint - API endpoint (e.g., '/api/health')
+ * @returns {string} The HTTPS URL
+ */
+function getBestUrl(service, endpoint) {
+  return getSecureUrl(service, endpoint);
+}
+
 // Export the connection handler
 export default {
   makeRequest,
   testConnection,
   testIcProxy,
   testSearchProxy,
-  getSecureUrl
+  getSecureUrl,
+  getBestUrl  // Added for compatibility
 };
