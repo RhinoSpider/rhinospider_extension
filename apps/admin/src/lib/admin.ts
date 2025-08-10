@@ -388,6 +388,43 @@ export async function getScrapedData(topicId?: string): Promise<ScrapedData[]> {
 
 export async function getExtensionUsers(): Promise<ExtensionUser[]> {
   try {
+    // Try to fetch from IC proxy first (more reliable)
+    try {
+      const proxyUrl = 'https://ic-proxy.rhinospider.com';
+      const response = await fetch(`${proxyUrl}/api/consumer-users`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer test-api-key'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Fetched users from IC proxy:', data);
+        
+        if (data.success && data.users) {
+          // Convert to ExtensionUser format
+          return data.users.map((user: any, index: number) => ({
+            id: (index + 1).toString(),
+            principalId: user.principal || 'unknown',
+            deviceId: 'extension',
+            dataContributed: user.dataVolumeKB * 1024, // Convert KB to bytes
+            lastActive: new Date(Number(user.lastLogin) / 1_000_000).toISOString(), // Convert nanoseconds to milliseconds
+            joinDate: new Date(Number(user.created) / 1_000_000).toISOString(), // Convert nanoseconds to milliseconds
+            isActive: user.isActive,
+            ipAddress: user.ipAddress || 'unknown',
+            location: user.city && user.country 
+              ? `${user.city}, ${user.country}`
+              : user.country || 'Unknown'
+          }));
+        }
+      }
+    } catch (proxyError) {
+      console.error('IC proxy failed, falling back to direct canister call:', proxyError);
+    }
+
+    // Fallback to direct canister call
     const identity = await getIdentity();
     if (!identity) {
       throw new Error('No identity found');

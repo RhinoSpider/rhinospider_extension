@@ -92,6 +92,42 @@ const adminActor = Actor.createActor(adminIdlFactory, {
   canisterId: ADMIN_CANISTER_ID,
 });
 
+// Consumer canister IDL
+const consumerIdlFactory = ({ IDL }) => {
+  return IDL.Service({
+    getReferralCode: IDL.Func([], [IDL.Variant({ Ok: IDL.Text, Err: IDL.Text })], []),
+    useReferralCode: IDL.Func([IDL.Text], [IDL.Variant({ Ok: IDL.Text, Err: IDL.Text })], []),
+    getUserData: IDL.Func([], [IDL.Variant({ 
+      Ok: IDL.Record({
+        principal: IDL.Principal,
+        referralCode: IDL.Text,
+        referralCount: IDL.Nat,
+        points: IDL.Nat,
+        totalDataScraped: IDL.Nat
+      }), 
+      Err: IDL.Text 
+    })], ['query']),
+    awardPoints: IDL.Func([IDL.Nat], [IDL.Variant({ Ok: IDL.Nat, Err: IDL.Text })], []),
+    getAllUsers: IDL.Func([], [IDL.Vec(IDL.Record({
+      principal: IDL.Principal,
+      created: IDL.Int,
+      lastLogin: IDL.Int,
+      isActive: IDL.Bool,
+      dataVolumeKB: IDL.Nat,
+      referralCode: IDL.Text,
+      referralCount: IDL.Nat,
+      points: IDL.Nat,
+      totalDataScraped: IDL.Nat
+    }))], ['query'])
+  });
+};
+
+// Create consumer actor
+const consumerActor = Actor.createActor(consumerIdlFactory, {
+  agent,
+  canisterId: CONSUMER_CANISTER_ID,
+});
+
 // Simple API key authentication
 const authenticateApiKey = (req, res, next) => {
   const apiKey = req.headers['x-api-key'] || req.headers['authorization'];
@@ -241,6 +277,89 @@ app.post('/api/process-with-ai', authenticateApiKey, async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message
+    });
+  }
+});
+
+// Referral endpoints for consumer canister
+app.post('/api/consumer-referral-code', authenticateApiKey, async (req, res) => {
+  console.log('[/api/consumer-referral-code] Getting referral code');
+  try {
+    const result = await consumerActor.getReferralCode();
+    console.log('[/api/consumer-referral-code] Result:', result);
+    res.json(result);
+  } catch (error) {
+    console.error('[/api/consumer-referral-code] Error:', error);
+    res.status(500).json({ err: error.message });
+  }
+});
+
+app.post('/api/consumer-use-referral', authenticateApiKey, async (req, res) => {
+  console.log('[/api/consumer-use-referral] Using referral code:', req.body.code);
+  try {
+    const result = await consumerActor.useReferralCode(req.body.code);
+    console.log('[/api/consumer-use-referral] Result:', result);
+    res.json(result);
+  } catch (error) {
+    console.error('[/api/consumer-use-referral] Error:', error);
+    res.status(500).json({ err: error.message });
+  }
+});
+
+app.post('/api/consumer-user-data', authenticateApiKey, async (req, res) => {
+  console.log('[/api/consumer-user-data] Getting user data');
+  try {
+    const result = await consumerActor.getUserData();
+    console.log('[/api/consumer-user-data] Result:', result);
+    res.json(result);
+  } catch (error) {
+    console.error('[/api/consumer-user-data] Error:', error);
+    res.status(500).json({ err: error.message });
+  }
+});
+
+app.post('/api/consumer-award-points', authenticateApiKey, async (req, res) => {
+  console.log('[/api/consumer-award-points] Awarding points:', req.body.points);
+  try {
+    const result = await consumerActor.awardPoints(BigInt(req.body.points || 0));
+    console.log('[/api/consumer-award-points] Result:', result);
+    res.json(result);
+  } catch (error) {
+    console.error('[/api/consumer-award-points] Error:', error);
+    res.status(500).json({ err: error.message });
+  }
+});
+
+// Get all users endpoint for admin dashboard
+app.get('/api/consumer-users', authenticateApiKey, async (req, res) => {
+  console.log('[/api/consumer-users] Getting all users');
+  try {
+    const users = await consumerActor.getAllUsers();
+    console.log(`[/api/consumer-users] Found ${users.length} users`);
+    
+    // Convert BigInt values to strings for JSON serialization
+    const serializedUsers = users.map(user => ({
+      ...user,
+      principal: user.principal.toString(),
+      created: user.created ? user.created.toString() : '0',
+      lastLogin: user.lastLogin ? user.lastLogin.toString() : '0',
+      dataVolumeKB: user.dataVolumeKB ? Number(user.dataVolumeKB) : 0,
+      referralCount: user.referralCount ? Number(user.referralCount) : 0,
+      points: user.points ? Number(user.points) : 0,
+      totalDataScraped: user.totalDataScraped ? Number(user.totalDataScraped) : 0
+    }));
+    
+    res.json({
+      success: true,
+      users: serializedUsers,
+      count: serializedUsers.length
+    });
+  } catch (error) {
+    console.error('[/api/consumer-users] Error:', error);
+    res.status(500).json({ 
+      success: false,
+      error: error.message,
+      users: []
     });
   }
 });
