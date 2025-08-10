@@ -16,7 +16,10 @@ app.use(cors({
 
 app.use(express.json());
 
-// Environment variables
+// Load dotenv first
+require('dotenv').config();
+
+// Environment variables with correct defaults
 const ADMIN_CANISTER_ID = process.env.ADMIN_CANISTER_ID || 'wvset-niaaa-aaaao-a4osa-cai';
 const STORAGE_CANISTER_ID = process.env.STORAGE_CANISTER_ID || 'hhaip-uiaaa-aaaao-a4khq-cai';
 const CONSUMER_CANISTER_ID = process.env.CONSUMER_CANISTER_ID || 't3pjp-kqaaa-aaaao-a4ooq-cai';

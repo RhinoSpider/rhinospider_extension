@@ -46,6 +46,14 @@ rhinospider/
 - [Technical Documentation](docs/technical)
 - [Extension Features](apps/extension/docs/EXTENSION_FEATURES.md)
 
+## Production Canister IDs
+
+- **Storage**: `hhaip-uiaaa-aaaao-a4khq-cai`
+- **Consumer**: `t3pjp-kqaaa-aaaao-a4ooq-cai`
+- **Admin Backend**: `wvset-niaaa-aaaao-a4osa-cai`
+- **Admin Frontend**: `sxsvc-aqaaa-aaaaj-az4ta-cai`
+- **Auth**: `rdmx6-jaaaa-aaaaa-aaadq-cai`
+
 ## Development
 
 For local development setup, see the [Development Guide](docs/technical/development.md).
