@@ -339,8 +339,8 @@ actor ConsumerBackend {
         try {
             Debug.print("Getting location for IP: " # ip);
             
-            // Using ipapi.co for free GeoIP lookup (supports HTTPS, no API key required for limited use)
-            let url = "https://ipapi.co/" # ip # "/json/";
+            // Using ipwhois.app for free GeoIP lookup (supports HTTPS, no API key required)
+            let url = "https://ipwhois.app/json/" # ip;
             
             let ic : ICManagement = actor("aaaaa-aa");
             let request = {
@@ -360,10 +360,10 @@ actor ConsumerBackend {
                 switch (responseText) {
                     case (?text) {
                         Debug.print("GeoIP response: " # text);
-                        // Parse JSON response manually - ipapi.co format
-                        // Check if we have a valid response (ipapi.co returns country_name field)
-                        if (Text.contains(text, #text "\"country_name\"")) {
-                            let country = extractJsonField(text, "country_name");
+                        // Parse JSON response manually - ipwhois.app format
+                        // Check if we have a valid response (ipwhois.app returns success:true)
+                        if (Text.contains(text, #text "\"success\":true")) {
+                            let country = extractJsonField(text, "country");
                             let region = extractJsonField(text, "region");
                             let city = extractJsonField(text, "city");
                             let latText = extractJsonField(text, "latitude");

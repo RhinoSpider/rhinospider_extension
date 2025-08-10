@@ -45,22 +45,7 @@ function Settings() {
     };
   }, []);
   
-  const handleToggle = async () => {
-    const newState = !isEnabled;
-    setIsEnabled(newState);
-    
-    // Update storage
-    await chrome.storage.local.set({ 
-      enabled: newState, 
-      isScrapingActive: newState 
-    });
-    
-    // Notify background script - use UPDATE_SCRAPING_CONFIG for consistency
-    await chrome.runtime.sendMessage({
-      type: 'UPDATE_SCRAPING_CONFIG',
-      data: { enabled: newState }
-    });
-  };
+  // Toggle removed - control is only from main popup
 
   const handleLogout = async () => {
     try {
@@ -101,31 +86,17 @@ function Settings() {
 
         <div className="space-y-4">
           <div className="bg-white/5 rounded-lg p-4">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mr-2">
-                  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-                </svg>
-                <div className="font-medium text-white">Extension Status</div>
-              </div>
-              <button
-                onClick={handleToggle}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  isEnabled ? 'bg-green-600' : 'bg-gray-600'
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    isEnabled ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
+            <div className="flex items-center mb-2">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mr-2">
+                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+              </svg>
+              <div className="font-medium text-white">Extension Status</div>
             </div>
             <div className="text-sm text-gray-400">
               {isEnabled ? (
                 <span className="text-green-400">✓ Extension is active and scraping data</span>
               ) : (
-                <span className="text-gray-400">Extension is inactive. Click the toggle to activate.</span>
+                <span className="text-gray-400">Extension is inactive. Use the power button in the main popup to activate.</span>
               )}
             </div>
           </div>

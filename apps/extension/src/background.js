@@ -313,10 +313,10 @@ function setupHeartbeat() {
             const { enabled, isScrapingActive: storedScrapingActive, lastScrapeTime } = await chrome.storage.local.get(['enabled', 'isScrapingActive', 'lastScrapeTime']);
 
             // Determine current state without reassigning global variables
-            const isCurrentlyEnabled = enabled !== false;
-            const isCurrentlyScrapingActive = storedScrapingActive !== false && isCurrentlyEnabled;
+            const isCurrentlyEnabled = enabled === true; // Must be explicitly true
+            const isCurrentlyScrapingActive = storedScrapingActive === true && isCurrentlyEnabled;
 
-            // Always update badge to reflect current state
+            // Update badge - only show ON if explicitly enabled by user
             chrome.action.setBadgeText({ text: isCurrentlyEnabled ? 'ON' : 'OFF' });
             chrome.action.setBadgeBackgroundColor({
                 color: isCurrentlyEnabled ? '#4CAF50' : '#9E9E9E'
