@@ -360,13 +360,14 @@ actor ConsumerBackend {
                 switch (responseText) {
                     case (?text) {
                         Debug.print("GeoIP response: " # text);
-                        // Parse JSON response manually
-                        if (Text.contains(text, #text "\"status\":\"success\"")) {
-                            let country = extractJsonField(text, "country");
-                            let region = extractJsonField(text, "regionName");
+                        // Parse JSON response manually - ipapi.co format
+                        // Check if we have a valid response (ipapi.co returns country_name field)
+                        if (Text.contains(text, #text "\"country_name\"")) {
+                            let country = extractJsonField(text, "country_name");
+                            let region = extractJsonField(text, "region");
                             let city = extractJsonField(text, "city");
-                            let latText = extractJsonField(text, "lat");
-                            let lonText = extractJsonField(text, "lon");
+                            let latText = extractJsonField(text, "latitude");
+                            let lonText = extractJsonField(text, "longitude");
                             
                             switch (country, region, city, latText, lonText) {
                                 case (?c, ?r, ?ct, ?la, ?lo) {
