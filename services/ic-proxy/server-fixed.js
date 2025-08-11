@@ -220,14 +220,19 @@ app.post('/api/topics', async (req, res) => {
       
       // Filter based on geo-distribution settings
       filteredTopics = allTopics.filter(topic => {
+        // Handle optional arrays from Motoko - geolocationFilter might be [value] or []
+        const geoFilter = (topic.geolocationFilter && topic.geolocationFilter.length > 0) 
+          ? topic.geolocationFilter[0] 
+          : null;
+          
         // If no geolocationFilter is set, topic is available globally
-        if (!topic.geolocationFilter || topic.geolocationFilter === '') {
+        if (!geoFilter || geoFilter === '') {
           return true;
         }
         
         // Check if node's location matches the topic's geolocation filter
         // For now, this is a simple check - can be enhanced with actual geo-IP lookup
-        const allowedLocations = topic.geolocationFilter.split(',').map(loc => loc.trim().toUpperCase());
+        const allowedLocations = geoFilter.split(',').map(loc => loc.trim().toUpperCase());
         
         // TODO: Implement actual geo-IP lookup to determine country/region from IP
         // For now, accept all if we can't determine location
@@ -240,13 +245,19 @@ app.post('/api/topics', async (req, res) => {
       
       // Apply percentage-based filtering if needed
       filteredTopics = filteredTopics.filter(topic => {
-        const percentage = topic.percentageNodes || 100;
+        // Handle optional arrays from Motoko
+        const percentage = (topic.percentageNodes && topic.percentageNodes.length > 0) 
+          ? Number(topic.percentageNodes[0]) 
+          : 100;
+        const randomizationMode = (topic.randomizationMode && topic.randomizationMode.length > 0)
+          ? topic.randomizationMode[0]
+          : 'none';
+          
         if (percentage >= 100) {
           return true; // All nodes should process this
         }
         
         // Apply randomization based on the mode
-        const randomizationMode = topic.randomizationMode || 'none';
         if (randomizationMode === 'random') {
           // Random selection based on percentage
           return Math.random() * 100 < percentage;
@@ -275,10 +286,10 @@ app.post('/api/topics', async (req, res) => {
       scrapingInterval: topic.scrapingInterval ? Number(topic.scrapingInterval) : 3600,
       priority: topic.priority ? Number(topic.priority) : 1,
       totalUrlsScraped: topic.totalUrlsScraped ? Number(topic.totalUrlsScraped) : 0,
-      // Include geo-distribution settings in response
-      geolocationFilter: topic.geolocationFilter || '',
-      percentageNodes: topic.percentageNodes || 100,
-      randomizationMode: topic.randomizationMode || 'none'
+      // Include geo-distribution settings in response - handle optional arrays from Motoko
+      geolocationFilter: (topic.geolocationFilter && topic.geolocationFilter.length > 0) ? topic.geolocationFilter[0] : '',
+      percentageNodes: (topic.percentageNodes && topic.percentageNodes.length > 0) ? Number(topic.percentageNodes[0]) : 100,
+      randomizationMode: (topic.randomizationMode && topic.randomizationMode.length > 0) ? topic.randomizationMode[0] : 'none'
     }));
     
     res.json({
