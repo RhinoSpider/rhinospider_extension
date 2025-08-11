@@ -3030,79 +3030,61 @@ async function fetchPageContent(url) {
             };
         }
 
-        // IMPORTANT: Scraping happens locally on user's machine to earn points!
-        // We open a tab, extract content, and close it
+        // IMPORTANT: We use the user's bandwidth to fetch content, but NEVER interfere with their browser!
+        // No tabs, no history access, no browser control - just background fetch using their bandwidth
         
-        logger.info(`[fetchPageContent] Opening tab for local scraping: ${url}`);
+        logger.info(`[fetchPageContent] Fetching content using user's bandwidth: ${url}`);
         
         let content = null;
-        let status = 200;
+        let status = 0;
         let error = null;
-        let source = 'local-scraping';
+        let source = 'user-bandwidth';
         
         try {
-            // Create a new tab for scraping (hidden from user)
-            const tab = await chrome.tabs.create({
-                url: url,
-                active: false
+            // Use fetch() to get content using user's bandwidth
+            // This runs in the background without any browser interference
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
+                },
+                credentials: 'omit', // Don't send cookies
+                mode: 'cors',
+                cache: 'no-store'
             });
             
-            // Wait for the tab to load
-            await new Promise((resolve, reject) => {
-                const timeout = setTimeout(() => {
-                    reject(new Error('Tab load timeout'));
-                }, 30000);
+            status = response.status;
+            
+            if (response.ok) {
+                const html = await response.text();
                 
-                const checkTab = setInterval(async () => {
-                    try {
-                        const updatedTab = await chrome.tabs.get(tab.id);
-                        if (updatedTab.status === 'complete') {
-                            clearInterval(checkTab);
-                            clearTimeout(timeout);
-                            resolve();
-                        }
-                    } catch (e) {
-                        clearInterval(checkTab);
-                        clearTimeout(timeout);
-                        reject(e);
-                    }
-                }, 500);
-            });
+                // Parse HTML to extract text content (without DOM manipulation)
+                // Simple regex-based extraction to avoid using DOM
+                content = html
+                    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '') // Remove scripts
+                    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '') // Remove styles
+                    .replace(/<[^>]+>/g, ' ') // Remove HTML tags
+                    .replace(/\s+/g, ' ') // Normalize whitespace
+                    .trim();
+                
+                logger.info(`[fetchPageContent] Fetched ${content.length} bytes using user's bandwidth`);
+            } else {
+                error = `HTTP ${status}: ${response.statusText}`;
+            }
             
-            // Extract content from the tab
-            const results = await chrome.scripting.executeScript({
-                target: { tabId: tab.id },
-                func: () => {
-                    // Remove scripts and styles
-                    document.querySelectorAll('script, style, noscript').forEach(el => el.remove());
-                    
-                    // Try to get main content
-                    const contentSelectors = ['main', 'article', '.content', '#content', 'body'];
-                    for (const selector of contentSelectors) {
-                        const element = document.querySelector(selector);
-                        if (element) {
-                            const text = element.innerText || element.textContent || '';
-                            if (text.length > 100) {
-                                return text.trim();
-                            }
-                        }
-                    }
-                    
-                    // Fallback to body text
-                    return document.body.innerText || document.body.textContent || '';
-                }
-            });
-            
-            content = results[0]?.result || '';
-            
-            // Close the tab
-            await chrome.tabs.remove(tab.id);
-            
-            logger.info(`[fetchPageContent] Successfully scraped ${content.length} bytes locally`);
-            
-        } catch (scrapingError) {
-            error = scrapingError.message;
-            logger.error(`[fetchPageContent] Local scraping error: ${error}`);
+        } catch (fetchError) {
+            // CORS errors are expected for many sites, this is normal
+            if (fetchError.message.includes('CORS')) {
+                error = 'CORS policy blocked request (normal for cross-origin)';
+                // For CORS-blocked sites, we can still submit a minimal entry
+                content = `Unable to fetch due to CORS policy - URL: ${url}`;
+            } else {
+                error = fetchError.message;
+            }
+            logger.error(`[fetchPageContent] Fetch error: ${error}`);
         }
 
         return {
