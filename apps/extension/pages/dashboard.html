@@ -466,6 +466,51 @@
                         <h3>Extension Settings</h3>
                         <p style="color: rgba(255, 255, 255, 0.7);">Use the popup button to control the extension</p>
                     </div>
+                    
+                    <!-- Tab-based Scraping Consent Notice -->
+                    <div class="stat-card" style="background: rgba(182, 146, 246, 0.1); border: 1px solid rgba(182, 146, 246, 0.3);">
+                        <h3 style="color: #B692F6;">🔍 Content Scraping Method</h3>
+                        <p style="color: rgba(255, 255, 255, 0.8); margin: 12px 0;">
+                            RhinoSpider uses background tabs to scrape content from websites. This ensures:
+                        </p>
+                        <ul style="color: rgba(255, 255, 255, 0.7); margin: 12px 0; padding-left: 20px; list-style: none;">
+                            <li style="margin: 8px 0;">✓ Minimal disruption to your browsing</li>
+                            <li style="margin: 8px 0;">✓ Accurate content extraction</li>
+                            <li style="margin: 8px 0;">✓ Automatic tab management (tabs close after scraping)</li>
+                            <li style="margin: 8px 0;">✓ Pinned tabs to save space</li>
+                        </ul>
+                        <p style="color: rgba(255, 255, 255, 0.6); font-size: 13px; margin-top: 16px;">
+                            <strong>Privacy Note:</strong> Tabs open briefly in the background, extract publicly available content, then close automatically. Your browsing history and personal data remain private.
+                        </p>
+                        <div id="consentStatus" style="margin-top: 16px; padding: 12px; background: rgba(76, 175, 80, 0.1); border-radius: 8px; border: 1px solid rgba(76, 175, 80, 0.3);">
+                            <p style="color: #4CAF50; font-size: 14px; margin: 0;">
+                                ✅ You have consented to background tab scraping
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <!-- Scraping Statistics -->
+                    <div class="stat-card">
+                        <h3>Scraping Statistics</h3>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;">
+                            <div>
+                                <p style="color: rgba(255, 255, 255, 0.5); font-size: 12px; margin: 0;">Session Duration</p>
+                                <p style="color: #B692F6; font-size: 18px; margin: 4px 0;" id="sessionDuration">0 min</p>
+                            </div>
+                            <div>
+                                <p style="color: rgba(255, 255, 255, 0.5); font-size: 12px; margin: 0;">Avg Scrape Time</p>
+                                <p style="color: #B692F6; font-size: 18px; margin: 4px 0;" id="avgScrapeTime">0s</p>
+                            </div>
+                            <div>
+                                <p style="color: rgba(255, 255, 255, 0.5); font-size: 12px; margin: 0;">Success Rate</p>
+                                <p style="color: #00FF88; font-size: 18px; margin: 4px 0;" id="successRate">100%</p>
+                            </div>
+                            <div>
+                                <p style="color: rgba(255, 255, 255, 0.5); font-size: 12px; margin: 0;">Data Quality</p>
+                                <p style="color: #00FF88; font-size: 18px; margin: 4px 0;" id="dataQuality">Good</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 
                 <!-- RhinoScan Section -->

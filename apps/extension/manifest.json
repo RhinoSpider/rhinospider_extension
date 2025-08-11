@@ -6,6 +6,7 @@
   "permissions": [
     "storage",
     "tabs",
+    "scripting",
     "downloads",
     "offscreen",
     "notifications"
@@ -18,11 +19,7 @@
     }
   ],
   "host_permissions": [
-    "https://*.ic0.app/*",
-    "https://*.icp0.io/*",
-    "https://identity.ic0.app/*",
-    "https://ic-proxy.rhinospider.com/*",
-    "https://search-proxy.rhinospider.com/*"
+    "<all_urls>"
   ],
   "background": {
     "service_worker": "src/background.js",

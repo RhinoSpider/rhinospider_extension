@@ -238,7 +238,7 @@ const logger = {
         const lastTime = recentLogs.get(logKey) || 0;
 
         if (now - lastTime > logThrottleTimes.CRITICAL) {
-            console.log(`[RhinoSpider] 🚨 ${msg}`, data || '');
+            console.log(`[RhinoSpider] [CRITICAL] ${msg}`, data || '');
             recentLogs.set(logKey, now);
         }
     },
@@ -309,7 +309,7 @@ async function processRetryQueue() {
 }
 
 // Start retry queue processor
-setInterval(processRetryQueue, RETRY_INTERVAL);
+activeTimers.retryQueue = setInterval(processRetryQueue, RETRY_INTERVAL);
 
 // Scraping state
 let isScrapingActive = false;
@@ -317,6 +317,20 @@ let isEnabled = false; // Track if extension is enabled
 const SCRAPE_INTERVAL_MINUTES = 5; // How often to scrape
 let scrapingInterval = null; // For setInterval fallback
 let scrapeTimerId = null; // For fallback timer
+
+// Track ALL active timers and intervals
+let activeTimers = {
+    heartbeat: null,
+    primary: null,
+    secondary: null,
+    healthCheck: null,
+    submissionRetry: null,
+    retryQueue: null
+};
+
+// Track active async operations
+let activeOperations = new Set();
+let shouldStopScraping = false;
 
 // Topics and AI config storage
 let topics = [];
@@ -355,7 +369,7 @@ function setupHeartbeat() {
     }
 
     // Set up a new heartbeat every 30 seconds for better reliability
-    heartbeatId = setInterval(async () => {
+    activeTimers.heartbeat = setInterval(async () => {
         try {
             // Record heartbeat timestamp to track activity
             await chrome.storage.local.set({ lastHeartbeat: Date.now() });
@@ -882,10 +896,27 @@ function getBandwidthRating(score) {
 
 // Perform a scrape operation
 async function performScrape() {
+    logger.critical('[CRITICAL] [performScrape] FUNCTION CALLED');
+    
+    // Track this operation
+    const operationId = Date.now();
+    activeOperations.add(operationId);
+    
     try {
-        if (!topics || topics.length === 0) {
+        // Check if we should stop scraping
+        if (shouldStopScraping) {
+            logger.critical('[CRITICAL] [performScrape] STOP FLAG SET - ABORTING');
+            activeOperations.delete(operationId);
             return;
         }
+        
+        if (!topics || topics.length === 0) {
+            logger.critical('[CRITICAL] [performScrape] NO TOPICS - RETURNING');
+            activeOperations.delete(operationId);
+            return;
+        }
+        
+        logger.critical(`[CRITICAL] [performScrape] HAVE ${topics.length} TOPICS`);
 
         // Record the time of this scrape attempt and set badge
         chrome.storage.local.set({ lastScrapeTime: Date.now() });
@@ -894,7 +925,9 @@ async function performScrape() {
 
         // Get active topics
         const activeTopics = topics.filter(topic => topic.status === 'active');
+        logger.critical(`[CRITICAL] [performScrape] ACTIVE TOPICS: ${activeTopics.length}`);
         if (activeTopics.length === 0) {
+            logger.critical('[CRITICAL] [performScrape] NO ACTIVE TOPICS - RETURNING');
             return;
         }
 
@@ -1034,12 +1067,15 @@ async function performScrape() {
 
         try {
             // Get the full result object from fetchPageContent
+            logger.critical(`[CRITICAL] [performScrape] CALLING fetchPageContent for URL: ${selectedUrl}`);
             fetchResult = await fetchPageContent(selectedUrl);
+            logger.critical(`[CRITICAL] [performScrape] fetchPageContent RETURNED`);
 
             // Extract content and other metadata from the result
             content = fetchResult.content;
             fetchStatus = fetchResult.status;
             corsIssue = fetchResult.corsIssue || false;
+            logger.critical(`[CRITICAL] [performScrape] GOT CONTENT: ${content ? content.length : 0} chars`);
 
             // Check if there was an error during fetching
             if (fetchResult.error) {
@@ -1255,17 +1291,24 @@ async function performScrape() {
         });
 
         // Add a small delay before the next scrape to avoid hammering servers
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        if (!shouldStopScraping) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        }
     } catch (error) {
         // Ensure we don't leave the extension in a bad state
-        await chrome.storage.local.set({
-            lastScrapeTime: Date.now(),
-            isScrapingActive: true,
-            enabled: true
-        });
+        if (!shouldStopScraping) {
+            await chrome.storage.local.set({
+                lastScrapeTime: Date.now(),
+                isScrapingActive: true,
+                enabled: true
+            });
 
-        // Add a longer delay after an error to allow for recovery
-        await new Promise(resolve => setTimeout(resolve, 10000));
+            // Add a longer delay after an error to allow for recovery
+            await new Promise(resolve => setTimeout(resolve, 10000));
+        }
+    } finally {
+        // Always clean up operation tracking
+        activeOperations.delete(operationId);
     }
 }
 
@@ -1371,10 +1414,18 @@ async function forceScrape() {
 
 // Start the scraping process
 async function startScraping() {
+    logger.critical('[CRITICAL] startScraping FUNCTION CALLED');
+    
+    // Reset the stop flag when starting
+    shouldStopScraping = false;
+    
     try {
         // Check authentication and enabled state first
         const { principalId, enabled } = await chrome.storage.local.get(['principalId', 'enabled']);
+        logger.critical(`[CRITICAL] [startScraping] principalId: ${principalId}, enabled: ${enabled}`);
+        
         if (!principalId) {
+            logger.critical('[CRITICAL] [startScraping] NO PRINCIPAL ID - NOT AUTHENTICATED');
             chrome.action.setBadgeText({ text: 'OFF' });
             chrome.action.setBadgeBackgroundColor({ color: '#9E9E9E' });
             return { success: false, error: 'Not authenticated' };
@@ -1382,6 +1433,7 @@ async function startScraping() {
 
         // Check if extension is enabled
         if (enabled === false) {
+            logger.critical('[CRITICAL] [startScraping] EXTENSION DISABLED');
             chrome.action.setBadgeText({ text: 'OFF' });
             chrome.action.setBadgeBackgroundColor({ color: '#9E9E9E' });
             return { success: false, error: 'Extension disabled' };
@@ -1399,11 +1451,15 @@ async function startScraping() {
 
         // Check if topics are loaded
         if (!topics || topics.length === 0) {
+            logger.critical(`[CRITICAL] [startScraping] NO TOPICS LOADED - topics: ${topics ? topics.length : 'null'}`);
             return { success: false, error: 'No topics loaded' };
         }
+        
+        logger.critical(`[CRITICAL] [startScraping] TOPICS LOADED: ${topics.length} topics`);
 
         // Set scraping state to active
         isScrapingActive = true;
+        logger.critical('[CRITICAL] [startScraping] SCRAPING SET TO ACTIVE');
 
         // Save scraping state to persist across browser restarts
         await chrome.storage.local.set({ isScrapingActive: true });
@@ -1453,8 +1509,11 @@ async function startScraping() {
 
         // Perform initial scrape
         try {
+            logger.critical('[CRITICAL] [startScraping] CALLING performScrape()');
             await performScrape();
+            logger.critical('[CRITICAL] [startScraping] performScrape() COMPLETED');
         } catch (error) {
+            logger.critical(`[CRITICAL] [startScraping] ERROR IN performScrape(): ${error.message}`);
             logger.error('Error during initial scrape, but continuing with scheduled scraping:', error);
             // Log detailed error information for debugging
             if (error.stack) {
@@ -1536,6 +1595,7 @@ function setupFallbackTimer() {
 
     // PRIMARY TIMER: Main scraping interval
     scrapeTimerId = setInterval(async () => {
+    activeTimers.primary = scrapeTimerId;
         try {
             // Always check if scraping should be active based on storage
             const { enabled } = await chrome.storage.local.get(['enabled']);
@@ -1582,7 +1642,7 @@ function setupFallbackTimer() {
     globalThis.rhinoSpiderTimers.push(scrapeTimerId);
 
     // SECONDARY TIMER: Backup scraping interval that runs less frequently
-    const secondaryTimerId = setInterval(async () => {
+    activeTimers.secondary = setInterval(async () => {
         try {
             const { enabled, lastScrapeTime } = await chrome.storage.local.get(['enabled', 'lastScrapeTime']);
             const now = Date.now();
@@ -1617,7 +1677,7 @@ function setupFallbackTimer() {
     globalThis.rhinoSpiderTimers.push(secondaryTimerId);
 
     // HEALTH CHECK TIMER: Ensures the other timers are running and restarts scraping if needed
-    const healthCheckTimerId = setInterval(async () => {
+    activeTimers.healthCheck = setInterval(async () => {
         try {
             const {
                 enabled,
@@ -1680,7 +1740,7 @@ function setupFallbackTimer() {
     globalThis.rhinoSpiderTimers.push(healthCheckTimerId);
 
     // SUBMISSION RETRY TIMER: Periodically retry any pending submissions that failed with authorization errors
-    const submissionRetryTimerId = setInterval(async () => {
+    activeTimers.submissionRetry = setInterval(async () => {
         try {
             const data = await chrome.storage.local.get('pendingSubmissions');
             const pendingSubmissions = data.pendingSubmissions || [];
@@ -1768,28 +1828,43 @@ function setupFallbackTimer() {
 
 // Stop the scraping process
 async function stopScraping() {
-    logger.log('Stopping scraping process');
+    logger.log('Stopping scraping process - COMPLETE SHUTDOWN');
 
     try {
+        // Set the stop flag immediately to prevent new operations
+        shouldStopScraping = true;
+        
         // Check if scraping is active
         if (!isScrapingActive) {
-            logger.log('Scraping is not active, nothing to stop');
-            return { success: true, message: 'Scraping not active' };
+            logger.log('Scraping is not active, but ensuring complete cleanup');
         }
 
-        // Clear the interval if it exists
+        // Clear ALL tracked timers and intervals
+        logger.log('Clearing ALL timers...');
+        
+        // Clear main scraping interval
         if (scrapingInterval !== null) {
             clearInterval(scrapingInterval);
             scrapingInterval = null;
-            logger.log('Cleared scraping interval');
+            logger.log('Cleared main scraping interval');
         }
 
-        // Clear the fallback timer if it exists
+        // Clear fallback timer
         if (scrapeTimerId) {
             clearTimeout(scrapeTimerId);
-            clearInterval(scrapeTimerId); // Clear both timeout and interval to be safe
+            clearInterval(scrapeTimerId);
             scrapeTimerId = null;
             logger.log('Cleared fallback timer');
+        }
+
+        // Clear ALL other timers
+        for (const [timerName, timerId] of Object.entries(activeTimers)) {
+            if (timerId) {
+                clearInterval(timerId);
+                clearTimeout(timerId); // Clear both just in case
+                activeTimers[timerName] = null;
+                logger.log(`Cleared ${timerName} timer`);
+            }
         }
 
         // Clear the alarm if it exists
@@ -1798,20 +1873,42 @@ async function stopScraping() {
             logger.log('Cleared scrape alarm');
         }
 
+        // Wait for any active operations to complete (max 5 seconds)
+        const maxWaitTime = 5000;
+        const startWait = Date.now();
+        while (activeOperations.size > 0 && (Date.now() - startWait) < maxWaitTime) {
+            logger.log(`Waiting for ${activeOperations.size} active operations to complete...`);
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        
+        if (activeOperations.size > 0) {
+            logger.warn(`Force clearing ${activeOperations.size} active operations after timeout`);
+            activeOperations.clear();
+        }
+
         // Set scraping as inactive
         isScrapingActive = false;
+        isEnabled = false;
 
         // Update badge
         chrome.action.setBadgeText({ text: 'OFF' });
         chrome.action.setBadgeBackgroundColor({ color: '#9E9E9E' });
 
         // Save scraping state and ensure enabled state is also set to false
-        await chrome.storage.local.set({ isScrapingActive: false, enabled: false });
+        await chrome.storage.local.set({ 
+            isScrapingActive: false, 
+            enabled: false,
+            stoppedAt: Date.now()
+        });
 
-        logger.log('Scraping process stopped successfully');
-        return { success: true, message: 'Scraping stopped' };
+        // Reset the stop flag after everything is stopped
+        shouldStopScraping = false;
+
+        logger.log('Scraping process stopped successfully - ALL TIMERS CLEARED');
+        return { success: true, message: 'Scraping completely stopped' };
     } catch (error) {
         logger.error(`Error stopping scraping process: ${error.message}`);
+        shouldStopScraping = false; // Reset flag on error
         return { success: false, error: error.message };
     }
 }
@@ -2049,36 +2146,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             });
             return true;
 
-        case 'SET_STATE':
-            // Ensure we use both parameters from the message
-            const isEnabled = message.enabled !== false;
-            const isScrapingActive = message.isScrapingActive !== false;
-
-            // Always save both states to ensure consistency
-            chrome.storage.local.set({
-                enabled: isEnabled,
-                isScrapingActive: isScrapingActive
-            }, () => {
-                // Start or stop scraping based on the active state
-                if (isEnabled && isScrapingActive) {
-                    startScraping();
-                } else if (!isEnabled || !isScrapingActive) {
-                    stopScraping();
-                }
-
-                // Update badge to reflect current state
-                chrome.action.setBadgeText({ text: isEnabled ? 'ON' : 'OFF' });
-                chrome.action.setBadgeBackgroundColor({
-                    color: isEnabled ? '#4CAF50' : '#9E9E9E'
-                });
-
-                sendResponse({
-                    success: true,
-                    enabled: isEnabled,
-                    isScrapingActive: isScrapingActive
-                });
-            });
-            return true;
+        // Removing duplicate SET_STATE handler - handled below at line 2518
+        // case 'SET_STATE':
+        //     Moved to line 2518 to avoid duplicate handlers
 
         case 'START_SCRAPING':
             // Check if user is authenticated
@@ -2376,9 +2446,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
                 // Store principalId in local storage
                 chrome.storage.local.set({ principalId: message.principalId }, () => {
-                    // DO NOT enable extension by default after login - let user control it
-                    chrome.storage.local.set({ enabled: false, isScrapingActive: false, scrapingEnabled: false }, async () => {
-                        logger.log('Extension is disabled by default after login, user must enable it manually');
+                    // Enable extension by default after login for automatic scraping
+                    chrome.storage.local.set({ enabled: true, isScrapingActive: true, scrapingEnabled: true }, async () => {
+                        logger.log('Extension is enabled by default after login, starting automatic scraping');
                         
                         // Create user profile in referral canister
                         try {
@@ -2459,8 +2529,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                                     logger.log(`Empty topics array initialized (${topics.length} topics)`);
                                 }
 
-                                // Don't start scraping automatically - extension is disabled by default
-                                logger.log('Topics loaded but extension is disabled - user must enable it manually');
+                                // Start scraping automatically since extension is enabled by default
+                                logger.log('Topics loaded, starting automatic scraping');
+                                startScraping();
                             } catch (error) {
                                 logger.error('Error loading topics after login:', error);
 
@@ -2475,13 +2546,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
                                 logger.log(`Empty topics array initialized (${topics.length} topics)`);
 
-                                // Don't start scraping automatically - extension is disabled by default
-                                logger.log('Topics loaded but extension is disabled - user must enable it manually');
+                                // Start scraping automatically since extension is enabled by default
+                                logger.log('Topics loaded, starting automatic scraping');
+                                startScraping();
                             }
                         } else {
                             logger.log(`Topics already loaded (${topics.length} topics)`);
-                            // Don't start scraping automatically - extension is disabled by default
-                            logger.log('Extension is disabled by default - user must enable it manually');
+                            // Start scraping automatically since extension is enabled by default
+                            logger.log('Extension is enabled by default - starting automatic scraping');
+                            startScraping();
                         }
 
                         // Send response back to dashboard
@@ -3034,7 +3107,7 @@ async function fetchPageContent(url) {
         // IMPORTANT: For DePIN bandwidth sharing, we need to actually fetch content
         // We'll try fetch() first, then fall back to background tabs if needed
         
-        logger.info(`[fetchPageContent] Starting content fetch for: ${url}`);
+        logger.log(`[fetchPageContent] Starting content fetch for: ${url}`);
         
         let content = null;
         let status = 0;
@@ -3056,20 +3129,27 @@ async function fetchPageContent(url) {
             
             // With no-cors mode, we can't read the response but we know the request was made
             // This still uses bandwidth but we can't extract content
-            logger.info(`[fetchPageContent] Fetch attempt completed (no-cors mode)`);
+            logger.log(`[fetchPageContent] Fetch attempt completed (no-cors mode)`);
             
         } catch (fetchError) {
-            logger.info(`[fetchPageContent] Fetch failed, using tab-based scraping`);
+            logger.critical(`[fetchPageContent] FETCH FAILED: ${fetchError.message}`);
         }
+        
+        logger.critical('[fetchPageContent] REACHED POINT AFTER FETCH ATTEMPT');
         
         // Since we can't get content with fetch due to CORS, use tab-based scraping
         // This is necessary for actual content extraction in a DePIN system
+        logger.critical(`[fetchPageContent] Starting tab-based scraping for: ${url}`);
+        logger.critical('[fetchPageContent] ENTERING TRY BLOCK FOR TAB CREATION');
         try {
+            logger.critical('[fetchPageContent] INSIDE TRY BLOCK');
             // Load scraping settings
             const settings = await scrapingSettings.loadSettings();
+            logger.critical('[fetchPageContent] Settings loaded:', JSON.stringify(settings));
             
             // Check if user has consented
             if (!settings.scrapingConsent) {
+                logger.critical('[fetchPageContent] NO CONSENT - Setting consent to true');
                 // Need consent first
                 await scrapingSettings.updateConsent(true);
                 // Notify user about the scraping method
@@ -3079,11 +3159,16 @@ async function fetchPageContent(url) {
                     title: 'RhinoSpider Scraping',
                     message: 'Background tabs will be used to scrape content. You can configure this in settings.'
                 });
+            } else {
+                logger.critical('[fetchPageContent] User has already consented to scraping');
             }
             
+            // Skip schedule and bandwidth checks for now to ensure scraping works
+            // TODO: Re-enable these checks after testing
+            /*
             // Check if we're within schedule
             if (!scrapingSettings.isWithinSchedule()) {
-                logger.info('[fetchPageContent] Outside of scheduled scraping hours');
+                logger.log('[fetchPageContent] Outside of scheduled scraping hours');
                 return {
                     content: null,
                     error: 'Outside scheduled hours',
@@ -3094,19 +3179,20 @@ async function fetchPageContent(url) {
             // Check bandwidth limits
             const estimatedSize = 500000; // Estimate 500KB per page
             if (!await scrapingSettings.checkBandwidthLimit(estimatedSize)) {
-                logger.info('[fetchPageContent] Bandwidth limit reached');
+                logger.log('[fetchPageContent] Bandwidth limit reached');
                 return {
                     content: null,
                     error: 'Bandwidth limit reached',
                     status: 0
                 };
             }
+            */
             
             // Check concurrent tabs limit
             const tabs = await chrome.tabs.query({ pinned: true });
             const scrapingTabs = tabs.filter(t => t.url && !t.url.startsWith('chrome://'));
             if (scrapingTabs.length >= settings.maxConcurrentTabs) {
-                logger.info('[fetchPageContent] Concurrent tabs limit reached');
+                logger.log('[fetchPageContent] Concurrent tabs limit reached');
                 // Wait a bit and retry
                 await new Promise(resolve => setTimeout(resolve, 2000));
             }
@@ -3118,62 +3204,87 @@ async function fetchPageContent(url) {
             }
             
             // Create a background tab (not active, minimizes user disruption)
+            logger.critical(`[fetchPageContent] ABOUT TO CREATE TAB for URL: ${url}`);
+            logger.critical('[fetchPageContent] Calling chrome.tabs.create...');
             const tab = await chrome.tabs.create({
                 url: url,
                 active: false,
-                pinned: true, // Pinned tabs are less noticeable
-                muted: true   // Mute any audio
+                pinned: true  // Pinned tabs are less noticeable
+                // Note: 'muted' property removed as it's not supported in tabs.create
             });
+            logger.critical(`[fetchPageContent] TAB CREATED with ID: ${tab.id}`);
             
-            // Wait for tab to load (max 15 seconds)
-            await new Promise((resolve, reject) => {
-                const timeout = setTimeout(() => {
-                    reject(new Error('Page load timeout'));
-                }, 15000);
-                
-                const listener = (tabId, changeInfo) => {
-                    if (tabId === tab.id && changeInfo.status === 'complete') {
-                        chrome.tabs.onUpdated.removeListener(listener);
-                        clearTimeout(timeout);
-                        resolve();
-                    }
-                };
-                
-                chrome.tabs.onUpdated.addListener(listener);
-            });
-            
-            // Extract content using scripting API
-            const [result] = await chrome.scripting.executeScript({
-                target: { tabId: tab.id },
-                func: () => {
-                    // Remove unnecessary elements
-                    const elementsToRemove = document.querySelectorAll('script, style, noscript, iframe');
-                    elementsToRemove.forEach(el => el.remove());
+            try {
+                logger.critical(`[fetchPageContent] Waiting for tab ${tab.id} to load...`);
+                // Wait for tab to load (max 15 seconds)
+                await new Promise((resolve, reject) => {
+                    const timeout = setTimeout(() => {
+                        logger.critical(`[fetchPageContent] Tab ${tab.id} load timeout!`);
+                        reject(new Error('Page load timeout'));
+                    }, 15000);
                     
-                    // Get text content
-                    const bodyText = document.body?.innerText || document.body?.textContent || '';
-                    const title = document.title || '';
-                    
-                    return {
-                        title: title,
-                        content: bodyText.substring(0, 50000), // Limit to 50KB
-                        length: bodyText.length
+                    const listener = (tabId, changeInfo) => {
+                        if (tabId === tab.id) {
+                            logger.critical(`[fetchPageContent] Tab ${tab.id} status: ${changeInfo.status}`);
+                            if (changeInfo.status === 'complete') {
+                                chrome.tabs.onUpdated.removeListener(listener);
+                                clearTimeout(timeout);
+                                logger.critical(`[fetchPageContent] Tab ${tab.id} loaded successfully`);
+                                resolve();
+                            }
+                        }
                     };
-                }
-            });
-            
-            if (result?.result) {
-                content = `${result.result.title}\n\n${result.result.content}`;
-                status = 200;
-                const bytesScraped = content.length;
-                logger.info(`[fetchPageContent] Scraped ${bytesScraped} bytes of content`);
+                    
+                    chrome.tabs.onUpdated.addListener(listener);
+                });
                 
-                // Record bandwidth usage
-                await scrapingSettings.recordBandwidthUsage(bytesScraped);
+                logger.critical(`[fetchPageContent] Executing script on tab ${tab.id}...`);
+                // Extract content using scripting API
+                const [result] = await chrome.scripting.executeScript({
+                    target: { tabId: tab.id },
+                    func: () => {
+                        // Remove unnecessary elements
+                        const elementsToRemove = document.querySelectorAll('script, style, noscript, iframe');
+                        elementsToRemove.forEach(el => el.remove());
+                        
+                        // Get text content
+                        const bodyText = document.body?.innerText || document.body?.textContent || '';
+                        const title = document.title || '';
+                        
+                        return {
+                            title: title,
+                            content: bodyText.substring(0, 50000), // Limit to 50KB
+                            length: bodyText.length
+                        };
+                    }
+                });
+                
+                logger.critical(`[fetchPageContent] Script executed, result:`, result ? 'Success' : 'Failed');
+                
+                if (result?.result) {
+                    content = `${result.result.title}\n\n${result.result.content}`;
+                    status = 200;
+                    const bytesScraped = content.length;
+                    logger.log(`[fetchPageContent] Scraped ${bytesScraped} bytes of content`);
+                    
+                    // Record bandwidth usage
+                    await scrapingSettings.recordBandwidthUsage(bytesScraped);
+                } else {
+                    logger.critical(`[fetchPageContent] No result from script execution`);
+                }
+            } catch (innerError) {
+                logger.critical(`[fetchPageContent] Error during tab processing: ${innerError.message}`);
+                throw innerError;
+            } finally {
+                // ALWAYS close the tab, even if there's an error
+                try {
+                    logger.critical(`[fetchPageContent] CLOSING TAB ${tab.id}`);
+                    await chrome.tabs.remove(tab.id);
+                    logger.critical(`[fetchPageContent] TAB ${tab.id} CLOSED`);
+                } catch (closeError) {
+                    logger.critical(`[fetchPageContent] ERROR CLOSING TAB: ${closeError.message}`);
+                }
             }
-            
-            // Close the tab immediately
-            await chrome.tabs.remove(tab.id);
             
             // Clear visual indicator
             if (settings.showScrapingIndicator) {
@@ -3193,7 +3304,9 @@ async function fetchPageContent(url) {
             
         } catch (tabError) {
             error = tabError.message;
-            logger.error(`[fetchPageContent] Tab scraping error: ${error}`);
+            logger.critical(`[fetchPageContent] CAUGHT ERROR IN TAB CREATION: ${error}`);
+            logger.critical('[fetchPageContent] Full error object:', tabError);
+            logger.critical('[fetchPageContent] Error stack:', tabError.stack);
             // Fallback content for failed scraping
             content = `Scraping attempted for: ${url} - Error: ${error}`;
         }
@@ -3208,6 +3321,9 @@ async function fetchPageContent(url) {
         };
     } catch (error) {
         // Return a structured error object instead of throwing
+        logger.critical(`[fetchPageContent] OUTER CATCH BLOCK HIT! Error: ${error.message}`);
+        logger.critical('[fetchPageContent] Error type:', error.name);
+        logger.critical('[fetchPageContent] Error stack:', error.stack);
         return {
             content: null,
             url,
