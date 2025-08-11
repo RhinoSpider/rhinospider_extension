@@ -9,6 +9,7 @@ const searchRouter = require('./routes/search');
 const { initializeUrlCache } = require('./services/initializeCache');
 const { initUserQuotaSystem } = require('./services/userQuotaManager');
 const { initBackgroundSync } = require('./services/scrapedUrlsTracker');
+const { getRateLimitConfig, setupRateLimitEndpoints } = require('./rateLimitConfig');
 
 // Create Express app
 const app = express();
@@ -41,16 +42,27 @@ app.use(express.json());
 app.use(morgan('combined'));
 
 // Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 500, // limit each IP to 500 requests per windowMs (increased from 100)
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: 'Too many requests, please try again later.'
-});
+// Dynamic rate limiter that uses config
+const createRateLimiter = () => {
+  const config = getRateLimitConfig();
+  return rateLimit({
+    windowMs: config.windowMs,
+    max: config.max,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skipSuccessfulRequests: config.skipSuccessfulRequests,
+    skipFailedRequests: config.skipFailedRequests,
+    message: 'Too many requests, please try again later.'
+  });
+};
 
-// Apply rate limiting only to search endpoints, not health checks
+const limiter = createRateLimiter();
+
+// Apply rate limiting only to search endpoints, not health checks or admin
 app.use('/api/search', limiter);
+
+// Setup admin endpoints for rate limit management
+setupRateLimitEndpoints(app);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
