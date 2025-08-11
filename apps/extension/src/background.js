@@ -7,6 +7,7 @@ import connectionTest from './connection-test.js';
 import config from './config.js';
 import debugTools from './debug-tools.js';
 import serviceWorkerAdapter from './service-worker-adapter.js';
+import scrapingSettings from './scraping-settings.js';
 
 // Enhanced logging for connection tracking
 const enhancedLogging = {
@@ -3064,15 +3065,56 @@ async function fetchPageContent(url) {
         // Since we can't get content with fetch due to CORS, use tab-based scraping
         // This is necessary for actual content extraction in a DePIN system
         try {
-            // Check if user has consented to tab-based scraping
-            const settings = await chrome.storage.local.get(['scrapingConsent']);
+            // Load scraping settings
+            const settings = await scrapingSettings.loadSettings();
             
+            // Check if user has consented
             if (!settings.scrapingConsent) {
-                // First time - ask for consent
-                const consent = await chrome.storage.local.set({ 
-                    scrapingConsent: true,
-                    scrapingNotice: 'RhinoSpider opens background tabs to scrape content. This is how you earn points by sharing bandwidth.'
+                // Need consent first
+                await scrapingSettings.updateConsent(true);
+                // Notify user about the scraping method
+                chrome.notifications.create({
+                    type: 'basic',
+                    iconUrl: chrome.runtime.getURL('icons/icon128.png'),
+                    title: 'RhinoSpider Scraping',
+                    message: 'Background tabs will be used to scrape content. You can configure this in settings.'
                 });
+            }
+            
+            // Check if we're within schedule
+            if (!scrapingSettings.isWithinSchedule()) {
+                logger.info('[fetchPageContent] Outside of scheduled scraping hours');
+                return {
+                    content: null,
+                    error: 'Outside scheduled hours',
+                    status: 0
+                };
+            }
+            
+            // Check bandwidth limits
+            const estimatedSize = 500000; // Estimate 500KB per page
+            if (!await scrapingSettings.checkBandwidthLimit(estimatedSize)) {
+                logger.info('[fetchPageContent] Bandwidth limit reached');
+                return {
+                    content: null,
+                    error: 'Bandwidth limit reached',
+                    status: 0
+                };
+            }
+            
+            // Check concurrent tabs limit
+            const tabs = await chrome.tabs.query({ pinned: true });
+            const scrapingTabs = tabs.filter(t => t.url && !t.url.startsWith('chrome://'));
+            if (scrapingTabs.length >= settings.maxConcurrentTabs) {
+                logger.info('[fetchPageContent] Concurrent tabs limit reached');
+                // Wait a bit and retry
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+            
+            // Show visual indicator if enabled
+            if (settings.showScrapingIndicator) {
+                chrome.action.setBadgeText({ text: '⚡' });
+                chrome.action.setBadgeBackgroundColor({ color: '#B692F6' });
             }
             
             // Create a background tab (not active, minimizes user disruption)
@@ -3123,11 +3165,31 @@ async function fetchPageContent(url) {
             if (result?.result) {
                 content = `${result.result.title}\n\n${result.result.content}`;
                 status = 200;
-                logger.info(`[fetchPageContent] Scraped ${result.result.length} bytes of content`);
+                const bytesScraped = content.length;
+                logger.info(`[fetchPageContent] Scraped ${bytesScraped} bytes of content`);
+                
+                // Record bandwidth usage
+                await scrapingSettings.recordBandwidthUsage(bytesScraped);
             }
             
             // Close the tab immediately
             await chrome.tabs.remove(tab.id);
+            
+            // Clear visual indicator
+            if (settings.showScrapingIndicator) {
+                // Update badge to show tab count if enabled
+                if (settings.showTabCount) {
+                    const remainingTabs = await chrome.tabs.query({ pinned: true });
+                    const count = remainingTabs.filter(t => t.url && !t.url.startsWith('chrome://')).length;
+                    if (count > 0) {
+                        chrome.action.setBadgeText({ text: count.toString() });
+                    } else {
+                        chrome.action.setBadgeText({ text: '' });
+                    }
+                } else {
+                    chrome.action.setBadgeText({ text: '' });
+                }
+            }
             
         } catch (tabError) {
             error = tabError.message;
