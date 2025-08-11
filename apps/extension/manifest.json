@@ -6,7 +6,8 @@
   "permissions": [
     "storage",
     "tabs",
-    "downloads"
+    "downloads",
+    "offscreen"
   ],
   "content_scripts": [
     {
