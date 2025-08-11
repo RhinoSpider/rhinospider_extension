@@ -28,6 +28,11 @@ interface ScrapingTopic {
   scrapingInterval: number;
   priority: number;
   
+  // Geo-distribution & Node Routing
+  geolocationFilter?: string;
+  percentageNodes?: number;
+  randomizationMode?: string;
+  
   // Tracking
   createdAt: number;
   lastScraped: number;
@@ -71,6 +76,11 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
     maxUrlsPerBatch: topic?.maxUrlsPerBatch || 10,
     scrapingInterval: topic?.scrapingInterval || 3600,
     priority: topic?.priority || 5,
+    
+    // Geo-distribution & Node Routing
+    geolocationFilter: topic?.geolocationFilter || '',
+    percentageNodes: topic?.percentageNodes || 100,
+    randomizationMode: topic?.randomizationMode || 'none',
     
     // Tracking
     createdAt: topic?.createdAt || Date.now(),
@@ -493,6 +503,85 @@ export const TopicModal: React.FC<TopicModalProps> = ({ isOpen, onClose, topic, 
                     min="1"
                     max="10"
                   />
+                </div>
+              </div>
+            </div>
+
+            {/* Geo-distribution & Node Routing */}
+            <div className="border-t border-[#2C2B33] pt-4">
+              <h3 className="text-md font-medium mb-4 text-[#B692F6]">Geo-distribution & Node Routing</h3>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">
+                    Geolocation Filter
+                    <span className="text-gray-500 ml-1">(e.g., US,UK,DE or North America, Europe)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.geolocationFilter || ''}
+                    onChange={(e) => setFormData({ ...formData, geolocationFilter: e.target.value })}
+                    className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
+                    placeholder="Leave empty for all locations"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Specify countries (ISO codes) or regions. Only nodes from these locations will process this topic.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">
+                      Percentage of Nodes (%)
+                    </label>
+                    <input
+                      type="number"
+                      value={formData.percentageNodes || 100}
+                      onChange={(e) => setFormData({ ...formData, percentageNodes: Math.min(100, Math.max(1, parseInt(e.target.value) || 100)) })}
+                      className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
+                      min="1"
+                      max="100"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      What percentage of available nodes should process this topic
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">
+                      Randomization Mode
+                    </label>
+                    <select
+                      value={formData.randomizationMode || 'none'}
+                      onChange={(e) => setFormData({ ...formData, randomizationMode: e.target.value })}
+                      className="w-full bg-[#131217] border border-[#2C2B33] rounded-lg p-2 text-white"
+                    >
+                      <option value="none">None - All matching nodes</option>
+                      <option value="random">Random - Randomly select nodes</option>
+                      <option value="round_robin">Round Robin - Rotate between nodes</option>
+                      <option value="weighted">Weighted - Based on node performance</option>
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">
+                      How to select nodes when percentage is less than 100%
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-[#1A1922] border border-[#2C2B33] rounded-lg p-3">
+                  <h4 className="text-xs font-medium text-[#B692F6] mb-2">Current Configuration Summary:</h4>
+                  <p className="text-xs text-gray-400">
+                    {formData.geolocationFilter ? 
+                      `Only nodes from ${formData.geolocationFilter} will process this topic. ` : 
+                      'All nodes globally can process this topic. '}
+                    {formData.percentageNodes && formData.percentageNodes < 100 ? 
+                      `${formData.percentageNodes}% of matching nodes will be selected ${
+                        formData.randomizationMode === 'random' ? 'randomly' : 
+                        formData.randomizationMode === 'round_robin' ? 'in rotation' :
+                        formData.randomizationMode === 'weighted' ? 'based on performance' :
+                        ''
+                      }.` : 
+                      'All matching nodes will process this topic.'}
+                  </p>
                 </div>
               </div>
             </div>

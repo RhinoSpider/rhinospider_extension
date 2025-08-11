@@ -116,12 +116,36 @@ class ProxyClient {
    */
   async getTopics(principalId) {
     try {
+      // Get the user's IP address for geo-distribution
+      let ipAddress = 'unknown';
+      let region = 'unknown';
+      try {
+        const ipResponse = await fetch('https://api.ipify.org?format=json');
+        if (ipResponse.ok) {
+          const ipData = await ipResponse.json();
+          ipAddress = ipData.ip;
+          // You can add region detection here if needed
+        }
+      } catch (e) {
+        console.log('Could not determine IP address:', e);
+      }
+
+      // Prepare node characteristics for geo-distribution routing
+      const nodeCharacteristics = {
+        ipAddress: ipAddress,
+        region: region,
+        percentageNodes: 100, // This node is available 100% of the time
+        randomizationMode: 'none' // This node accepts all matching tasks
+      };
+
       const options = {
-        method: 'GET',
+        method: 'POST',
         headers: {
+          'Content-Type': 'application/json',
           'x-device-id': this.deviceId || await this.getOrCreateDeviceId(),
           'Authorization': `Bearer ${this.apiKey}`
-        }
+        },
+        body: JSON.stringify({ nodeCharacteristics })
       };
 
       const response = await this.makeRequest('/api/topics', options);

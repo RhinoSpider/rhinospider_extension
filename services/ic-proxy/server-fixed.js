@@ -198,7 +198,103 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Get topics from admin canister
+// Get topics from admin canister (supports both GET and POST)
+// POST version accepts nodeCharacteristics for geo-distribution filtering
+app.post('/api/topics', async (req, res) => {
+  try {
+    const { nodeCharacteristics } = req.body;
+    console.log('Fetching topics with node characteristics:', nodeCharacteristics);
+    
+    // Fetch all topics from admin canister
+    const allTopics = await adminActor.getAllTopics();
+    console.log(`Fetched ${allTopics.length} total topics`);
+    
+    // Filter topics based on node characteristics
+    let filteredTopics = allTopics;
+    
+    if (nodeCharacteristics) {
+      const { ipAddress, region } = nodeCharacteristics;
+      
+      // Filter based on geo-distribution settings
+      filteredTopics = allTopics.filter(topic => {
+        // If no geolocationFilter is set, topic is available globally
+        if (!topic.geolocationFilter || topic.geolocationFilter === '') {
+          return true;
+        }
+        
+        // Check if node's location matches the topic's geolocation filter
+        // For now, this is a simple check - can be enhanced with actual geo-IP lookup
+        const allowedLocations = topic.geolocationFilter.split(',').map(loc => loc.trim().toUpperCase());
+        
+        // TODO: Implement actual geo-IP lookup to determine country/region from IP
+        // For now, accept all if we can't determine location
+        if (ipAddress === 'unknown' || region === 'unknown') {
+          return true; // Allow unknown locations for now
+        }
+        
+        return allowedLocations.includes(region.toUpperCase());
+      });
+      
+      // Apply percentage-based filtering if needed
+      filteredTopics = filteredTopics.filter(topic => {
+        const percentage = topic.percentageNodes || 100;
+        if (percentage >= 100) {
+          return true; // All nodes should process this
+        }
+        
+        // Apply randomization based on the mode
+        const randomizationMode = topic.randomizationMode || 'none';
+        if (randomizationMode === 'random') {
+          // Random selection based on percentage
+          return Math.random() * 100 < percentage;
+        } else if (randomizationMode === 'round_robin') {
+          // TODO: Implement round-robin selection (needs state management)
+          return true;
+        } else if (randomizationMode === 'weighted') {
+          // TODO: Implement weighted selection based on node performance
+          return true;
+        }
+        
+        return true; // Default to including the topic
+      });
+      
+      console.log(`Filtered to ${filteredTopics.length} topics based on node characteristics`);
+    }
+    
+    // Convert BigInt values to strings for JSON serialization
+    const serializedTopics = filteredTopics.map(topic => ({
+      ...topic,
+      createdAt: topic.createdAt ? topic.createdAt.toString() : '0',
+      lastScraped: topic.lastScraped ? topic.lastScraped.toString() : '0',
+      minContentLength: topic.minContentLength ? Number(topic.minContentLength) : 100,
+      maxContentLength: topic.maxContentLength ? Number(topic.maxContentLength) : 10000,
+      maxUrlsPerBatch: topic.maxUrlsPerBatch ? Number(topic.maxUrlsPerBatch) : 50,
+      scrapingInterval: topic.scrapingInterval ? Number(topic.scrapingInterval) : 3600,
+      priority: topic.priority ? Number(topic.priority) : 1,
+      totalUrlsScraped: topic.totalUrlsScraped ? Number(topic.totalUrlsScraped) : 0,
+      // Include geo-distribution settings in response
+      geolocationFilter: topic.geolocationFilter || '',
+      percentageNodes: topic.percentageNodes || 100,
+      randomizationMode: topic.randomizationMode || 'none'
+    }));
+    
+    res.json({
+      success: true,
+      topics: serializedTopics,
+      count: serializedTopics.length,
+      nodeCharacteristics: nodeCharacteristics || {}
+    });
+  } catch (error) {
+    console.error('Error fetching topics:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      topics: []
+    });
+  }
+});
+
+// Keep the GET endpoint for backward compatibility
 app.get('/api/topics', async (req, res) => {
   try {
     console.log('Fetching topics from admin canister...');
@@ -265,10 +361,10 @@ app.post('/api/consumer-submit', authenticateApiKey, async (req, res) => {
       topic: topic || topicId || '',
       content: contentValue,
       source: 'extension',
-      timestamp: BigInt(timestamp || Math.floor(Date.now() / 1000)), // Use seconds timestamp
+      timestamp: Number(timestamp || Math.floor(Date.now() / 1000)), // Use seconds timestamp as Int
       client_id: clientPrincipal ? Principal.fromText(clientPrincipal) : Principal.anonymous(),
       status: status || 'completed',
-      scraping_time: BigInt(scraping_time || 500)
+      scraping_time: Number(scraping_time || 500) // Use Int not BigInt
     };
 
     console.log('[/api/consumer-submit] Submitting to storage canister');
