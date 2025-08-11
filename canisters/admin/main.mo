@@ -130,6 +130,8 @@ actor Admin {
     private let ADMIN_PRINCIPAL_1: Text = "t52au-jmmys-xpd7e-f2cc7-xgsya-2ajbl-22leo-e7hep-kclwp-kqzoq-jae"; // Your actual principal
     private let ADMIN_PRINCIPAL_2: Text = "b6ra7-utydr-wzyka-ifr5h-jndpw-ugopd-q2qkc-oq4ju-7rbey-prkus-mqe"; // Backup admin
     private let ADMIN_PRINCIPAL_3: Text = "m2x6b-rijrs-nmddl-i4o4z-x2ymi-5equa-cgtmd-y5pag-6f6p4-plfjj-vae"; // Atharva's principal
+    private let ADMIN_PRINCIPAL_4: Text = "vnsgt-djy2g-igpvh-sevfi-ota4n-dtquw-nz7i6-4glkr-ijmrd-5w3uh-gae"; // New admin 1
+    private let ADMIN_PRINCIPAL_5: Text = "a4kj7-zxayv-chbcy-xugju-sv5ct-qvah7-6qcet-zkoz2-ehngi-bcg5c-eqe"; // New admin 2
     
 
     // Stable storage
@@ -167,6 +169,14 @@ actor Admin {
         let adminPrincipal3 = Principal.fromText(ADMIN_PRINCIPAL_3);
         admins.put(adminPrincipal3, true);
         
+        // Add admin principal 4
+        let adminPrincipal4 = Principal.fromText(ADMIN_PRINCIPAL_4);
+        admins.put(adminPrincipal4, true);
+        
+        // Add admin principal 5
+        let adminPrincipal5 = Principal.fromText(ADMIN_PRINCIPAL_5);
+        admins.put(adminPrincipal5, true);
+        
         // Also add to users collection as SuperAdmins
         users.put(userPrincipal, {
             principal = userPrincipal;
@@ -193,6 +203,20 @@ actor Admin {
             principal = adminPrincipal3;
             role = #SuperAdmin;
             addedBy = adminPrincipal3;
+            addedAt = Time.now();
+        });
+        
+        users.put(adminPrincipal4, {
+            principal = adminPrincipal4;
+            role = #SuperAdmin;
+            addedBy = adminPrincipal4;
+            addedAt = Time.now();
+        });
+        
+        users.put(adminPrincipal5, {
+            principal = adminPrincipal5;
+            role = #SuperAdmin;
+            addedBy = adminPrincipal5;
             addedAt = Time.now();
         });
         
@@ -258,6 +282,18 @@ actor Admin {
             return true;
         };
         
+        // Explicitly allow admin principal 4
+        if (Text.equal(callerStr, ADMIN_PRINCIPAL_4)) {
+            Debug.print("Admin principal 4 authorized via Text.equal");
+            return true;
+        };
+        
+        // Explicitly allow admin principal 5
+        if (Text.equal(callerStr, ADMIN_PRINCIPAL_5)) {
+            Debug.print("Admin principal 5 authorized via Text.equal");
+            return true;
+        };
+        
         // Check in the admins map
         switch (admins.get(caller)) {
             case (?isAdmin) {
@@ -287,6 +323,11 @@ actor Admin {
         let isConsumer = Text.equal(callerStr, CONSUMER_CANISTER_ID);
         Debug.print("Admin _isConsumerCanister: Caller: " # callerStr # ", Expected: " # CONSUMER_CANISTER_ID # ", Match: " # Bool.toText(isConsumer));
         isConsumer
+    };
+
+    // Public query to check if caller is admin
+    public query({ caller }) func checkIsAdmin() : async Bool {
+        _isAuthorized(caller)
     };
 
     // User management

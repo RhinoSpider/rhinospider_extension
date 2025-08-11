@@ -23,6 +23,28 @@ import type { ScrapingTopic, AIConfig, ScrapedData, ExtensionUser, CreateTopicRe
 
 let actor: any = null;
 
+export async function checkIsAdmin(): Promise<boolean> {
+  try {
+    const actor = await getAdminActor();
+    const identity = await getIdentity();
+    if (!identity) {
+      return false;
+    }
+    
+    const principal = identity.getPrincipal();
+    console.log('Checking admin status for:', principal.toString());
+    
+    // Call the checkIsAdmin method on the backend
+    const isAdmin = await actor.checkIsAdmin();
+    console.log('Is admin:', isAdmin);
+    
+    return isAdmin;
+  } catch (error) {
+    console.error('Error checking admin status:', error);
+    return false;
+  }
+}
+
 export const getAdminActor = async () => {
   try {
     // Get identity

@@ -1052,11 +1052,11 @@ async function performScrape() {
 
         // Check if we have valid content to process
         if (!content) {
-            // Create minimal content to avoid failures
-            content = 'Minimal content to avoid failure';
-
+            // Skip this URL if we couldn't get content
+            logger.warn(`No content extracted for URL: ${selectedUrl}`);
             // Add a delay before the next scrape to avoid hammering servers
             await new Promise(resolve => setTimeout(resolve, 5000));
+            return; // Exit early if no content
         }
 
         // Process the content based on topic extraction rules
