@@ -29,13 +29,7 @@ app.use(cors({
   optionsSuccessStatus: 204
 }));
 
-// Add additional headers to ensure CORS works properly
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-device-id');
-  next();
-});
+// CORS is already handled by the cors() middleware above, no need to duplicate
 
 
 app.use(express.json());
@@ -72,62 +66,8 @@ app.get('/api/health', (req, res) => {
 // Routes
 app.use('/api/search', searchRouter);
 
-// Fetch data endpoint to scrape web content
-app.get('/api/fetch-data', async (req, res) => {
-  try {
-    const { url } = req.query;
-    
-    if (!url) {
-      return res.status(400).json({ error: 'URL parameter is required' });
-    }
-    
-    console.log(`[fetch-data] Fetching content from: ${url}`);
-    
-    // Validate URL
-    try {
-      new URL(url);
-    } catch (e) {
-      return res.status(400).json({ error: 'Invalid URL format' });
-    }
-    
-    // Fetch the content using axios with proper headers
-    const axios = require('axios');
-    const response = await axios.get(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'DNT': '1',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1'
-      },
-      timeout: 30000,
-      maxRedirects: 5,
-      validateStatus: function (status) {
-        return status >= 200 && status < 400; // Accept redirects
-      }
-    });
-    
-    // Return the HTML content
-    res.set('Content-Type', 'text/html; charset=utf-8');
-    res.send(response.data);
-    
-  } catch (error) {
-    console.error('[fetch-data] Error fetching URL:', error.message);
-    
-    // Return appropriate error status
-    if (error.response) {
-      res.status(error.response.status).json({ 
-        error: `Failed to fetch URL: ${error.response.statusText}` 
-      });
-    } else if (error.code === 'ECONNABORTED') {
-      res.status(504).json({ error: 'Request timeout' });
-    } else {
-      res.status(500).json({ error: 'Failed to fetch content' });
-    }
-  }
-});
+// NOTE: Content scraping happens on the user's machine (extension), not on the server!
+// The search proxy only provides URLs. Users earn points by using their bandwidth to scrape.
 
 // Direct endpoint for compatibility with extension
 app.post('/api/search', (req, res) => {

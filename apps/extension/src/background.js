@@ -3030,43 +3030,79 @@ async function fetchPageContent(url) {
             };
         }
 
-        // Get the direct storage URL from config
-        const directStorageUrl = config.directStorage.url || 'https://search-proxy.rhinospider.com';
-
-        // Use our direct storage server to fetch content
-        const proxyUrls = [
-            `${directStorageUrl}/api/fetch-data?url=${encodeURIComponent(url)}`
-        ];
-
-        // Try each proxy in sequence
+        // IMPORTANT: Scraping happens locally on user's machine to earn points!
+        // We open a tab, extract content, and close it
+        
+        logger.info(`[fetchPageContent] Opening tab for local scraping: ${url}`);
+        
         let content = null;
-        let status = 0;
+        let status = 200;
         let error = null;
-        let source = null;
-
-        // Try with user agent to avoid blocking
-        const headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        };
-
-        // Try each proxy in sequence
-        for (const proxyUrl of proxyUrls) {
-            try {
-                const response = await fetch(proxyUrl, { headers });
-                status = response.status;
-
-                if (response.ok) {
-                    const text = await response.text();
-                    if (text && text.length > 200) {
-                        content = text;
-                        source = proxyUrl.split('?')[0];
-                        break;
+        let source = 'local-scraping';
+        
+        try {
+            // Create a new tab for scraping (hidden from user)
+            const tab = await chrome.tabs.create({
+                url: url,
+                active: false
+            });
+            
+            // Wait for the tab to load
+            await new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    reject(new Error('Tab load timeout'));
+                }, 30000);
+                
+                const checkTab = setInterval(async () => {
+                    try {
+                        const updatedTab = await chrome.tabs.get(tab.id);
+                        if (updatedTab.status === 'complete') {
+                            clearInterval(checkTab);
+                            clearTimeout(timeout);
+                            resolve();
+                        }
+                    } catch (e) {
+                        clearInterval(checkTab);
+                        clearTimeout(timeout);
+                        reject(e);
                     }
+                }, 500);
+            });
+            
+            // Extract content from the tab
+            const results = await chrome.scripting.executeScript({
+                target: { tabId: tab.id },
+                func: () => {
+                    // Remove scripts and styles
+                    document.querySelectorAll('script, style, noscript').forEach(el => el.remove());
+                    
+                    // Try to get main content
+                    const contentSelectors = ['main', 'article', '.content', '#content', 'body'];
+                    for (const selector of contentSelectors) {
+                        const element = document.querySelector(selector);
+                        if (element) {
+                            const text = element.innerText || element.textContent || '';
+                            if (text.length > 100) {
+                                return text.trim();
+                            }
+                        }
+                    }
+                    
+                    // Fallback to body text
+                    return document.body.innerText || document.body.textContent || '';
                 }
-            } catch (proxyError) {
-                // Continue to next proxy
-                error = proxyError.message;
-            }
+            });
+            
+            content = results[0]?.result || '';
+            
+            // Close the tab
+            await chrome.tabs.remove(tab.id);
+            
+            logger.info(`[fetchPageContent] Successfully scraped ${content.length} bytes locally`);
+            
+        } catch (scrapingError) {
+            error = scrapingError.message;
+            logger.error(`[fetchPageContent] Local scraping error: ${error}`);
         }
 
         return {
