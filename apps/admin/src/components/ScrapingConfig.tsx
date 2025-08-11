@@ -376,6 +376,11 @@ export const ScrapingConfig: React.FC = () => {
                       }`}>
                         {topic.status}
                       </span>
+                      {topic.geolocationFilter && (
+                        <span className="px-2 py-1 rounded bg-purple-900/20 text-purple-400 border border-purple-400/20">
+                          📍 {topic.geolocationFilter}
+                        </span>
+                      )}
                       <span className="text-gray-400">
                         Priority: {topic.priority}/10
                       </span>
@@ -385,6 +390,11 @@ export const ScrapingConfig: React.FC = () => {
                       <span className="text-gray-400">
                         Interval: {Math.round(topic.scrapingInterval / 60)}min
                       </span>
+                      {topic.percentageNodes && topic.percentageNodes < 100 && (
+                        <span className="text-gray-400">
+                          {topic.percentageNodes}% nodes
+                        </span>
+                      )}
                     </div>
                   </div>
                   
