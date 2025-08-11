@@ -12,6 +12,9 @@ type ScrapingTopic = {
   description: string;
   urlPatterns: string[];
   active: boolean;
+  geolocationFilter?: string;
+  percentageNodes?: number;
+  randomizationMode?: string;
 };
 
 type ScrapedData = {
@@ -41,6 +44,7 @@ export const ScrapedData: React.FC = () => {
   const [data, setData] = useState<ScrapedData[]>([]);
   const [topics, setTopics] = useState<ScrapingTopic[]>([]);
   const [selectedTopic, setSelectedTopic] = useState<string>('');
+  const [selectedGeo, setSelectedGeo] = useState<string>('');
   const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [totalItems, setTotalItems] = useState(0);
@@ -53,13 +57,13 @@ export const ScrapedData: React.FC = () => {
     loadTopics();
   }, []);
   
-  // Load data when topics are loaded, selectedTopic changes, or page changes
+  // Load data when topics are loaded, selectedTopic changes, geo filter changes, or page changes
   useEffect(() => {
     if (topics.length > 0) {
       console.log('[ScrapedData] Topics loaded or selection changed, loading data...');
       loadData();
     }
-  }, [topics, selectedTopic, currentPage]);
+  }, [topics, selectedTopic, selectedGeo, currentPage]);
 
   const loadTopics = async () => {
     try {
@@ -107,8 +111,30 @@ export const ScrapedData: React.FC = () => {
         return; // Exit early if there's an error
       }
       
+      // Filter by geo if selected
+      let filteredData = allData;
+      if (selectedGeo) {
+        // Filter based on topic's geolocation settings
+        filteredData = allData.filter(item => {
+          const topic = topics.find(t => t.id === item.topic);
+          if (!topic) return false;
+          
+          // If topic has no geo filter, it's global
+          if (!topic.geolocationFilter) {
+            return selectedGeo === 'GLOBAL';
+          }
+          
+          // Check if topic's geo matches selected geo
+          const topicGeos = topic.geolocationFilter.split(',').map(g => g.trim());
+          const selectedGeos = selectedGeo.split(',').map(g => g.trim());
+          
+          // Check for overlap between topic's geos and selected geos
+          return topicGeos.some(tg => selectedGeos.includes(tg));
+        });
+      }
+      
       // Sort by timestamp descending
-      const sortedData = allData.sort((a: ScrapedData, b: ScrapedData) => 
+      const sortedData = filteredData.sort((a: ScrapedData, b: ScrapedData) => 
         Number(b.timestamp - a.timestamp)
       );
       
@@ -226,21 +252,41 @@ export const ScrapedData: React.FC = () => {
               Analytics
             </button>
           </div>
-          <select
-            value={selectedTopic}
-            onChange={(e) => {
-              setSelectedTopic(e.target.value);
-              setCurrentPage(1);
-            }}
-            className="bg-[#131217] text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#B692F6]"
-          >
-            <option value="">All Topics</option>
-            {topics.map(topic => (
-              <option key={topic.id} value={topic.id}>
-                {topic.name}
-              </option>
-            ))}
-          </select>
+          <div className="flex gap-4">
+            <select
+              value={selectedTopic}
+              onChange={(e) => {
+                setSelectedTopic(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="bg-[#131217] text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#B692F6]"
+            >
+              <option value="">All Topics</option>
+              {topics.map(topic => (
+                <option key={topic.id} value={topic.id}>
+                  {topic.name}
+                </option>
+              ))}
+            </select>
+            
+            <select
+              value={selectedGeo}
+              onChange={(e) => {
+                setSelectedGeo(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="bg-[#131217] text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#B692F6]"
+            >
+              <option value="">All Regions</option>
+              <option value="KZ,RU,UZ,KG,TJ">Eurasia (KZ/RU/UZ)</option>
+              <option value="AE,SA,QA,KW,BH,OM">Gulf Region (UAE/SA)</option>
+              <option value="CA,US">North America (CA/US)</option>
+              <option value="US,UK">US/UK</option>
+              <option value="EU">Europe</option>
+              <option value="ASIA">Asia</option>
+              <option value="GLOBAL">Global (No Filter)</option>
+            </select>
+          </div>
         </div>
       </div>
 
