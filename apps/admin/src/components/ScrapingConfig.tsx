@@ -581,7 +581,17 @@ export const ScrapingConfig: React.FC = () => {
                       </td>
                       <td className="py-2">{item.content?.length || 0} chars</td>
                       <td className="py-2">
-                        {new Date(Number(item.timestamp) / 1000000).toLocaleString()}
+                        {(() => {
+                          let timestampNum = Number(item.timestamp);
+                          // If timestamp is in nanoseconds (> 1e15), convert to milliseconds
+                          if (timestampNum > 1e15) {
+                            timestampNum = timestampNum / 1_000_000;
+                          } else if (timestampNum < 1e12) {
+                            // If timestamp is too small (seconds), convert to milliseconds
+                            timestampNum = timestampNum * 1000;
+                          }
+                          return new Date(timestampNum).toLocaleString();
+                        })()}
                       </td>
                     </tr>
                   ))}

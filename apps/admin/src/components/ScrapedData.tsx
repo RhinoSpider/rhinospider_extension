@@ -186,7 +186,18 @@ export const ScrapedData: React.FC = () => {
   };
 
   const formatDate = (timestamp: bigint) => {
-    return new Date(Number(timestamp)).toLocaleString();
+    // Convert timestamp - handle both nanoseconds and milliseconds
+    let timestampNum = Number(timestamp);
+    
+    // If timestamp is in nanoseconds (> 1e15), convert to milliseconds
+    if (timestampNum > 1e15) {
+      timestampNum = timestampNum / 1_000_000; // Convert nanoseconds to milliseconds
+    } else if (timestampNum < 1e12) {
+      // If timestamp is too small (seconds), convert to milliseconds
+      timestampNum = timestampNum * 1000;
+    }
+    
+    return new Date(timestampNum).toLocaleString();
   };
 
   const formatBytes = (bytes: number) => {
