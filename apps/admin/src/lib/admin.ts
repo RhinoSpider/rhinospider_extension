@@ -370,15 +370,11 @@ export async function getScrapedData(topicId?: string): Promise<ScrapedData[]> {
       const topicIds = [topicId];
       console.log(`[admin.ts] getScrapedData called with topicIds:`, topicIds);
       
+      // getScrapedData returns an array directly, not a Result type
       const result = await storageActor.getScrapedData(topicIds);
       
-      if ('err' in result) {
-        console.error('[admin.ts] Error from storage canister:', result.err);
-        return [];
-      }
-      
-      console.log(`[admin.ts] getScrapedData returned ${result.ok?.length || 0} items`);
-      return result.ok || [];
+      console.log(`[admin.ts] getScrapedData returned ${result?.length || 0} items`);
+      return result || [];
     }
   } catch (error) {
     console.error('[admin.ts] Error fetching scraped data:', error);
