@@ -1230,7 +1230,8 @@ async function performScrape() {
                         logger.log(`${urlPool.urls.length} URLs available in pool for topic ${selectedTopic.id}`);
                     }
                 } else {
-                    logger.warn(`No URL pool available for topic ${selectedTopic.id}`);
+                    // URL pool not available yet - this is normal during initialization
+                    logger.log(`URL pool for topic ${selectedTopic.id} will be created on demand`);
                 }
             } catch (error) {
                 logger.error('Error updating URL pool:', error);
@@ -4401,7 +4402,8 @@ async function getUrlPoolForTopic(topicId) {
                 logger.log(`Initialized new URL pool for topic ${topicId} with ${newPool.urls.length} URLs`);
                 return newPool;
             } else {
-                logger.warn(`Could not initialize URL pool for topic ${topicId}: topic not found or no sample URLs`);
+                // This is normal - URL pools are created dynamically as URLs are fetched
+                logger.log(`URL pool for topic ${topicId} will be populated when URLs are fetched from search proxy`);
                 return null;
             }
         }

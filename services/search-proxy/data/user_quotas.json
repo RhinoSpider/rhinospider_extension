@@ -1,10 +1,10 @@
 {
   "test": {
     "userId": "test",
-    "dailyUrlsScraped": 30,
+    "dailyUrlsScraped": 0,
     "totalUrlsScraped": 30,
     "totalPointsEarned": 30,
-    "lastReset": 1754826654341,
+    "lastReset": 1754862713138,
     "tier": "basic",
     "bandwidthUsed": 20675,
     "requestsMade": 4,
@@ -53,10 +53,10 @@
   },
   "test123": {
     "userId": "test123",
-    "dailyUrlsScraped": 20,
+    "dailyUrlsScraped": 0,
     "totalUrlsScraped": 20,
     "totalPointsEarned": 20,
-    "lastReset": 1754826862131,
+    "lastReset": 1754862717312,
     "tier": "basic",
     "bandwidthUsed": 15495,
     "requestsMade": 2,
@@ -100,10 +100,10 @@
   },
   "test-ext-123": {
     "userId": "test-ext-123",
-    "dailyUrlsScraped": 10,
+    "dailyUrlsScraped": 0,
     "totalUrlsScraped": 10,
     "totalPointsEarned": 10,
-    "lastReset": 1754837564791,
+    "lastReset": 1754862718030,
     "tier": "basic",
     "bandwidthUsed": 0,
     "requestsMade": 1,
