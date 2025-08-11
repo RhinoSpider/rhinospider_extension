@@ -69,6 +69,11 @@ actor Admin {
         scrapingInterval: Nat; // Seconds between scrapes
         priority: Nat; // 1-10 priority level
         
+        // Geo-distribution & Node Routing
+        geolocationFilter: ?Text; // Countries/regions (e.g., "US,UK,DE")
+        percentageNodes: ?Nat; // Percentage of nodes to use (1-100)
+        randomizationMode: ?Text; // How to select nodes ("none", "random", "round_robin", "weighted")
+        
         // Tracking
         createdAt: Int;
         lastScraped: Int;
@@ -382,6 +387,9 @@ actor Admin {
         maxUrlsPerBatch: ?Nat;
         scrapingInterval: ?Nat;
         priority: ?Nat;
+        geolocationFilter: ?Text;
+        percentageNodes: ?Nat;
+        randomizationMode: ?Text;
     }) : async Result.Result<ScrapingTopic, Text> {
         if (not _isAuthorized(caller)) {
             return #err("Unauthorized");
@@ -408,6 +416,9 @@ actor Admin {
                     maxUrlsPerBatch = Option.get(updates.maxUrlsPerBatch, topic.maxUrlsPerBatch);
                     scrapingInterval = Option.get(updates.scrapingInterval, topic.scrapingInterval);
                     priority = Option.get(updates.priority, topic.priority);
+                    geolocationFilter = updates.geolocationFilter;
+                    percentageNodes = updates.percentageNodes;
+                    randomizationMode = updates.randomizationMode;
                     createdAt = topic.createdAt;
                     lastScraped = topic.lastScraped;
                     totalUrlsScraped = topic.totalUrlsScraped;
