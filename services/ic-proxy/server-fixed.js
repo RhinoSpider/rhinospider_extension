@@ -554,6 +554,47 @@ app.post('/api/consumer-update-login', authenticateApiKey, async (req, res) => {
   }
 });
 
+// Get user profile endpoint for extension dashboard
+app.post('/api/user-profile', async (req, res) => {
+  console.log('[/api/user-profile] Getting user profile');
+  const { principalId, referralCode } = req.body;
+  
+  try {
+    // Get all users and find the one with matching referral code
+    const users = await consumerActor.getAllUsers();
+    
+    // Find user by referral code (more reliable than principal)
+    const userEntry = users.find(([_, profile]) => profile.referralCode === referralCode);
+    
+    if (userEntry) {
+      const [principal, profile] = userEntry;
+      
+      // Convert BigInt values for JSON serialization
+      const serializedProfile = {
+        principal: principal.toString(),
+        referralCode: profile.referralCode,
+        points: profile.points ? Number(profile.points) : 0,
+        totalDataScraped: profile.totalDataScraped ? Number(profile.totalDataScraped) : 0,
+        dataVolumeKB: profile.dataVolumeKB ? Number(profile.dataVolumeKB) : 0,
+        referralCount: profile.referralCount ? Number(profile.referralCount) : 0,
+        isActive: profile.isActive,
+        country: profile.country?.[0] || null,
+        city: profile.city?.[0] || null,
+        lastActive: profile.lastActive ? profile.lastActive.toString() : '0'
+      };
+      
+      console.log(`[/api/user-profile] Found user: ${referralCode} with ${serializedProfile.points} points`);
+      res.json(serializedProfile);
+    } else {
+      console.log(`[/api/user-profile] User not found: ${referralCode}`);
+      res.status(404).json({ error: 'User profile not found' });
+    }
+  } catch (error) {
+    console.error('[/api/user-profile] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Get all users endpoint for admin dashboard
 app.get('/api/consumer-users', authenticateApiKey, async (req, res) => {
   console.log('[/api/consumer-users] Getting all users');

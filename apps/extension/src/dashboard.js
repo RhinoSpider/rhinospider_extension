@@ -269,20 +269,60 @@ async function loadDashboardData() {
             userProfileElement.textContent = `Principal ID: ${currentPrincipal || 'Not logged in'}`;
         }
         
-        // Load stats from storage
-        const stats = await chrome.storage.local.get(['totalPointsEarned', 'totalPagesScraped', 'totalBandwidthUsed', 'currentInternetSpeed']);
-        if (pointsElement) {
-            pointsElement.textContent = stats.totalPointsEarned || 0;
+        // Try to fetch real user data from consumer canister
+        try {
+            // Get referral code from storage
+            const { referralCode } = await chrome.storage.local.get(['referralCode']);
+            
+            if (referralCode && currentPrincipal) {
+                // Use the proxy client to get user profile
+                const response = await fetch('https://ic-proxy.rhinospider.com/api/user-profile', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        principalId: currentPrincipal,
+                        referralCode: referralCode
+                    })
+                });
+                
+                if (response.ok) {
+                    const userData = await response.json();
+                    
+                    // Update display with real data from canister
+                    if (pointsElement && userData.points !== undefined) {
+                        pointsElement.textContent = userData.points;
+                    }
+                    if (pagesElement && userData.totalDataScraped !== undefined) {
+                        // Convert bytes to page count (rough estimate: 5KB per page)
+                        const pageCount = Math.floor(userData.totalDataScraped / 5120);
+                        pagesElement.textContent = pageCount;
+                    }
+                    if (bandwidthUsedElement && userData.totalDataScraped !== undefined) {
+                        bandwidthUsedElement.textContent = formatBandwidth(userData.totalDataScraped);
+                    }
+                    
+                    console.log('Loaded user data from canister:', userData);
+                } else {
+                    console.log('Could not fetch user profile from canister, using local stats');
+                    // Fall back to local stats
+                    loadLocalStats();
+                }
+            } else {
+                // No referral code or principal, use local stats
+                loadLocalStats();
+            }
+        } catch (error) {
+            console.error('Error fetching user profile from canister:', error);
+            // Fall back to local stats
+            loadLocalStats();
         }
-        if (pagesElement) {
-            pagesElement.textContent = stats.totalPagesScraped || 0;
-        }
-        if (bandwidthUsedElement) {
-            const bandwidth = stats.totalBandwidthUsed || 0;
-            bandwidthUsedElement.textContent = formatBandwidth(bandwidth);
-        }
+        
+        // Always load current speed
+        const { currentInternetSpeed } = await chrome.storage.local.get(['currentInternetSpeed']);
         if (currentSpeedElement) {
-            const speed = stats.currentInternetSpeed;
+            const speed = currentInternetSpeed;
             if (speed && speed.speedMbps) {
                 currentSpeedElement.textContent = `${speed.speedMbps} Mbps`;
                 currentSpeedElement.style.color = getSpeedColor(speed.bandwidthScore);
@@ -293,6 +333,21 @@ async function loadDashboardData() {
         
     } catch (error) {
         console.error('Error loading dashboard data:', error);
+    }
+}
+
+// Helper function to load local stats as fallback
+async function loadLocalStats() {
+    const stats = await chrome.storage.local.get(['totalPointsEarned', 'totalPagesScraped', 'totalBandwidthUsed']);
+    if (pointsElement) {
+        pointsElement.textContent = stats.totalPointsEarned || 0;
+    }
+    if (pagesElement) {
+        pagesElement.textContent = stats.totalPagesScraped || 0;
+    }
+    if (bandwidthUsedElement) {
+        const bandwidth = stats.totalBandwidthUsed || 0;
+        bandwidthUsedElement.textContent = formatBandwidth(bandwidth);
     }
 }
 
