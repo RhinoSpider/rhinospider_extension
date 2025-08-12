@@ -1674,7 +1674,7 @@ function setupFallbackTimer() {
     }, secondaryIntervalMs);
 
     // Store the secondary timer ID
-    globalThis.rhinoSpiderTimers.push(secondaryTimerId);
+    globalThis.rhinoSpiderTimers.push(activeTimers.secondary);
 
     // HEALTH CHECK TIMER: Ensures the other timers are running and restarts scraping if needed
     activeTimers.healthCheck = setInterval(async () => {
@@ -1737,7 +1737,7 @@ function setupFallbackTimer() {
     }, healthCheckIntervalMs);
 
     // Store the health check timer ID
-    globalThis.rhinoSpiderTimers.push(healthCheckTimerId);
+    globalThis.rhinoSpiderTimers.push(activeTimers.healthCheck);
 
     // SUBMISSION RETRY TIMER: Periodically retry any pending submissions that failed with authorization errors
     activeTimers.submissionRetry = setInterval(async () => {
@@ -1807,7 +1807,7 @@ function setupFallbackTimer() {
     }, 2 * 60 * 1000); // Try every 2 minutes
 
     // Store the submission retry timer ID
-    globalThis.rhinoSpiderTimers.push(submissionRetryTimerId);
+    globalThis.rhinoSpiderTimers.push(activeTimers.submissionRetry);
 
     // Store timer information in local storage
     chrome.storage.local.set({
