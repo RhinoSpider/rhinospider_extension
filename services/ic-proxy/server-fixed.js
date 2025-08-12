@@ -344,7 +344,7 @@ app.get('/api/topics', async (req, res) => {
   }
 });
 
-// SIMPLIFIED CONSUMER SUBMIT - Direct to storage only
+// CONSUMER SUBMIT - Submit to both storage and consumer canisters
 app.post('/api/consumer-submit', authenticateApiKey, async (req, res) => {
   console.log('==== /api/consumer-submit endpoint called ====');
   
@@ -381,47 +381,61 @@ app.post('/api/consumer-submit', authenticateApiKey, async (req, res) => {
       scraping_time: Number(scraping_time || 500) // Use Int not BigInt
     };
 
-    console.log('[/api/consumer-submit] Submitting to storage canister');
+    // Prepare data for consumer canister (for points tracking)
+    const consumerData = {
+      id: submissionId,
+      url: url || '',
+      topic: topic || topicId || '',
+      content: contentValue,
+      source: 'extension',
+      timestamp: BigInt(Date.now() * 1000000), // Nanoseconds for consumer
+      client_id: clientPrincipal ? Principal.fromText(clientPrincipal) : Principal.anonymous(),
+      status: status || 'completed',
+      scraping_time: BigInt(scraping_time || 500)
+    };
+
+    console.log('[/api/consumer-submit] Submitting to both storage and consumer canisters');
     console.log('[DEBUG] Storage data structure:', JSON.stringify(storageData, (key, value) => 
       typeof value === 'bigint' ? value.toString() + 'n' : 
       (value && typeof value === 'object' && value.constructor?.name === 'Principal') ? value.toString() : value
     ));
 
-    // Submit directly to storage canister
-    try {
-      const result = await storageActor.storeScrapedData(storageData);
-      
-      console.log('[/api/consumer-submit] Storage submission result:', result);
-      
-      if (result.ok !== undefined) {
-        // Success
-        return res.status(200).json({
-          success: true,
-          submissionId,
-          message: 'Data stored successfully',
-          url,
-          topic: topic || topicId,
-          timestamp: Date.now(),
-          method: 'storage-canister'
-        });
-      } else if (result.err) {
-        // Handle storage error
-        console.error('[/api/consumer-submit] Storage error:', result.err);
-        return res.status(200).json({
-          success: false,
-          submissionId,
-          message: 'Storage error',
-          error: result.err,
-          timestamp: Date.now()
-        });
-      }
-    } catch (storageError) {
-      console.error('[/api/consumer-submit] Storage submission error:', storageError);
-      return res.status(500).json({
+    // Submit to BOTH canisters in parallel
+    const [storageResult, consumerResult] = await Promise.allSettled([
+      storageActor.storeScrapedData(storageData),
+      consumerActor.submitScrapedData(consumerData)
+    ]);
+
+    console.log('[/api/consumer-submit] Storage submission result:', storageResult);
+    console.log('[/api/consumer-submit] Consumer submission result:', consumerResult);
+
+    // Check results
+    const storageSuccess = storageResult.status === 'fulfilled' && storageResult.value?.ok !== undefined;
+    const consumerSuccess = consumerResult.status === 'fulfilled' && consumerResult.value?.ok !== undefined;
+
+    if (storageSuccess || consumerSuccess) {
+      // At least one succeeded
+      return res.status(200).json({
+        success: true,
+        submissionId,
+        message: 'Data submitted successfully',
+        url,
+        topic: topic || topicId,
+        timestamp: Date.now(),
+        method: 'dual-canister',
+        storage: storageSuccess ? 'success' : 'failed',
+        consumer: consumerSuccess ? 'success' : 'failed',
+        pointsAwarded: consumerSuccess // Points are awarded if consumer submission succeeded
+      });
+    } else {
+      // Both failed
+      console.error('[/api/consumer-submit] Both submissions failed');
+      return res.status(200).json({
         success: false,
         submissionId,
-        message: 'Storage submission failed',
-        error: storageError.message,
+        message: 'Submission failed',
+        storage_error: storageResult.status === 'rejected' ? storageResult.reason?.message : storageResult.value?.err,
+        consumer_error: consumerResult.status === 'rejected' ? consumerResult.reason?.message : consumerResult.value?.err,
         timestamp: Date.now()
       });
     }

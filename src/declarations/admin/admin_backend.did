@@ -20,14 +20,17 @@ type ScrapingTopic =
    excludeDomains: opt vec text;
    excludeKeywords: opt vec text;
    excludeSelectors: vec text;
+   geolocationFilter: opt text;
    id: text;
    lastScraped: int;
    maxContentLength: nat;
    maxUrlsPerBatch: nat;
    minContentLength: nat;
    name: text;
+   percentageNodes: opt nat;
    preferredDomains: opt vec text;
    priority: nat;
+   randomizationMode: opt text;
    requiredKeywords: vec text;
    scrapingInterval: nat;
    searchQueries: vec text;
@@ -114,6 +117,8 @@ type GlobalAIConfig =
  };
 service : {
   add_user: (p: principal, role: UserRole) -> (Result_2);
+  awardUserPoints: (userPrincipal: principal, points: nat) -> (Result_1);
+  checkIsAdmin: () -> (bool) query;
   createTopic: (topic: ScrapingTopic) -> (Result);
   deleteTopic: (id: text) -> (Result_2);
   getAIConfig: () -> (Result_7) query;
@@ -126,6 +131,8 @@ service : {
   getTopics: () -> (Result_4) query;
   getTopics_with_caller: (user_principal: principal) -> (Result_4);
   get_users: () -> (Result_3) query;
+  manuallyAssignPoints: (userPrincipal: principal, points: nat, reason:
+   text) -> (Result_1);
   registerNode: (nodePrincipal: principal, characteristics:
    NodeCharacteristics) -> (Result_2);
   remove_user: (p: principal) -> (Result_2);
@@ -139,12 +146,15 @@ service : {
      excludeDomains: opt vec text;
      excludeKeywords: opt vec text;
      excludeSelectors: opt vec text;
+     geolocationFilter: opt text;
      maxContentLength: opt nat;
      maxUrlsPerBatch: opt nat;
      minContentLength: opt nat;
      name: opt text;
+     percentageNodes: opt nat;
      preferredDomains: opt vec text;
      priority: opt nat;
+     randomizationMode: opt text;
      requiredKeywords: opt vec text;
      scrapingInterval: opt nat;
      searchQueries: opt vec text;

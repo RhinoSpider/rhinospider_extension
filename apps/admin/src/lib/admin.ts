@@ -79,6 +79,7 @@ export const getAdminActor = async () => {
 
       // Log available methods for debugging
       console.log('Admin actor methods:', Object.keys(actor));
+      console.log('checkIsAdmin exists?', 'checkIsAdmin' in actor);
     }
 
     return actor;

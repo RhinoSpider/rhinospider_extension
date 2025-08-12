@@ -5,6 +5,7 @@ export const idlFactory = ({ IDL }) => {
     'Admin' : IDL.Null,
   });
   const Result_2 = IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text });
+  const Result_1 = IDL.Variant({ 'ok' : IDL.Text, 'err' : IDL.Text });
   const ScrapingTopic = IDL.Record({
     'id' : IDL.Text,
     'status' : IDL.Text,
@@ -20,7 +21,10 @@ export const idlFactory = ({ IDL }) => {
     'excludeKeywords' : IDL.Opt(IDL.Vec(IDL.Text)),
     'scrapingInterval' : IDL.Nat,
     'description' : IDL.Text,
+    'randomizationMode' : IDL.Opt(IDL.Text),
+    'percentageNodes' : IDL.Opt(IDL.Nat),
     'contentSelectors' : IDL.Vec(IDL.Text),
+    'geolocationFilter' : IDL.Opt(IDL.Text),
     'excludeSelectors' : IDL.Vec(IDL.Text),
     'excludeDomains' : IDL.Opt(IDL.Vec(IDL.Text)),
     'priority' : IDL.Nat,
@@ -82,9 +86,10 @@ export const idlFactory = ({ IDL }) => {
     'addedBy' : IDL.Principal,
   });
   const Result_3 = IDL.Variant({ 'ok' : IDL.Vec(User), 'err' : IDL.Text });
-  const Result_1 = IDL.Variant({ 'ok' : IDL.Text, 'err' : IDL.Text });
   return IDL.Service({
     'add_user' : IDL.Func([IDL.Principal, UserRole], [Result_2], []),
+    'awardUserPoints' : IDL.Func([IDL.Principal, IDL.Nat], [Result_1], []),
+    'checkIsAdmin' : IDL.Func([], [IDL.Bool], ['query']),
     'createTopic' : IDL.Func([ScrapingTopic], [Result], []),
     'deleteTopic' : IDL.Func([IDL.Text], [Result_2], []),
     'getAIConfig' : IDL.Func([], [Result_7], ['query']),
@@ -100,6 +105,11 @@ export const idlFactory = ({ IDL }) => {
     'getTopics' : IDL.Func([], [Result_4], ['query']),
     'getTopics_with_caller' : IDL.Func([IDL.Principal], [Result_4], []),
     'get_users' : IDL.Func([], [Result_3], ['query']),
+    'manuallyAssignPoints' : IDL.Func(
+        [IDL.Principal, IDL.Nat, IDL.Text],
+        [Result_1],
+        [],
+      ),
     'registerNode' : IDL.Func(
         [IDL.Principal, NodeCharacteristics],
         [Result_2],
@@ -124,7 +134,10 @@ export const idlFactory = ({ IDL }) => {
             'excludeKeywords' : IDL.Opt(IDL.Vec(IDL.Text)),
             'scrapingInterval' : IDL.Opt(IDL.Nat),
             'description' : IDL.Opt(IDL.Text),
+            'randomizationMode' : IDL.Opt(IDL.Text),
+            'percentageNodes' : IDL.Opt(IDL.Nat),
             'contentSelectors' : IDL.Opt(IDL.Vec(IDL.Text)),
+            'geolocationFilter' : IDL.Opt(IDL.Text),
             'excludeSelectors' : IDL.Opt(IDL.Vec(IDL.Text)),
             'excludeDomains' : IDL.Opt(IDL.Vec(IDL.Text)),
             'priority' : IDL.Opt(IDL.Nat),

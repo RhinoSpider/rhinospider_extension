@@ -51,19 +51,20 @@ export const ScrapedData: React.FC = () => {
   const [topicStats, setTopicStats] = useState<Record<string, TopicStats>>({});
   const [viewMode, setViewMode] = useState<'list' | 'analytics'>('list');
   const [selectedItem, setSelectedItem] = useState<ScrapedData | null>(null);
+  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
 
   // Load topics when component mounts
   useEffect(() => {
     loadTopics();
   }, []);
   
-  // Load data when topics are loaded, selectedTopic changes, geo filter changes, or page changes
+  // Load data when topics are loaded, selectedTopic changes, geo filter changes, sort order changes, or page changes
   useEffect(() => {
     if (topics.length > 0) {
       console.log('[ScrapedData] Topics loaded or selection changed, loading data...');
       loadData();
     }
-  }, [topics, selectedTopic, selectedGeo, currentPage]);
+  }, [topics, selectedTopic, selectedGeo, currentPage, sortOrder]);
 
   const loadTopics = async () => {
     try {
@@ -133,10 +134,32 @@ export const ScrapedData: React.FC = () => {
         });
       }
       
-      // Sort by timestamp descending
-      const sortedData = filteredData.sort((a: ScrapedData, b: ScrapedData) => 
-        Number(b.timestamp - a.timestamp)
-      );
+      // Sort by timestamp based on sortOrder
+      const sortedData = filteredData.sort((a: ScrapedData, b: ScrapedData) => {
+        // Convert timestamps to numbers for comparison
+        // Handle both nanoseconds and milliseconds formats
+        let aTime = Number(a.timestamp);
+        let bTime = Number(b.timestamp);
+        
+        // Debug log to see what formats we're getting
+        if (filteredData.length > 0 && filteredData.length < 5) {
+          console.log('[ScrapedData] Sample timestamps:', {
+            a: { raw: a.timestamp, number: aTime, url: a.url.substring(0, 30) },
+            b: { raw: b.timestamp, number: bTime, url: b.url.substring(0, 30) }
+          });
+        }
+        
+        // Normalize to milliseconds if in nanoseconds (> 1e15)
+        if (aTime > 1e15) aTime = aTime / 1_000_000;
+        if (bTime > 1e15) bTime = bTime / 1_000_000;
+        
+        // Sort based on order
+        if (sortOrder === 'newest') {
+          return bTime - aTime;
+        } else {
+          return aTime - bTime;
+        }
+      });
       
       setTotalItems(sortedData.length);
       
@@ -297,6 +320,15 @@ export const ScrapedData: React.FC = () => {
               <option value="ASIA">Asia</option>
               <option value="GLOBAL">Global (No Filter)</option>
             </select>
+            
+            <button
+              onClick={() => setSortOrder(sortOrder === 'newest' ? 'oldest' : 'newest')}
+              className="bg-[#131217] text-white rounded-lg px-4 py-2 hover:bg-[#360D68] transition-colors focus:outline-none focus:ring-2 focus:ring-[#B692F6] flex items-center gap-2"
+            >
+              <span>📅</span>
+              <span>{sortOrder === 'newest' ? 'Newest First' : 'Oldest First'}</span>
+              <span>{sortOrder === 'newest' ? '↓' : '↑'}</span>
+            </button>
           </div>
         </div>
       </div>
@@ -360,28 +392,54 @@ export const ScrapedData: React.FC = () => {
         </div>
       ) : (
         <div className="space-y-4">
-          {data.map((item) => {
+          {data.map((item, index) => {
             const topic = getTopic(item.topic);
+            // Check if item is from last 24 hours
+            const timestampNum = Number(item.timestamp) > 1e15 ? Number(item.timestamp) / 1_000_000 : Number(item.timestamp);
+            const isNew = (Date.now() - timestampNum) < (24 * 60 * 60 * 1000);
+            const isVeryRecent = (Date.now() - timestampNum) < (60 * 60 * 1000); // Last hour
+            
             return (
               <div
                 key={item.id}
-                className="bg-[#131217] rounded-lg p-4 space-y-3 cursor-pointer hover:bg-[#1a1922] transition-colors"
+                className="bg-[#131217] rounded-lg p-4 space-y-3 cursor-pointer hover:bg-[#1a1922] transition-colors relative"
                 onClick={() => setSelectedItem(selectedItem?.id === item.id ? null : item)}
               >
+                {/* Add position indicator for first 3 items */}
+                {index < 3 && sortOrder === 'newest' && (
+                  <div className="absolute -left-1 top-4 bg-[#B692F6] text-[#131217] text-xs font-bold px-2 py-1 rounded-r">
+                    #{index + 1}
+                  </div>
+                )}
+                
                 <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="text-lg font-semibold text-white">
-                      {topic?.name || 'Unknown Topic'}
-                    </h3>
-                    <a
-                      href={item.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[#B692F6] hover:underline text-sm"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {item.url}
-                    </a>
+                  <div className="flex items-start gap-2">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-lg font-semibold text-white">
+                          {topic?.name || 'Unknown Topic'}
+                        </h3>
+                        {isVeryRecent && (
+                          <span className="bg-green-400 text-[#131217] text-xs font-bold px-2 py-0.5 rounded">
+                            HOT
+                          </span>
+                        )}
+                        {!isVeryRecent && isNew && (
+                          <span className="bg-yellow-400 text-[#131217] text-xs font-bold px-2 py-0.5 rounded">
+                            NEW
+                          </span>
+                        )}
+                      </div>
+                      <a
+                        href={item.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[#B692F6] hover:underline text-sm"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {item.url}
+                      </a>
+                    </div>
                   </div>
                   <div className="text-right">
                     <div className="text-sm text-gray-400">

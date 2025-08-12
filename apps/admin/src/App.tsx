@@ -18,9 +18,8 @@ export const App: React.FC = () => {
           setIsAdmin(adminStatus);
           
           if (!adminStatus) {
-            // If not admin, logout immediately
-            console.warn('User is not authorized as admin, logging out');
-            await logout();
+            // If not admin, don't logout immediately - show error
+            console.warn('User is not authorized as admin:', identity?.getPrincipal().toString());
           }
         } catch (error) {
           console.error('Error checking admin status:', error);
