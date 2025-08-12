@@ -3233,15 +3233,30 @@ async function fetchPageContent(url) {
             }
             
             // Create a background tab (not active, minimizes user disruption)
-            logger.critical(`[fetchPageContent] ABOUT TO CREATE TAB for URL: ${url}`);
-            logger.critical('[fetchPageContent] Calling chrome.tabs.create...');
-            const tab = await chrome.tabs.create({
-                url: url,
-                active: false,
-                pinned: true  // Pinned tabs are less noticeable
-                // Note: 'muted' property removed as it's not supported in tabs.create
-            });
-            logger.critical(`[fetchPageContent] TAB CREATED with ID: ${tab.id}`);
+            logger.log(`[fetchPageContent] Creating tab for URL: ${url}`);
+            
+            let tab;
+            try {
+                tab = await chrome.tabs.create({
+                    url: url,
+                    active: false,
+                    pinned: true  // Pinned tabs are less noticeable
+                    // Note: 'muted' property removed as it's not supported in tabs.create
+                });
+            } catch (tabError) {
+                // Suppress the "Could not establish connection" error
+                if (!tabError.message?.includes('Could not establish connection')) {
+                    logger.error('Error creating tab:', tabError.message);
+                }
+                // Try to continue anyway, sometimes the tab is created despite the error
+                const allTabs = await chrome.tabs.query({ url: url + '*' });
+                tab = allTabs[allTabs.length - 1];
+                if (!tab) {
+                    throw new Error('Failed to create tab');
+                }
+            }
+            
+            logger.log(`[fetchPageContent] Tab created with ID: ${tab.id}`);
             
             try {
                 logger.critical(`[fetchPageContent] Waiting for tab ${tab.id} to load...`);

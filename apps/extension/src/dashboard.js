@@ -271,10 +271,13 @@ async function loadDashboardData() {
         
         // Try to fetch real user data from consumer canister
         try {
-            // Get referral code from storage
-            const { referralCode } = await chrome.storage.local.get(['referralCode']);
+            // Get referral code from storage (it's saved as userReferralCode)
+            const { userReferralCode, referralCode } = await chrome.storage.local.get(['userReferralCode', 'referralCode']);
+            const actualReferralCode = userReferralCode || referralCode;
             
-            if (referralCode && currentPrincipal) {
+            console.log('Fetching user profile with:', { actualReferralCode, currentPrincipal });
+            
+            if (actualReferralCode && currentPrincipal) {
                 // Use the proxy client to get user profile
                 const response = await fetch('https://ic-proxy.rhinospider.com/api/user-profile', {
                     method: 'POST',
@@ -283,7 +286,7 @@ async function loadDashboardData() {
                     },
                     body: JSON.stringify({
                         principalId: currentPrincipal,
-                        referralCode: referralCode
+                        referralCode: actualReferralCode
                     })
                 });
                 
