@@ -67,6 +67,14 @@ async function initialize() {
     // Check authentication status
     await checkAuthStatus();
     
+    // Refresh data periodically if authenticated
+    setInterval(async () => {
+        if (isAuthenticated && currentPrincipal) {
+            console.log('Refreshing dashboard data...');
+            await loadDashboardData();
+        }
+    }, 30000); // Every 30 seconds
+    
     // Listen for storage changes to update the dashboard in real-time
     chrome.storage.onChanged.addListener((changes, area) => {
         if (area === 'local') {
@@ -313,6 +321,12 @@ async function loadDashboardData() {
                     loadLocalStats();
                 }
             } else {
+                console.log('Missing data for API call:', { 
+                    hasReferralCode: !!actualReferralCode, 
+                    hasPrincipal: !!currentPrincipal,
+                    referralCode: actualReferralCode,
+                    principal: currentPrincipal
+                });
                 // No referral code or principal, use local stats
                 loadLocalStats();
             }
