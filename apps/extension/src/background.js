@@ -3164,21 +3164,19 @@ async function fetchPageContent(url) {
             logger.critical(`[fetchPageContent] FETCH FAILED: ${fetchError.message}`);
         }
         
-        logger.critical('[fetchPageContent] REACHED POINT AFTER FETCH ATTEMPT');
+        logger.log('[fetchPageContent] Direct fetch completed, proceeding with tab-based scraping');
         
         // Since we can't get content with fetch due to CORS, use tab-based scraping
         // This is necessary for actual content extraction in a DePIN system
-        logger.critical(`[fetchPageContent] Starting tab-based scraping for: ${url}`);
-        logger.critical('[fetchPageContent] ENTERING TRY BLOCK FOR TAB CREATION');
+        logger.log(`[fetchPageContent] Starting tab-based scraping for: ${url}`);
+        
         try {
-            logger.critical('[fetchPageContent] INSIDE TRY BLOCK');
             // Load scraping settings
             const settings = await scrapingSettings.loadSettings();
-            logger.critical('[fetchPageContent] Settings loaded:', JSON.stringify(settings));
             
             // Check if user has consented
             if (!settings.scrapingConsent) {
-                logger.critical('[fetchPageContent] NO CONSENT - Setting consent to true');
+                logger.log('[fetchPageContent] Setting consent to true');
                 // Need consent first
                 await scrapingSettings.updateConsent(true);
                 // Notify user about the scraping method
@@ -3189,7 +3187,7 @@ async function fetchPageContent(url) {
                     message: 'Background tabs will be used to scrape content. You can configure this in settings.'
                 });
             } else {
-                logger.critical('[fetchPageContent] User has already consented to scraping');
+                logger.log('[fetchPageContent] User has already consented to scraping');
             }
             
             // Skip schedule and bandwidth checks for now to ensure scraping works
@@ -3235,25 +3233,32 @@ async function fetchPageContent(url) {
             // Create a background tab (not active, minimizes user disruption)
             logger.log(`[fetchPageContent] Creating tab for URL: ${url}`);
             
+            // Add a small delay to let Chrome initialize properly
+            await new Promise(resolve => setTimeout(resolve, 50));
+            
             let tab;
-            try {
-                tab = await chrome.tabs.create({
+            
+            // Wrap in Promise to better handle Chrome's internal errors
+            tab = await new Promise((resolve) => {
+                // Use callback version which might be more stable
+                chrome.tabs.create({
                     url: url,
                     active: false,
                     pinned: true  // Pinned tabs are less noticeable
-                    // Note: 'muted' property removed as it's not supported in tabs.create
+                }, (createdTab) => {
+                    // Check for Chrome runtime errors
+                    if (chrome.runtime.lastError) {
+                        // Suppress the specific error but continue
+                        if (!chrome.runtime.lastError.message?.includes('Could not establish connection')) {
+                            console.warn('Tab creation warning:', chrome.runtime.lastError.message);
+                        }
+                    }
+                    resolve(createdTab);
                 });
-            } catch (tabError) {
-                // Suppress the "Could not establish connection" error
-                if (!tabError.message?.includes('Could not establish connection')) {
-                    logger.error('Error creating tab:', tabError.message);
-                }
-                // Try to continue anyway, sometimes the tab is created despite the error
-                const allTabs = await chrome.tabs.query({ url: url + '*' });
-                tab = allTabs[allTabs.length - 1];
-                if (!tab) {
-                    throw new Error('Failed to create tab');
-                }
+            });
+            
+            if (!tab) {
+                throw new Error('Failed to create tab');
             }
             
             logger.log(`[fetchPageContent] Tab created with ID: ${tab.id}`);
