@@ -308,8 +308,8 @@ async function processRetryQueue() {
     }
 }
 
-// Start retry queue processor
-activeTimers.retryQueue = setInterval(processRetryQueue, RETRY_INTERVAL);
+// Start retry queue processor - will be started after functions are defined
+// activeTimers.retryQueue = setInterval(processRetryQueue, RETRY_INTERVAL);
 
 // Scraping state
 let isScrapingActive = false;
@@ -4738,3 +4738,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true; // Required to use sendResponse asynchronously
   }
 });
+
+// Initialize retry queue processor after all functions are defined
+activeTimers.retryQueue = setInterval(processRetryQueue, RETRY_INTERVAL);
+logger.log('Retry queue processor started');
