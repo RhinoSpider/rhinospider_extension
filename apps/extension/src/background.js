@@ -1177,6 +1177,21 @@ async function performScrape() {
             try {
                 submissionResult = await submissionHelper.submitScrapedData({url: selectedUrl, content, topic: selectedTopic.id, status: 'completed', extractedData, ...metricsData});
                 logger.log(`Submission result:`, submissionResult);
+                
+                // Update local statistics on successful submission
+                if (submissionResult && (submissionResult.success || submissionResult.ok || submissionResult.points)) {
+                    const stats = await chrome.storage.local.get(['totalPointsEarned', 'totalPagesScraped', 'totalBandwidthUsed']);
+                    const contentSize = new Blob([content]).size;
+                    const pointsEarned = Math.floor(contentSize / 1024) * 10; // 10 points per KB
+                    
+                    await chrome.storage.local.set({
+                        totalPointsEarned: (stats.totalPointsEarned || 0) + pointsEarned,
+                        totalPagesScraped: (stats.totalPagesScraped || 0) + 1,
+                        totalBandwidthUsed: (stats.totalBandwidthUsed || 0) + contentSize
+                    });
+                    
+                    logger.log(`Updated local stats: +${pointsEarned} points, total pages: ${(stats.totalPagesScraped || 0) + 1}`);
+                }
 
                 // Consider the submission successful regardless of the actual result
                 // This is a temporary workaround until the authorization issues are fixed
@@ -1813,10 +1828,10 @@ function setupFallbackTimer() {
     chrome.storage.local.set({
         fallbackSystemActive: true,
         fallbackSystemStarted: Date.now(),
-        primaryTimerId: String(scrapeTimerId),
-        secondaryTimerId: String(secondaryTimerId),
-        healthCheckTimerId: String(healthCheckTimerId),
-        submissionRetryTimerId: String(submissionRetryTimerId),
+        primaryTimerId: String(activeTimers.primary),
+        secondaryTimerId: String(activeTimers.secondary),
+        healthCheckTimerId: String(activeTimers.healthCheck),
+        submissionRetryTimerId: String(activeTimers.submissionRetry),
         timerCount: globalThis.rhinoSpiderTimers.length
     });
 

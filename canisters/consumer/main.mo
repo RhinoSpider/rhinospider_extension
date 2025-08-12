@@ -1155,13 +1155,13 @@ actor ConsumerBackend {
     
     // Get top contributing nodes
     public query func getTopContributors(limit: Nat): async [(Principal, Nat)] {
-        // Create array of (principal, dataVolume) pairs
+        // Create array of (principal, points) pairs
         let contributors = Buffer.Buffer<(Principal, Nat)>(userProfiles.size());
         for ((principal, profile) in userProfiles.entries()) {
-            contributors.add((principal, profile.dataVolumeKB));
+            contributors.add((principal, profile.points));
         };
         
-        // Sort by data volume (descending)
+        // Sort by points (descending)
         let sorted = Array.sort<(Principal, Nat)>(
             Buffer.toArray(contributors),
             func (a, b) = Nat.compare(b.1, a.1)

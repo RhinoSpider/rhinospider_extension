@@ -15,6 +15,10 @@ import Bool "mo:base/Bool";
 import Error "mo:base/Error";
 
 actor Admin {
+    // Consumer canister interface
+    private let consumerCanister = actor("t3pjp-kqaaa-aaaao-a4ooq-cai") : actor {
+        awardPoints : (Principal, Nat) -> async Result.Result<(), Text>;
+    };
     // Types exactly matching the admin app's expectations
     type UserRole = {
         #SuperAdmin;
@@ -568,8 +572,13 @@ actor Admin {
             return #err("Unauthorized");
         };
         
-        // This returns unit () for success, not Text
-        #ok()
+        try {
+            // Call the consumer canister to award points
+            let result = await consumerCanister.awardPoints(userPrincipal, points);
+            result
+        } catch (e) {
+            #err("Failed to award points: " # Error.message(e))
+        }
     };
 
     // Manually assign points to a user (admin function)
