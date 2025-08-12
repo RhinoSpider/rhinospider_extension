@@ -1,33 +1,42 @@
 #\!/bin/bash
 
-echo "Deploying IC proxy fixes to production..."
+echo "================================================"
+echo "Deploying IC-Proxy Points Fix to Digital Ocean"
+echo "================================================"
 
-# SSH to server and pull latest code
-echo "Updating code on server and restarting IC proxy..."
-ssh root@143.244.133.154 << 'ENDSSH'
-cd /root/rhinospider
-git pull origin main
-cd services/ic-proxy
-npm install
-pm2 restart ic-proxy
-pm2 save
-echo "IC proxy restarted successfully"
-ENDSSH
+# Server details
+SERVER_IP="143.244.133.154"
+SERVER_USER="root"
+SERVER_PATH="/root/rhinospider/services/ic-proxy"
 
-echo "Testing geo-distribution after restart..."
-sleep 5
-
-# Test the API
-curl -s -X POST https://ic-proxy.rhinospider.com/api/topics \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer rhinospider-api-key-2024" \
-  -d '{
-    "nodeCharacteristics": {
-      "ipAddress": "185.18.253.132",
-      "region": "KZ",
-      "percentageNodes": 100,
-      "randomizationMode": "none"
-    }
-  }' | python3 -m json.tool | head -30
-
-echo "Deployment complete\!"
+echo ""
+echo "This script will deploy the updated ic-proxy server that:"
+echo "1. Submits to BOTH storage and consumer canisters"
+echo "2. Ensures points are properly awarded"
+echo "3. Fixes the points tracking system"
+echo ""
+echo "Please run these commands manually:"
+echo ""
+echo "Step 1: Copy the updated file"
+echo "scp /Users/ayanuali/development/rhinospider/services/ic-proxy/server-fixed.js root@${SERVER_IP}:${SERVER_PATH}/server-fixed.js"
+echo ""
+echo "Step 2: SSH into the server"
+echo "ssh root@${SERVER_IP}"
+echo "Password: ffGpA2saNS47qr"
+echo ""
+echo "Step 3: Once connected, restart the ic-proxy service"
+echo "cd ${SERVER_PATH}"
+echo "pm2 restart ic-proxy"
+echo "pm2 logs ic-proxy --lines 20"
+echo ""
+echo "Step 4: Verify the deployment"
+echo "curl http://${SERVER_IP}:3001/api/health"
+echo ""
+echo "================================================"
+echo "The updated server will now:"
+echo "- Submit scraped data to storage canister (for admin viewing)"
+echo "- Submit scraped data to consumer canister (for points calculation)"
+echo "- Award points based on data size (KB * POINTS_PER_KB)"
+echo "- Apply referral bonuses when applicable"
+echo "================================================"
+EOF < /dev/null

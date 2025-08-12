@@ -23,7 +23,7 @@ import Nat64 "mo:base/Nat64";
 actor ConsumerBackend {
     // Types
     type StorageActor = actor {
-        submitScrapedData : (SharedTypes.ScrapedData) -> async Result.Result<(), SharedTypes.Error>;
+        storeScrapedData : (SharedTypes.ScrapedData) -> async Result.Result<(), SharedTypes.Error>;
         getScrapedData : ([Text]) -> async Result.Result<[SharedTypes.ScrapedData], SharedTypes.Error>;
     };
 
@@ -559,7 +559,7 @@ actor ConsumerBackend {
         };
 
         ExperimentalCycles.add(CYCLES_PER_CALL);
-        await storage.submitScrapedData(data)
+        await storage.storeScrapedData(data)
     };
     
     // Fetch scraped data from storage canister
