@@ -1595,7 +1595,6 @@ function setupFallbackTimer() {
 
     // PRIMARY TIMER: Main scraping interval
     scrapeTimerId = setInterval(async () => {
-    activeTimers.primary = scrapeTimerId;
         try {
             // Always check if scraping should be active based on storage
             const { enabled } = await chrome.storage.local.get(['enabled']);
@@ -1639,6 +1638,7 @@ function setupFallbackTimer() {
     }, primaryIntervalMs);
 
     // Store the primary timer ID
+    activeTimers.primary = scrapeTimerId;
     globalThis.rhinoSpiderTimers.push(scrapeTimerId);
 
     // SECONDARY TIMER: Backup scraping interval that runs less frequently
