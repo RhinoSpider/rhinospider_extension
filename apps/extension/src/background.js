@@ -1058,6 +1058,13 @@ async function performScrape() {
             logger.error('Error tracking scraped URL:', error);
         }
 
+        // Check stop flag before fetching content
+        if (shouldStopScraping) {
+            logger.log('[performScrape] Stop flag detected, aborting before fetch');
+            activeOperations.delete(operationId);
+            return;
+        }
+
         // Fetch the content
         let fetchResult;
         let content;
@@ -1084,6 +1091,13 @@ async function performScrape() {
 
         } catch (error) {
             fetchError = error;
+        }
+
+        // Check stop flag after fetching
+        if (shouldStopScraping) {
+            logger.log('[performScrape] Stop flag detected after fetch, aborting');
+            activeOperations.delete(operationId);
+            return;
         }
 
         // Check if we have valid content to process

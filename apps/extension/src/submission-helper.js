@@ -35,8 +35,8 @@ class SubmissionHelper {
       console.log('Using proxy client to submit data');
       return await this.proxyClient.submitScrapedData(data);
     } catch (error) {
-      console.error('Error submitting scraped data:', error);
-      throw error;
+      // Return error object instead of throwing
+      return { error: error.message || 'Submission failed', originalError: error };
     }
   }
 

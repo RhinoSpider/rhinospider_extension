@@ -186,12 +186,20 @@ class ProxyClient {
         const result = await response.json();
         return result;
       } else {
-        console.error('Error submitting scraped data:', response.status, response.statusText);
-        throw new Error(`Error submitting scraped data: ${response.status} ${response.statusText}`);
+        // Log silently without throwing errors to console
+        if (response.status !== 502) {
+          console.warn('Submission issue:', response.status);
+        }
+        // Return error object instead of throwing
+        return { error: `Submission failed: ${response.status}`, status: response.status };
       }
     } catch (error) {
-      console.error('Error in submitScrapedData:', error);
-      throw error;
+      // Log silently for network errors
+      if (error.message && !error.message.includes('502')) {
+        console.warn('Network issue during submission');
+      }
+      // Return error object instead of throwing
+      return { error: error.message || 'Network error', networkError: true };
     }
   }
 }
