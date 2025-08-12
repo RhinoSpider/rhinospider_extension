@@ -141,12 +141,15 @@ export const Overview: React.FC = () => {
       // Create actor for storage canister to get scraped data count
       const storageIdlFactory = ({ IDL }: any) => {
         const ScrapedData = IDL.Record({
+          id: IDL.Text,
           url: IDL.Text,
-          title: IDL.Text,
+          topic: IDL.Text,
           content: IDL.Text,
+          source: IDL.Text,
           timestamp: IDL.Int,
-          scraperPrincipal: IDL.Principal,
-          contentLength: IDL.Nat,
+          client_id: IDL.Principal,
+          status: IDL.Text,
+          scraping_time: IDL.Int,
         });
 
         return IDL.Service({
