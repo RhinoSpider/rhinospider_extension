@@ -1,13 +1,14 @@
 import Principal "mo:base/Principal";
 import Result "mo:base/Result";
-import SharedTypes "../shared/types";
+import SharedTypes "types";
 import Buffer "mo:base/Buffer";
 import Time "mo:base/Time";
 import Text "mo:base/Text";
 import HashMap "mo:base/HashMap";
 import Array "mo:base/Array";
 import Iter "mo:base/Iter";
-import ExperimentalCycles "mo:base/ExperimentalCycles";
+import Prim "mo:⛔";
+// Use system Cycles directly instead of deprecated ExperimentalCycles
 import Error "mo:base/Error";
 import Debug "mo:base/Debug";
 import Nat "mo:base/Nat";
@@ -33,6 +34,7 @@ actor ConsumerBackend {
         getAssignedTopics : (SharedTypes.NodeCharacteristics) -> async Result.Result<[SharedTypes.ScrapingTopic], Text>;
         getAIConfig : () -> async Result.Result<SharedTypes.AIConfig, Text>;
         add_user : (Principal, { #SuperAdmin; #Admin; #Operator }) -> async Result.Result<(), Text>;
+        updateTopicStats : (Text) -> async Result.Result<(), Text>;
     };
 
     // HTTP outcall types for GeoIP
@@ -125,10 +127,23 @@ actor ConsumerBackend {
         totalDataScraped: Nat;
         referredBy: ?Principal;
         scrapedUrls: [Text]; // Track URLs already scraped by this user
+        referralHistory: [ReferralUse]; // Track who used their code and when
+        pointsFromScraping: Nat; // Points earned from scraping
+        pointsFromReferrals: Nat; // Points earned from referrals
+        sessionPagesScraped: Nat; // Pages scraped in current session
+        totalPagesScraped: Nat; // Total pages scraped all time
+        sessionBandwidthUsed: Nat; // Bandwidth used in current session (bytes)
+        totalBandwidthUsed: Nat; // Total bandwidth used all time (bytes)
         preferences: {
             notificationsEnabled: Bool;
             theme: Text;
         };
+    };
+    
+    type ReferralUse = {
+        userPrincipal: Principal;
+        timestamp: Int;
+        pointsAwarded: Nat;
     };
     
     type ReferralTier = {
@@ -206,6 +221,13 @@ actor ConsumerBackend {
                     totalDataScraped = oldProfile.totalDataScraped;
                     referredBy = oldProfile.referredBy;
                     scrapedUrls = []; // New field - start with empty array
+                    referralHistory = []; // New field - start with empty array
+                    pointsFromScraping = oldProfile.points; // Migrate existing points as scraping points
+                    pointsFromReferrals = 0; // New field - start at 0
+                    sessionPagesScraped = 0; // New field - start at 0
+                    totalPagesScraped = 0; // New field - start at 0
+                    sessionBandwidthUsed = 0; // New field - start at 0
+                    totalBandwidthUsed = oldProfile.totalDataScraped; // Use existing data scraped as bandwidth
                     preferences = oldProfile.preferences;
                 })
             );
@@ -213,16 +235,16 @@ actor ConsumerBackend {
         };
         
         referralCodes := HashMap.fromIter<Text, Principal>(stableReferralCodes.vals(), 10, Text.equal, Text.hash);
+        
+        // Populate referralCodes from existing user profiles
+        for ((principal, profile) in userProfiles.entries()) {
+            referralCodes.put(profile.referralCode, principal);
+        };
     };
 
-    // Authentication
+    // Authentication - PRODUCTION
     private func isAuthenticated(p: Principal): Bool {
-        // Allow the anonymous identity (2vxsx-fae) used by the proxy server
-        if (Principal.toText(p) == "2vxsx-fae") {
-            return true;
-        };
-        
-        // Otherwise, require a non-anonymous principal
+        // Reject anonymous principals - require real authentication
         not Principal.isAnonymous(p)
     };
 
@@ -237,7 +259,7 @@ actor ConsumerBackend {
 
         try {
             Debug.print("Consumer getTopics: Adding cycles for inter-canister call");
-            ExperimentalCycles.add(CYCLES_PER_CALL);
+            Prim.cyclesAdd(CYCLES_PER_CALL);
             
             Debug.print("Consumer getTopics: Calling admin canister at " # ADMIN_CANISTER_ID);
             
@@ -276,6 +298,132 @@ actor ConsumerBackend {
             Debug.print("Consumer getTopics: Caught error: " # errorMsg);
             #err(#SystemError(errorMsg))
         }
+    };
+    
+    // Get geo-filtered topics for a specific user
+    public shared(msg) func getTopicsForUser(userPrincipal: Principal) : async Result.Result<[SharedTypes.ScrapingTopic], Text> {
+        Debug.print("Consumer getTopicsForUser: Called by " # Principal.toText(msg.caller) # " for user " # Principal.toText(userPrincipal));
+        
+        // Allow admin canister and the user themselves to call this
+        if (Principal.toText(msg.caller) != ADMIN_CANISTER_ID and msg.caller != userPrincipal) {
+            return #err("Not authorized - only admin canister or the user can get filtered topics");
+        };
+        
+        // Get user's profile to determine their location
+        switch (userProfiles.get(userPrincipal)) {
+            case null {
+                Debug.print("Consumer getTopicsForUser: User not found, returning all topics as fallback");
+                // User not found - return all topics as fallback
+                try {
+                    let topics = await admin.getTopics_with_caller(userPrincipal);
+                    switch(topics) {
+                        case (#ok(allTopics)) { #ok(allTopics) };
+                        case (#err(e)) { #err(e) };
+                    }
+                } catch (e) {
+                    #err("Failed to get topics from admin canister: " # Error.message(e))
+                }
+            };
+            case (?profile) {
+                // Get user's country
+                let userCountry = switch(profile.country) {
+                    case (?country) { country };
+                    case null { "" };
+                };
+                
+                Debug.print("Consumer getTopicsForUser: User country is " # userCountry);
+                
+                // Get all topics from admin canister
+                try {
+                    let topicsResult = await admin.getTopics_with_caller(userPrincipal);
+                    switch(topicsResult) {
+                        case (#err(e)) { #err(e) };
+                        case (#ok(allTopics)) {
+                            // Filter topics based on user's geo location
+                            let filteredTopics = Array.filter<SharedTypes.ScrapingTopic>(allTopics, func(topic) {
+                                switch(topic.geolocationFilter) {
+                                    case null {
+                                        // No geo filter - available to all users
+                                        Debug.print("Consumer getTopicsForUser: Topic " # topic.name # " has no geo filter - available to all");
+                                        true
+                                    };
+                                    case (?geoFilter) {
+                                        // Check if user's country matches the geo filter
+                                        // Support both country codes (US, CA) and full names (United States, Canada)
+                                        let allowedCountries = Text.split(geoFilter, #char ',');
+                                        
+                                        Debug.print("Consumer getTopicsForUser: Topic " # topic.name # " geo filter: " # geoFilter # ", user country: " # userCountry);
+                                        
+                                        // Check if user's country is in the allowed list
+                                        for (allowedCountry in allowedCountries) {
+                                            let trimmedCountry = Text.trim(allowedCountry, #char ' ');
+                                            Debug.print("Consumer getTopicsForUser: Checking if " # userCountry # " matches " # trimmedCountry);
+                                            
+                                            // Check both country code and full name
+                                            let countryMatches = Text.equal(userCountry, trimmedCountry) or
+                                                                Text.equal(getCountryCode(userCountry), trimmedCountry) or
+                                                                Text.equal(userCountry, getCountryName(trimmedCountry));
+                                            
+                                            if (countryMatches) {
+                                                Debug.print("Consumer getTopicsForUser: Match found!");
+                                                return true;
+                                            };
+                                        };
+                                        Debug.print("Consumer getTopicsForUser: No match found for user's country");
+                                        false
+                                    };
+                                };
+                            });
+                            
+                            Debug.print("Consumer getTopicsForUser: Filtered " # Nat.toText(filteredTopics.size()) # " topics out of " # Nat.toText(allTopics.size()) # " for user in " # userCountry);
+                            #ok(filteredTopics)
+                        };
+                    };
+                } catch (e) {
+                    #err("Failed to get topics from admin canister: " # Error.message(e))
+                }
+            };
+        };
+    };
+    
+    // Helper function to convert country names to country codes (only for countries we actually have)
+    private func getCountryCode(countryName: Text) : Text {
+        switch(countryName) {
+            case "United States" { "US" };
+            case "Canada" { "CA" };
+            case "Kazakhstan" { "KZ" };
+            case "Russia" { "RU" };
+            case "Uzbekistan" { "UZ" };
+            case "Kyrgyzstan" { "KG" };
+            case "Tajikistan" { "TJ" };
+            case "United Arab Emirates" { "AE" };
+            case "Saudi Arabia" { "SA" };
+            case "Qatar" { "QA" };
+            case "Kuwait" { "KW" };
+            case "Bahrain" { "BH" };
+            case "Oman" { "OM" };
+            case _ { "" };
+        };
+    };
+    
+    // Helper function to convert country codes to country names (reverse mapping)
+    private func getCountryName(countryCode: Text) : Text {
+        switch(countryCode) {
+            case "US" { "United States" };
+            case "CA" { "Canada" };
+            case "KZ" { "Kazakhstan" };
+            case "RU" { "Russia" };
+            case "UZ" { "Uzbekistan" };
+            case "KG" { "Kyrgyzstan" };
+            case "TJ" { "Tajikistan" };
+            case "AE" { "United Arab Emirates" };
+            case "SA" { "Saudi Arabia" };
+            case "QA" { "Qatar" };
+            case "KW" { "Kuwait" };
+            case "BH" { "Bahrain" };
+            case "OM" { "Oman" };
+            case _ { "" };
+        };
     };
 
     // Helper function to generate referral code
@@ -317,6 +465,14 @@ actor ConsumerBackend {
         return hex_part # timestamp_part;
     };
     
+    // Helper function to generate referral code from principal
+    private func generateReferralCodeHelper(principal: Principal): Text {
+        let principalText = Principal.toText(principal);
+        let hash = Text.hash(principalText);
+        let code = Nat32.toText(hash);
+        "REF" # code
+    };
+    
     // Calculate points based on data contribution
     private func calculatePoints(contentLength: Nat): Nat {
         let sizeInKB = contentLength / 1024;
@@ -352,7 +508,7 @@ actor ConsumerBackend {
                 transform = null : ?TransformContext;
             };
             
-            ExperimentalCycles.add(20_949_972_000);
+            Prim.cyclesAdd(20_949_972_000);
             let response = await ic.http_request(request);
             
             if (response.status == 200) {
@@ -497,68 +653,139 @@ actor ConsumerBackend {
         };
     };
     
-    // Scraped data management with points
+    // Scraped data management with points - FIXED VERSION
     public shared({ caller }) func submitScrapedData(data: SharedTypes.ScrapedData): async Result.Result<(), SharedTypes.Error> {
-        if (not isAuthenticated(caller)) {
+        // Use client_id from the data for user attribution
+        let userPrincipal = data.client_id;
+        
+        // Allow direct calls from authenticated users OR proxy calls with valid client_id  
+        if (not isAuthenticated(caller) and Principal.isAnonymous(userPrincipal)) {
             return #err(#NotAuthorized);
         };
-
-        // Verify the user has a profile and award points
-        switch (userProfiles.get(caller)) {
-            case null return #err(#NotAuthorized);
-            case (?profile) {
-                // Check if URL was already scraped by this user
-                let urlAlreadyScraped = switch (Array.find<Text>(profile.scrapedUrls, func(u) = u == data.url)) {
-                    case (?_) true;
-                    case null false;
-                };
-                
-                // Calculate points for this submission
-                let contentLength = Text.size(data.content);
-                let points = if (urlAlreadyScraped) 0 else calculatePoints(contentLength); // No points for duplicate URLs
-                let dataKB = contentLength / 1024;
-                
-                // Add URL to scraped list if new
-                let updatedScrapedUrls = if (urlAlreadyScraped) {
-                    profile.scrapedUrls
-                } else {
-                    Array.append(profile.scrapedUrls, [data.url])
-                };
-                
-                // Update profile with new points and data scraped
-                let updatedProfile = {
-                    profile with
-                    points = profile.points + points;
-                    totalDataScraped = profile.totalDataScraped + contentLength;
-                    dataVolumeKB = profile.dataVolumeKB + dataKB;
-                    scrapedUrls = updatedScrapedUrls;
+        
+        // Get or create user profile
+        let profile = switch (userProfiles.get(userPrincipal)) {
+            case (?existingProfile) existingProfile;
+            case null {
+                // Auto-create profile if it doesn't exist
+                Debug.print("Creating profile for new user: " # Principal.toText(userPrincipal));
+                let newProfile : UserProfile = {
+                    principal = userPrincipal;
+                    devices = [];
+                    created = Time.now();
                     lastLogin = Time.now();
+                    ipAddress = null;
+                    country = null;
+                    region = null;
+                    city = null;
+                    latitude = null;
+                    longitude = null;
                     lastActive = Time.now();
                     isActive = true;
+                    dataVolumeKB = 0;
+                    referralCode = generateReferralCodeHelper(userPrincipal);
+                    referralCount = 0;
+                    points = 0;
+                    totalDataScraped = 0;
+                    referredBy = null;
+                    scrapedUrls = [];
+                    referralHistory = [];
+                    pointsFromScraping = 0;
+                    pointsFromReferrals = 0;
+                    sessionPagesScraped = 0;
+                    totalPagesScraped = 0;
+                    sessionBandwidthUsed = 0;
+                    totalBandwidthUsed = 0;
+                    preferences = {
+                        notificationsEnabled = true;
+                        theme = "dark";
+                    };
                 };
-                userProfiles.put(caller, updatedProfile);
-                
-                // Award referral bonus to referrer if applicable
-                switch (profile.referredBy) {
-                    case (?referrer) {
-                        switch (userProfiles.get(referrer)) {
-                            case (?referrerProfile) {
-                                let referralBonus = points / 10; // 10% of points go to referrer
-                                let updatedReferrerProfile = {
-                                    referrerProfile with
-                                    points = referrerProfile.points + referralBonus;
-                                };
-                                userProfiles.put(referrer, updatedReferrerProfile);
-                            };
-                            case null {};
+                userProfiles.put(userPrincipal, newProfile);
+                newProfile
+            };
+        };
+
+        // Check if URL was already scraped by this user
+        let urlAlreadyScraped = switch (Array.find<Text>(profile.scrapedUrls, func(u) = u == data.url)) {
+            case (?_) true;
+            case null false;
+        };
+        
+        // Calculate points for this submission
+        let contentLength = Text.size(data.content);
+        let points = if (urlAlreadyScraped) 0 else calculatePoints(contentLength); // No points for duplicate URLs
+        let dataKB = contentLength / 1024;
+        
+        // Add URL to scraped list if new
+        let updatedScrapedUrls = if (urlAlreadyScraped) {
+            profile.scrapedUrls
+        } else {
+            Array.append(profile.scrapedUrls, [data.url])
+        };
+        
+        // Try to update geolocation if we have the source IP
+        // Note: For now, we'll just track the activity. The proxy server should call updateUserLoginForPrincipal separately
+        
+        // Update profile with new points and data scraped
+        let updatedProfile = {
+            profile with
+            points = profile.points + points;
+            pointsFromScraping = profile.pointsFromScraping + points; // Track scraping points separately
+            totalDataScraped = profile.totalDataScraped + contentLength;
+            dataVolumeKB = profile.dataVolumeKB + dataKB;
+            scrapedUrls = updatedScrapedUrls;
+            sessionPagesScraped = profile.sessionPagesScraped + 1; // Increment session pages
+            totalPagesScraped = profile.totalPagesScraped + 1; // Increment total pages
+            sessionBandwidthUsed = profile.sessionBandwidthUsed + contentLength; // Track session bandwidth
+            totalBandwidthUsed = profile.totalBandwidthUsed + contentLength; // Track total bandwidth
+            lastLogin = Time.now();
+            lastActive = Time.now();
+            isActive = true;
+        };
+        userProfiles.put(userPrincipal, updatedProfile);
+        
+        Debug.print("User " # Principal.toText(userPrincipal) # " submitted data, earned " # Nat.toText(points) # " points");
+        
+        // Award referral bonus to referrer if applicable
+        switch (profile.referredBy) {
+            case (?referrer) {
+                switch (userProfiles.get(referrer)) {
+                    case (?referrerProfile) {
+                        let referralBonus = points / 10; // 10% of points go to referrer
+                        let updatedReferrerProfile = {
+                            referrerProfile with
+                            points = referrerProfile.points + referralBonus;
+                            pointsFromReferrals = referrerProfile.pointsFromReferrals + referralBonus; // Track referral points
                         };
+                        userProfiles.put(referrer, updatedReferrerProfile);
                     };
                     case null {};
                 };
             };
+            case null {};
         };
 
-        ExperimentalCycles.add(CYCLES_PER_CALL);
+        // Update topic stats in admin canister
+        try {
+            Debug.print("Consumer: Updating topic stats for topic: " # data.topic);
+            Prim.cyclesAdd(CYCLES_PER_CALL);
+            let statsResult = await admin.updateTopicStats(data.topic);
+            switch(statsResult) {
+                case (#ok()) {
+                    Debug.print("Consumer: Successfully updated topic stats");
+                };
+                case (#err(msg)) {
+                    Debug.print("Consumer: Failed to update topic stats: " # msg);
+                    // Don't fail the submission if stats update fails
+                };
+            };
+        } catch (error) {
+            Debug.print("Consumer: Error updating topic stats: " # Error.message(error));
+            // Don't fail the submission if stats update fails
+        };
+
+        Prim.cyclesAdd(CYCLES_PER_CALL);
         await storage.storeScrapedData(data)
     };
     
@@ -576,7 +803,7 @@ actor ConsumerBackend {
 
         Debug.print("Consumer: Fetching scraped data for topics: " # debug_show(topicIds));
         
-        ExperimentalCycles.add(CYCLES_PER_CALL);
+        Prim.cyclesAdd(CYCLES_PER_CALL);
         await storage.getScrapedData(topicIds)
     };
 
@@ -590,7 +817,7 @@ actor ConsumerBackend {
         switch (userProfiles.get(caller)) {
             case null {
                 // Register with admin canister first
-                ExperimentalCycles.add(CYCLES_PER_CALL);
+                Prim.cyclesAdd(CYCLES_PER_CALL);
                 let adminResult = await admin.add_user(caller, #Operator);
                 switch (adminResult) {
                     case (#err(msg)) {
@@ -630,6 +857,13 @@ actor ConsumerBackend {
                     totalDataScraped = 0;
                     referredBy = null;
                     scrapedUrls = [];
+                    referralHistory = [];
+                    pointsFromScraping = 0;
+                    pointsFromReferrals = 0;
+                    sessionPagesScraped = 0;
+                    totalPagesScraped = 0;
+                    sessionBandwidthUsed = 0;
+                    totalBandwidthUsed = 0;
                     preferences = {
                         notificationsEnabled = true;
                         theme = "dark";
@@ -734,6 +968,13 @@ actor ConsumerBackend {
                     totalDataScraped = 0;
                     referredBy = null;
                     scrapedUrls = [];
+                    referralHistory = [];
+                    pointsFromScraping = 0;
+                    pointsFromReferrals = 0;
+                    sessionPagesScraped = 0;
+                    totalPagesScraped = 0;
+                    sessionBandwidthUsed = 0;
+                    totalBandwidthUsed = 0;
                     preferences = {
                         notificationsEnabled = true;
                         theme = "dark";
@@ -812,6 +1053,13 @@ actor ConsumerBackend {
                             totalDataScraped = 0;
                             referredBy = ?referrer;
                             scrapedUrls = [];
+                            referralHistory = [];
+                            pointsFromScraping = 0;
+                            pointsFromReferrals = 0;
+                            sessionPagesScraped = 0;
+                            totalPagesScraped = 0;
+                            sessionBandwidthUsed = 0;
+                            totalBandwidthUsed = 0;
                             preferences = {
                                 notificationsEnabled = true;
                                 theme = "dark";
@@ -828,10 +1076,20 @@ actor ConsumerBackend {
                     case (?referrerProfile) {
                         let newReferralCount = referrerProfile.referralCount + 1;
                         let bonus = getReferralBonus(newReferralCount);
+                        
+                        // Create referral history entry
+                        let referralUse : ReferralUse = {
+                            userPrincipal = caller;
+                            timestamp = Time.now();
+                            pointsAwarded = bonus;
+                        };
+                        
                         let updatedReferrerProfile = {
                             referrerProfile with
                             referralCount = newReferralCount;
                             points = referrerProfile.points + bonus;
+                            pointsFromReferrals = referrerProfile.pointsFromReferrals + bonus; // Track referral points separately
+                            referralHistory = Array.append(referrerProfile.referralHistory, [referralUse]); // Add to history
                         };
                         userProfiles.put(referrer, updatedReferrerProfile);
                     };
@@ -839,6 +1097,82 @@ actor ConsumerBackend {
                 };
                 
                 return #ok();
+            };
+        }
+    };
+    
+    // Allow proxy to apply referral code for a specific principal
+    public shared(msg) func useReferralCodeForPrincipal(principalId: Principal, code: Text): async Result.Result<Text, Text> {
+        let caller = msg.caller;
+        // Allow anonymous principal (proxy) or admin canister to call this
+        if (not Principal.isAnonymous(caller) and Principal.toText(caller) != ADMIN_CANISTER_ID) {
+            return #err("Not authorized - only proxy or admin can call this");
+        };
+        
+        let userPrincipal = principalId;
+        
+        // Check if referral code exists
+        switch (referralCodes.get(code)) {
+            case (null) {
+                return #err("Invalid referral code");
+            };
+            case (?referrer) {
+                // Can't refer yourself
+                if (Principal.equal(referrer, userPrincipal)) {
+                    return #err("Cannot use your own referral code");
+                };
+                
+                // Check if user already has a profile
+                switch (userProfiles.get(userPrincipal)) {
+                    case (?profile) {
+                        // Check if already referred
+                        switch (profile.referredBy) {
+                            case (?_) {
+                                return #err("Already used a referral code");
+                            };
+                            case null {
+                                // Update user profile with referral
+                                let updatedProfile = {
+                                    profile with
+                                    referredBy = ?referrer;
+                                };
+                                userProfiles.put(userPrincipal, updatedProfile);
+                                
+                                // Give bonus to referrer
+                                switch (userProfiles.get(referrer)) {
+                                    case (?referrerProfile) {
+                                        let newReferralCount = referrerProfile.referralCount + 1;
+                                        let bonus = getReferralBonus(newReferralCount);
+                                        
+                                        // Create referral history entry
+                                        let referralUse : ReferralUse = {
+                                            userPrincipal = userPrincipal;
+                                            timestamp = Time.now();
+                                            pointsAwarded = bonus;
+                                        };
+                                        
+                                        let updatedReferrerProfile = {
+                                            referrerProfile with
+                                            referralCount = newReferralCount;
+                                            points = referrerProfile.points + bonus;
+                                            pointsFromReferrals = referrerProfile.pointsFromReferrals + bonus; // Track referral points separately
+                                            referralHistory = Array.append(referrerProfile.referralHistory, [referralUse]); // Add to history
+                                        };
+                                        userProfiles.put(referrer, updatedReferrerProfile);
+                                        Debug.print("Referral bonus awarded: " # Nat.toText(bonus) # " points to " # Principal.toText(referrer));
+                                    };
+                                    case null {};
+                                };
+                                
+                                return #ok("Referral code applied successfully");
+                            };
+                        };
+                    };
+                    case null {
+                        // User doesn't exist, create them first
+                        return #err("User profile not found. Please login first.");
+                    };
+                };
             };
         }
     };
@@ -859,19 +1193,434 @@ actor ConsumerBackend {
         }
     };
     
+    // Update user login with principal ID parameter
+    public shared(msg) func updateUserLoginForPrincipal(principalId: Principal, ipAddress: Text): async Result.Result<Text, Text> {
+        let caller = msg.caller;
+        // Allow anonymous principal (proxy) to call this
+        if (not Principal.isAnonymous(caller) and not isAuthenticated(caller)) {
+            return #err("Not authorized");
+        };
+        
+        let userPrincipal = principalId;
+        
+        switch (userProfiles.get(userPrincipal)) {
+            case (null) {
+                // Create a new profile if it doesn't exist
+                Debug.print("Creating profile for new user during login: " # Principal.toText(userPrincipal));
+                let newProfile : UserProfile = {
+                    principal = userPrincipal;
+                    devices = [];
+                    created = Time.now();
+                    lastLogin = Time.now();
+                    ipAddress = ?ipAddress;
+                    country = null;
+                    region = null;
+                    city = null;
+                    latitude = null;
+                    longitude = null;
+                    lastActive = Time.now();
+                    isActive = true;
+                    dataVolumeKB = 0;
+                    referralCode = generateReferralCodeHelper(userPrincipal);
+                    referralCount = 0;
+                    points = 0;
+                    totalDataScraped = 0;
+                    referredBy = null;
+                    scrapedUrls = [];
+                    referralHistory = [];
+                    pointsFromScraping = 0;
+                    pointsFromReferrals = 0;
+                    sessionPagesScraped = 0;
+                    totalPagesScraped = 0;
+                    sessionBandwidthUsed = 0;
+                    totalBandwidthUsed = 0;
+                    preferences = {
+                        notificationsEnabled = true;
+                        theme = "dark";
+                    };
+                };
+                
+                // Skip HTTP outcall - use IP pattern matching for location
+                let profileWithGeo = if (Text.startsWith(ipAddress, #text "185.18.") or
+                                       Text.startsWith(ipAddress, #text "93.190.") or
+                                       Text.startsWith(ipAddress, #text "2.133.") or
+                                       Text.startsWith(ipAddress, #text "37.150.") or
+                                       Text.startsWith(ipAddress, #text "92.46.") or
+                                       Text.startsWith(ipAddress, #text "95.59.") or
+                                       Text.startsWith(ipAddress, #text "89.218.")) {
+                    // Kazakhstan IP ranges
+                    {
+                        newProfile with
+                        country = ?"Kazakhstan";
+                        region = ?"Almaty Province";
+                        city = ?"Almaty";
+                        latitude = ?43.25;
+                        longitude = ?76.92;
+                    }
+                } else if (Text.startsWith(ipAddress, #text "5.195.") or
+                          Text.startsWith(ipAddress, #text "94.203.") or
+                          Text.startsWith(ipAddress, #text "94.200.") or
+                          Text.startsWith(ipAddress, #text "185.177.") or
+                          Text.startsWith(ipAddress, #text "185.178.")) {
+                    // UAE IP ranges
+                    {
+                        newProfile with
+                        country = ?"United Arab Emirates";
+                        region = ?"Dubai";
+                        city = ?"Dubai";
+                        latitude = ?25.2048;
+                        longitude = ?55.2708;
+                    }
+                } else if (Text.startsWith(ipAddress, #text "142.") or
+                          Text.startsWith(ipAddress, #text "24.") or
+                          Text.startsWith(ipAddress, #text "174.") or
+                          Text.startsWith(ipAddress, #text "184.") or
+                          Text.startsWith(ipAddress, #text "206.") or
+                          Text.startsWith(ipAddress, #text "207.") or
+                          Text.startsWith(ipAddress, #text "204.") or
+                          Text.startsWith(ipAddress, #text "205.")) {
+                    // Canada IP ranges
+                    {
+                        newProfile with
+                        country = ?"Canada";
+                        region = ?"Ontario";
+                        city = ?"Toronto";
+                        latitude = ?43.6532;
+                        longitude = ?-79.3832;
+                    }
+                } else if (Text.startsWith(ipAddress, #text "3.") or       // Amazon AWS US
+                          Text.startsWith(ipAddress, #text "4.") or        // Level 3 US
+                          Text.startsWith(ipAddress, #text "8.") or        // Level 3 US
+                          Text.startsWith(ipAddress, #text "12.") or       // AT&T US
+                          Text.startsWith(ipAddress, #text "13.") or       // Xerox US
+                          Text.startsWith(ipAddress, #text "15.") or       // HP US
+                          Text.startsWith(ipAddress, #text "16.") or       // DEC US
+                          Text.startsWith(ipAddress, #text "17.") or       // Apple US
+                          Text.startsWith(ipAddress, #text "18.") or       // MIT US
+                          Text.startsWith(ipAddress, #text "20.") or       // Microsoft US
+                          Text.startsWith(ipAddress, #text "23.") or       // Akamai US
+                          Text.startsWith(ipAddress, #text "34.") or       // Google Cloud US
+                          Text.startsWith(ipAddress, #text "35.") or       // Google Cloud US
+                          Text.startsWith(ipAddress, #text "40.") or       // US Gov
+                          Text.startsWith(ipAddress, #text "44.") or       // Amateur Radio US
+                          Text.startsWith(ipAddress, #text "45.") or       // US Companies
+                          Text.startsWith(ipAddress, #text "47.") or       // Bell US
+                          Text.startsWith(ipAddress, #text "50.") or       // Comcast US
+                          Text.startsWith(ipAddress, #text "52.") or       // Amazon AWS US
+                          Text.startsWith(ipAddress, #text "54.") or       // Amazon AWS US
+                          Text.startsWith(ipAddress, #text "63.") or       // US Networks
+                          Text.startsWith(ipAddress, #text "64.") or       // US Networks
+                          Text.startsWith(ipAddress, #text "65.") or       // US Networks
+                          Text.startsWith(ipAddress, #text "66.") or       // US Networks
+                          Text.startsWith(ipAddress, #text "67.") or       // Comcast US
+                          Text.startsWith(ipAddress, #text "68.") or       // Charter US
+                          Text.startsWith(ipAddress, #text "69.") or       // US Networks
+                          Text.startsWith(ipAddress, #text "70.") or       // US Networks
+                          Text.startsWith(ipAddress, #text "71.") or       // US Networks
+                          Text.startsWith(ipAddress, #text "72.") or       // US Networks
+                          Text.startsWith(ipAddress, #text "73.") or       // Comcast US
+                          Text.startsWith(ipAddress, #text "74.") or       // US Networks
+                          Text.startsWith(ipAddress, #text "75.") or       // US Networks
+                          Text.startsWith(ipAddress, #text "76.") or       // US Networks
+                          Text.startsWith(ipAddress, #text "96.") or       // US Networks
+                          Text.startsWith(ipAddress, #text "97.") or       // US Networks
+                          Text.startsWith(ipAddress, #text "98.") or       // US Networks
+                          Text.startsWith(ipAddress, #text "99.") or       // US Networks
+                          Text.startsWith(ipAddress, #text "100.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "104.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "107.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "108.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "128.") or      // US Universities
+                          Text.startsWith(ipAddress, #text "129.") or      // US Universities
+                          Text.startsWith(ipAddress, #text "130.") or      // US Universities
+                          Text.startsWith(ipAddress, #text "131.") or      // US Universities
+                          Text.startsWith(ipAddress, #text "132.") or      // US Universities
+                          Text.startsWith(ipAddress, #text "134.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "135.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "136.") or      // US Networks (includes your 136.25.89.88!)
+                          Text.startsWith(ipAddress, #text "137.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "138.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "139.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "140.") or      // US DoD
+                          Text.startsWith(ipAddress, #text "143.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "144.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "146.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "147.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "148.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "149.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "150.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "151.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "152.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "153.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "155.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "156.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "157.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "158.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "159.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "160.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "161.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "162.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "163.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "164.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "165.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "166.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "167.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "168.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "169.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "170.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "172.") or      // Private/US
+                          Text.startsWith(ipAddress, #text "173.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "192.") or      // Various/US
+                          Text.startsWith(ipAddress, #text "198.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "199.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "208.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "209.") or      // US Networks
+                          Text.startsWith(ipAddress, #text "216.")) {      // US Networks
+                    // USA IP ranges
+                    {
+                        newProfile with
+                        country = ?"United States";
+                        region = ?"California";
+                        city = ?"San Francisco";
+                        latitude = ?37.7749;
+                        longitude = ?-122.4194;
+                    }
+                } else if (Text.startsWith(ipAddress, #text "185.") or
+                          Text.startsWith(ipAddress, #text "93.") or
+                          Text.startsWith(ipAddress, #text "37.")) {
+                    {
+                        newProfile with
+                        country = ?"Global";
+                        region = ?"Unknown";
+                        city = ?"Unknown";
+                        latitude = ?25.0;
+                        longitude = ?105.0;
+                    }
+                } else {
+                    {
+                        newProfile with
+                        country = ?"Global";
+                        region = ?"Unknown";
+                        city = ?"Unknown";
+                        latitude = ?0.0;
+                        longitude = ?0.0;
+                    }
+                };
+                
+                userProfiles.put(userPrincipal, profileWithGeo);
+                #ok("User profile created with location")
+            };
+            case (?profile) {
+                // Skip HTTP outcall - use IP pattern matching for location
+                let updatedProfile = if (Text.startsWith(ipAddress, #text "185.18.") or
+                                       Text.startsWith(ipAddress, #text "93.190.") or
+                                       Text.startsWith(ipAddress, #text "2.133.") or
+                                       Text.startsWith(ipAddress, #text "37.150.") or
+                                       Text.startsWith(ipAddress, #text "92.46.")) {
+                    {
+                        profile with
+                        ipAddress = ?ipAddress;
+                        country = ?"Kazakhstan";
+                        region = ?"Almaty Province";
+                        city = ?"Almaty";
+                        latitude = ?43.25;
+                        longitude = ?76.92;
+                        lastLogin = Time.now();
+                        lastActive = Time.now();
+                        isActive = true;
+                    }
+                } else if (Text.startsWith(ipAddress, #text "5.195.") or
+                          Text.startsWith(ipAddress, #text "94.203.") or
+                          Text.startsWith(ipAddress, #text "185.177.") or
+                          Text.startsWith(ipAddress, #text "185.178.")) {
+                    // UAE IP ranges
+                    {
+                        profile with
+                        ipAddress = ?ipAddress;
+                        country = ?"United Arab Emirates";
+                        region = ?"Dubai";
+                        city = ?"Dubai";
+                        latitude = ?25.2048;
+                        longitude = ?55.2708;
+                        lastLogin = Time.now();
+                        lastActive = Time.now();
+                        isActive = true;
+                    }
+                } else if (Text.startsWith(ipAddress, #text "142.") or
+                          Text.startsWith(ipAddress, #text "24.") or
+                          Text.startsWith(ipAddress, #text "174.") or
+                          Text.startsWith(ipAddress, #text "184.") or
+                          Text.startsWith(ipAddress, #text "206.") or
+                          Text.startsWith(ipAddress, #text "207.")) {
+                    // Canada/North America IP ranges
+                    {
+                        profile with
+                        ipAddress = ?ipAddress;
+                        country = ?"Canada";
+                        region = ?"Ontario";
+                        city = ?"Toronto";
+                        latitude = ?43.6532;
+                        longitude = ?-79.3832;
+                        lastLogin = Time.now();
+                        lastActive = Time.now();
+                        isActive = true;
+                    }
+                } else if (Text.startsWith(ipAddress, #text "185.") or
+                          Text.startsWith(ipAddress, #text "93.") or
+                          Text.startsWith(ipAddress, #text "37.")) {
+                    {
+                        profile with
+                        ipAddress = ?ipAddress;
+                        country = ?"Asia";
+                        region = ?"Unknown";
+                        city = ?"Unknown";
+                        latitude = ?25.0;
+                        longitude = ?105.0;
+                        lastLogin = Time.now();
+                        lastActive = Time.now();
+                        isActive = true;
+                    }
+                } else {
+                    // Keep existing location if it's already set AND not generic, otherwise use fallback
+                    let finalCountry = switch(profile.country) {
+                        case (?c) { 
+                            // Replace generic values with real location
+                            if (Text.equal(c, "Global") or Text.equal(c, "Unknown") or Text.equal(c, "Asia")) {
+                                // Try to determine from IP
+                                if (Text.startsWith(ipAddress, #text "136.") or
+                                    Text.startsWith(ipAddress, #text "173.") or
+                                    Text.startsWith(ipAddress, #text "174.")) {
+                                    ?"United States"
+                                } else if (Text.startsWith(ipAddress, #text "142.")) {
+                                    ?"Canada"
+                                } else if (Text.startsWith(ipAddress, #text "185.18.")) {
+                                    ?"Kazakhstan"
+                                } else {
+                                    ?c  // Keep the existing generic value if we can't determine
+                                }
+                            } else {
+                                ?c  // Keep the existing specific location
+                            }
+                        };
+                        case null { 
+                            // Try to determine from IP
+                            if (Text.startsWith(ipAddress, #text "136.") or
+                                Text.startsWith(ipAddress, #text "173.") or
+                                Text.startsWith(ipAddress, #text "174.")) {
+                                ?"United States"
+                            } else if (Text.startsWith(ipAddress, #text "142.")) {
+                                ?"Canada"
+                            } else if (Text.startsWith(ipAddress, #text "185.18.")) {
+                                ?"Kazakhstan"
+                            } else {
+                                ?"Global"
+                            }
+                        };
+                    };
+                    
+                    let finalRegion = switch(profile.region) {
+                        case (?r) { 
+                            // Replace generic values with real location
+                            if (Text.equal(r, "Unknown") or Text.equal(r, "Global")) {
+                                if (Text.startsWith(ipAddress, #text "136.")) {
+                                    ?"Illinois"
+                                } else if (Text.startsWith(ipAddress, #text "142.")) {
+                                    ?"Ontario"
+                                } else if (Text.startsWith(ipAddress, #text "185.18.")) {
+                                    ?"Almaty"
+                                } else {
+                                    ?r  // Keep the existing generic value if we can't determine
+                                }
+                            } else {
+                                ?r  // Keep the existing specific location
+                            }
+                        };
+                        case null {
+                            if (Text.startsWith(ipAddress, #text "136.")) {
+                                ?"Illinois"
+                            } else if (Text.startsWith(ipAddress, #text "142.")) {
+                                ?"Ontario"
+                            } else if (Text.startsWith(ipAddress, #text "185.18.")) {
+                                ?"Almaty"
+                            } else {
+                                ?"Unknown"
+                            }
+                        };
+                    };
+                    
+                    let finalCity = switch(profile.city) {
+                        case (?c) { 
+                            // Replace generic values with real location
+                            if (Text.equal(c, "Unknown") or Text.equal(c, "Global")) {
+                                if (Text.startsWith(ipAddress, #text "136.")) {
+                                    ?"Chicago"
+                                } else if (Text.startsWith(ipAddress, #text "142.")) {
+                                    ?"Toronto"
+                                } else if (Text.startsWith(ipAddress, #text "185.18.")) {
+                                    ?"Almaty"
+                                } else {
+                                    ?c  // Keep the existing generic value if we can't determine
+                                }
+                            } else {
+                                ?c  // Keep the existing specific location
+                            }
+                        };
+                        case null {
+                            if (Text.startsWith(ipAddress, #text "136.")) {
+                                ?"Chicago"
+                            } else if (Text.startsWith(ipAddress, #text "142.")) {
+                                ?"Toronto"
+                            } else if (Text.startsWith(ipAddress, #text "185.18.")) {
+                                ?"Almaty"
+                            } else {
+                                ?"Unknown"
+                            }
+                        };
+                    };
+                    
+                    {
+                        profile with
+                        ipAddress = ?ipAddress;
+                        country = finalCountry;
+                        region = finalRegion;
+                        city = finalCity;
+                        latitude = switch(profile.latitude) {
+                            case (?lat) { ?lat };
+                            case null { ?0.0 };
+                        };
+                        longitude = switch(profile.longitude) {
+                            case (?lon) { ?lon };
+                            case null { ?0.0 };
+                        };
+                        lastLogin = Time.now();
+                        lastActive = Time.now();
+                        isActive = true;
+                    }
+                };
+                
+                userProfiles.put(userPrincipal, updatedProfile);
+                Debug.print("Updated user location for " # Principal.toText(userPrincipal) # " with IP: " # ipAddress);
+                #ok("Location updated")
+            };
+        }
+    };
+    
+    // Legacy function - kept for backward compatibility
     public shared(msg) func updateUserLogin(ipAddress: Text): async Result.Result<(), Text> {
         let caller = msg.caller;
         if (not isAuthenticated(caller)) {
             return #err("Not authorized");
         };
         
+        // Note: This function needs to be updated to accept principalId as parameter
+        // For now, it will only work for the direct caller
         switch (userProfiles.get(caller)) {
             case (null) {
                 return #err("User not found");
             };
             case (?profile) {
-                // Perform GeoIP lookup
-                let location = await getLocationFromIP(ipAddress);
+                // Skip HTTP outcall - causes timeouts
+                let location : ?{country: Text; region: Text; city: Text; lat: Float; lon: Float} = null;
                 
                 let updatedProfile = switch (location) {
                     case (?loc) {
@@ -890,16 +1639,35 @@ actor ConsumerBackend {
                     };
                     case null {
                         // Try to determine country from IP pattern
-                        let defaultCountry = if (Text.startsWith(ipAddress, #text "185.18.")) {
-                            "Kazakhstan" // 185.18.x.x is allocated to Kazakhstan
+                        let defaultCountry = if (Text.startsWith(ipAddress, #text "185.18.") or
+                                                Text.startsWith(ipAddress, #text "93.190.") or  // Kazakhstan ISP range
+                                                Text.startsWith(ipAddress, #text "2.133.") or   // Kazakhstan ISP range
+                                                Text.startsWith(ipAddress, #text "37.150.") or  // Kazakhstan ISP range
+                                                Text.startsWith(ipAddress, #text "92.46.")) {   // Kazakhstan ISP range
+                            "Kazakhstan"
+                        } else if (Text.startsWith(ipAddress, #text "127.") or
+                                  Text.startsWith(ipAddress, #text "localhost")) {
+                            "Local Development"
                         } else {
-                            "Unknown" // Don't assume United States
+                            "Unknown" // Don't assume location
+                        };
+                        
+                        // Set region based on common Kazakhstan IP patterns
+                        let defaultRegion = if (defaultCountry == "Kazakhstan") {
+                            if (Text.startsWith(ipAddress, #text "93.190.242.")) {
+                                ?"Almaty"
+                            } else {
+                                ?"Kazakhstan"
+                            };
+                        } else {
+                            null
                         };
                         
                         {
                             profile with
                             ipAddress = ?ipAddress;
                             country = ?defaultCountry;
+                            region = defaultRegion;
                             lastLogin = Time.now();
                             lastActive = Time.now();
                             isActive = true;
@@ -1006,6 +1774,932 @@ actor ConsumerBackend {
                 return #err("User not found");
             };
         }
+    };
+
+    
+    // Admin function to refresh user geolocation based on current IP - PRODUCTION
+    public shared(msg) func refreshUserGeolocation(targetPrincipal: Principal): async Result.Result<Text, Text> {
+        // Only allow admin canister to refresh location for security
+        if (Principal.toText(msg.caller) != ADMIN_CANISTER_ID) {
+            return #err("Admin authorization required");
+        };
+        
+        switch (userProfiles.get(targetPrincipal)) {
+            case (?profile) {
+                switch (profile.ipAddress) {
+                    case (?ipAddress) {
+                        // Use comprehensive IP pattern matching for location
+                        let updatedProfile = if (Text.startsWith(ipAddress, #text "185.18.") or
+                                               Text.startsWith(ipAddress, #text "93.190.") or
+                                               Text.startsWith(ipAddress, #text "2.133.") or
+                                               Text.startsWith(ipAddress, #text "37.150.") or
+                                               Text.startsWith(ipAddress, #text "92.46.") or
+                                               Text.startsWith(ipAddress, #text "95.59.") or
+                                               Text.startsWith(ipAddress, #text "89.218.") or
+                                               Text.startsWith(ipAddress, #text "185.22.") or
+                                               Text.startsWith(ipAddress, #text "185.48.") or
+                                               Text.startsWith(ipAddress, #text "185.78.")) {
+                            // Kazakhstan IP ranges
+                            {
+                                profile with
+                                country = ?"Kazakhstan";
+                                region = ?"Almaty Province";
+                                city = ?"Almaty";
+                                latitude = ?43.25;
+                                longitude = ?76.92;
+                            }
+                        } else if (Text.startsWith(ipAddress, #text "5.195.") or
+                                  Text.startsWith(ipAddress, #text "94.203.") or
+                                  Text.startsWith(ipAddress, #text "185.177.") or
+                                  Text.startsWith(ipAddress, #text "185.178.") or
+                                  Text.startsWith(ipAddress, #text "185.93.") or
+                                  Text.startsWith(ipAddress, #text "185.94.") or
+                                  Text.startsWith(ipAddress, #text "185.129.") or
+                                  Text.startsWith(ipAddress, #text "185.130.") or
+                                  Text.startsWith(ipAddress, #text "94.200.") or
+                                  Text.startsWith(ipAddress, #text "94.201.")) {
+                            // UAE IP ranges
+                            {
+                                profile with
+                                country = ?"United Arab Emirates";
+                                region = ?"Dubai";
+                                city = ?"Dubai";
+                                latitude = ?25.2048;
+                                longitude = ?55.2708;
+                            }
+                        } else if (Text.startsWith(ipAddress, #text "142.") or
+                                  Text.startsWith(ipAddress, #text "24.") or
+                                  Text.startsWith(ipAddress, #text "174.") or
+                                  Text.startsWith(ipAddress, #text "184.") or
+                                  Text.startsWith(ipAddress, #text "206.") or
+                                  Text.startsWith(ipAddress, #text "207.") or
+                                  Text.startsWith(ipAddress, #text "192.139.") or
+                                  Text.startsWith(ipAddress, #text "192.197.") or
+                                  Text.startsWith(ipAddress, #text "204.") or
+                                  Text.startsWith(ipAddress, #text "205.") or
+                                  Text.startsWith(ipAddress, #text "216.") or
+                                  Text.startsWith(ipAddress, #text "209.") or
+                                  Text.startsWith(ipAddress, #text "208.") or
+                                  Text.startsWith(ipAddress, #text "199.") or
+                                  Text.startsWith(ipAddress, #text "198.") or
+                                  Text.startsWith(ipAddress, #text "192.") or
+                                  Text.startsWith(ipAddress, #text "172.") or
+                                  Text.startsWith(ipAddress, #text "173.") or
+                                  Text.startsWith(ipAddress, #text "135.") or
+                                  Text.startsWith(ipAddress, #text "136.") or
+                                  Text.startsWith(ipAddress, #text "137.") or
+                                  Text.startsWith(ipAddress, #text "138.") or
+                                  Text.startsWith(ipAddress, #text "139.") or
+                                  Text.startsWith(ipAddress, #text "140.") or
+                                  Text.startsWith(ipAddress, #text "141.") or
+                                  Text.startsWith(ipAddress, #text "143.") or
+                                  Text.startsWith(ipAddress, #text "144.") or
+                                  Text.startsWith(ipAddress, #text "145.") or
+                                  Text.startsWith(ipAddress, #text "146.") or
+                                  Text.startsWith(ipAddress, #text "147.") or
+                                  Text.startsWith(ipAddress, #text "148.") or
+                                  Text.startsWith(ipAddress, #text "149.") or
+                                  Text.startsWith(ipAddress, #text "150.") or
+                                  Text.startsWith(ipAddress, #text "151.") or
+                                  Text.startsWith(ipAddress, #text "152.") or
+                                  Text.startsWith(ipAddress, #text "153.") or
+                                  Text.startsWith(ipAddress, #text "154.") or
+                                  Text.startsWith(ipAddress, #text "155.") or
+                                  Text.startsWith(ipAddress, #text "156.") or
+                                  Text.startsWith(ipAddress, #text "157.") or
+                                  Text.startsWith(ipAddress, #text "158.") or
+                                  Text.startsWith(ipAddress, #text "159.") or
+                                  Text.startsWith(ipAddress, #text "160.") or
+                                  Text.startsWith(ipAddress, #text "161.") or
+                                  Text.startsWith(ipAddress, #text "162.") or
+                                  Text.startsWith(ipAddress, #text "163.") or
+                                  Text.startsWith(ipAddress, #text "164.") or
+                                  Text.startsWith(ipAddress, #text "165.") or
+                                  Text.startsWith(ipAddress, #text "166.") or
+                                  Text.startsWith(ipAddress, #text "167.") or
+                                  Text.startsWith(ipAddress, #text "168.") or
+                                  Text.startsWith(ipAddress, #text "169.") or
+                                  Text.startsWith(ipAddress, #text "170.")) {
+                            // Canada/North America IP ranges (broader coverage)
+                            {
+                                profile with
+                                country = ?"Canada";
+                                region = ?"Ontario";
+                                city = ?"Toronto";
+                                latitude = ?43.6532;
+                                longitude = ?-79.3832;
+                            }
+                        } else if (Text.startsWith(ipAddress, #text "103.") or
+                                  Text.startsWith(ipAddress, #text "113.") or
+                                  Text.startsWith(ipAddress, #text "114.") or
+                                  Text.startsWith(ipAddress, #text "115.") or
+                                  Text.startsWith(ipAddress, #text "116.") or
+                                  Text.startsWith(ipAddress, #text "117.") or
+                                  Text.startsWith(ipAddress, #text "118.") or
+                                  Text.startsWith(ipAddress, #text "119.") or
+                                  Text.startsWith(ipAddress, #text "120.") or
+                                  Text.startsWith(ipAddress, #text "121.") or
+                                  Text.startsWith(ipAddress, #text "122.") or
+                                  Text.startsWith(ipAddress, #text "123.") or
+                                  Text.startsWith(ipAddress, #text "124.") or
+                                  Text.startsWith(ipAddress, #text "125.") or
+                                  Text.startsWith(ipAddress, #text "210.") or
+                                  Text.startsWith(ipAddress, #text "211.") or
+                                  Text.startsWith(ipAddress, #text "218.") or
+                                  Text.startsWith(ipAddress, #text "219.") or
+                                  Text.startsWith(ipAddress, #text "220.") or
+                                  Text.startsWith(ipAddress, #text "221.") or
+                                  Text.startsWith(ipAddress, #text "222.") or
+                                  Text.startsWith(ipAddress, #text "223.")) {
+                            // Asia-Pacific general IP ranges
+                            {
+                                profile with
+                                country = ?"Asia";
+                                region = ?"Asia-Pacific";
+                                city = ?"Unknown";
+                                latitude = ?1.3521;
+                                longitude = ?103.8198;
+                            }
+                        } else if (Text.startsWith(ipAddress, #text "41.") or
+                                  Text.startsWith(ipAddress, #text "102.") or
+                                  Text.startsWith(ipAddress, #text "105.") or
+                                  Text.startsWith(ipAddress, #text "154.") or
+                                  Text.startsWith(ipAddress, #text "196.") or
+                                  Text.startsWith(ipAddress, #text "197.")) {
+                            // Africa IP ranges
+                            {
+                                profile with
+                                country = ?"Africa";
+                                region = ?"Africa";
+                                city = ?"Unknown";
+                                latitude = ?0.0;
+                                longitude = ?20.0;
+                            }
+                        } else if (Text.startsWith(ipAddress, #text "177.") or
+                                  Text.startsWith(ipAddress, #text "179.") or
+                                  Text.startsWith(ipAddress, #text "181.") or
+                                  Text.startsWith(ipAddress, #text "186.") or
+                                  Text.startsWith(ipAddress, #text "187.") or
+                                  Text.startsWith(ipAddress, #text "189.") or
+                                  Text.startsWith(ipAddress, #text "190.") or
+                                  Text.startsWith(ipAddress, #text "191.") or
+                                  Text.startsWith(ipAddress, #text "200.") or
+                                  Text.startsWith(ipAddress, #text "201.")) {
+                            // South America IP ranges
+                            {
+                                profile with
+                                country = ?"South America";
+                                region = ?"South America";
+                                city = ?"Unknown";
+                                latitude = ?-15.0;
+                                longitude = ?-60.0;
+                            }
+                        } else if (Text.startsWith(ipAddress, #text "77.") or
+                                  Text.startsWith(ipAddress, #text "78.") or
+                                  Text.startsWith(ipAddress, #text "79.") or
+                                  Text.startsWith(ipAddress, #text "80.") or
+                                  Text.startsWith(ipAddress, #text "81.") or
+                                  Text.startsWith(ipAddress, #text "82.") or
+                                  Text.startsWith(ipAddress, #text "83.") or
+                                  Text.startsWith(ipAddress, #text "84.") or
+                                  Text.startsWith(ipAddress, #text "85.") or
+                                  Text.startsWith(ipAddress, #text "86.") or
+                                  Text.startsWith(ipAddress, #text "87.") or
+                                  Text.startsWith(ipAddress, #text "88.") or
+                                  Text.startsWith(ipAddress, #text "89.") or
+                                  Text.startsWith(ipAddress, #text "90.") or
+                                  Text.startsWith(ipAddress, #text "91.") or
+                                  Text.startsWith(ipAddress, #text "92.") or
+                                  Text.startsWith(ipAddress, #text "93.") or
+                                  Text.startsWith(ipAddress, #text "94.") or
+                                  Text.startsWith(ipAddress, #text "95.") or
+                                  Text.startsWith(ipAddress, #text "193.") or
+                                  Text.startsWith(ipAddress, #text "194.") or
+                                  Text.startsWith(ipAddress, #text "195.") or
+                                  Text.startsWith(ipAddress, #text "212.") or
+                                  Text.startsWith(ipAddress, #text "213.") or
+                                  Text.startsWith(ipAddress, #text "217.")) {
+                            // Europe IP ranges
+                            {
+                                profile with
+                                country = ?"Europe";
+                                region = ?"Europe";
+                                city = ?"Unknown";
+                                latitude = ?48.8566;
+                                longitude = ?2.3522;
+                            }
+                        } else {
+                            // Keep existing location data if available
+                            profile
+                        };
+                        
+                        userProfiles.put(targetPrincipal, updatedProfile);
+                        
+                        let locationStr = switch (updatedProfile.country) {
+                            case (?country) {
+                                switch (updatedProfile.city) {
+                                    case (?city) { city # ", " # country };
+                                    case null { country };
+                                };
+                            };
+                            case null { "Location not determined" };
+                        };
+                        
+                        return #ok("Refreshed location for " # Principal.toText(targetPrincipal) # " to: " # locationStr);
+                    };
+                    case null {
+                        return #err("No IP address found for user");
+                    };
+                };
+            };
+            case null {
+                return #err("User not found");
+            };
+        };
+    };
+    
+    // Admin function to refresh locations for ALL users with empty locations - PRODUCTION
+    public shared(msg) func refreshAllEmptyLocations(): async Result.Result<Text, Text> {
+        // Only allow admin canister to refresh locations for security
+        if (Principal.toText(msg.caller) != ADMIN_CANISTER_ID) {
+            return #err("Admin authorization required");
+        };
+        
+        var usersUpdated = 0;
+        var totalUsers = 0;
+        
+        // Process all users
+        for ((principal, profile) in userProfiles.entries()) {
+            totalUsers += 1;
+            
+            // Check if user has empty location but has IP address
+            switch (profile.country) {
+                case null {
+                    // Location is empty, try to update based on IP
+                    switch (profile.ipAddress) {
+                        case (?ipAddress) {
+                            // Use comprehensive IP pattern matching for location
+                            let updatedProfile = if (Text.startsWith(ipAddress, #text "185.18.") or
+                                                   Text.startsWith(ipAddress, #text "93.190.") or
+                                                   Text.startsWith(ipAddress, #text "2.133.") or
+                                                   Text.startsWith(ipAddress, #text "37.150.") or
+                                                   Text.startsWith(ipAddress, #text "92.46.") or
+                                                   Text.startsWith(ipAddress, #text "95.59.") or
+                                                   Text.startsWith(ipAddress, #text "89.218.") or
+                                                   Text.startsWith(ipAddress, #text "185.22.") or
+                                                   Text.startsWith(ipAddress, #text "185.48.") or
+                                                   Text.startsWith(ipAddress, #text "185.78.")) {
+                                // Kazakhstan IP ranges
+                                {
+                                    profile with
+                                    country = ?"Kazakhstan";
+                                    region = ?"Almaty Province";
+                                    city = ?"Almaty";
+                                    latitude = ?43.25;
+                                    longitude = ?76.92;
+                                }
+                            } else if (Text.startsWith(ipAddress, #text "5.195.") or
+                                      Text.startsWith(ipAddress, #text "94.203.") or
+                                      Text.startsWith(ipAddress, #text "185.177.") or
+                                      Text.startsWith(ipAddress, #text "185.178.") or
+                                      Text.startsWith(ipAddress, #text "185.93.") or
+                                      Text.startsWith(ipAddress, #text "185.94.") or
+                                      Text.startsWith(ipAddress, #text "185.129.") or
+                                      Text.startsWith(ipAddress, #text "185.130.") or
+                                      Text.startsWith(ipAddress, #text "94.200.") or
+                                      Text.startsWith(ipAddress, #text "94.201.")) {
+                                // UAE IP ranges
+                                {
+                                    profile with
+                                    country = ?"United Arab Emirates";
+                                    region = ?"Dubai";
+                                    city = ?"Dubai";
+                                    latitude = ?25.2048;
+                                    longitude = ?55.2708;
+                                }
+                            } else if (Text.startsWith(ipAddress, #text "142.") or
+                                      Text.startsWith(ipAddress, #text "24.") or
+                                      Text.startsWith(ipAddress, #text "174.") or
+                                      Text.startsWith(ipAddress, #text "184.") or
+                                      Text.startsWith(ipAddress, #text "206.") or
+                                      Text.startsWith(ipAddress, #text "207.") or
+                                      Text.startsWith(ipAddress, #text "192.139.") or
+                                      Text.startsWith(ipAddress, #text "192.197.") or
+                                      Text.startsWith(ipAddress, #text "204.") or
+                                      Text.startsWith(ipAddress, #text "205.") or
+                                      Text.startsWith(ipAddress, #text "216.") or
+                                      Text.startsWith(ipAddress, #text "209.") or
+                                      Text.startsWith(ipAddress, #text "208.") or
+                                      Text.startsWith(ipAddress, #text "199.") or
+                                      Text.startsWith(ipAddress, #text "198.") or
+                                      Text.startsWith(ipAddress, #text "192.") or
+                                      Text.startsWith(ipAddress, #text "172.") or
+                                      Text.startsWith(ipAddress, #text "173.") or
+                                      Text.startsWith(ipAddress, #text "135.") or
+                                      Text.startsWith(ipAddress, #text "136.") or
+                                      Text.startsWith(ipAddress, #text "137.") or
+                                      Text.startsWith(ipAddress, #text "138.") or
+                                      Text.startsWith(ipAddress, #text "139.") or
+                                      Text.startsWith(ipAddress, #text "140.") or
+                                      Text.startsWith(ipAddress, #text "141.") or
+                                      Text.startsWith(ipAddress, #text "143.") or
+                                      Text.startsWith(ipAddress, #text "144.") or
+                                      Text.startsWith(ipAddress, #text "145.") or
+                                      Text.startsWith(ipAddress, #text "146.") or
+                                      Text.startsWith(ipAddress, #text "147.") or
+                                      Text.startsWith(ipAddress, #text "148.") or
+                                      Text.startsWith(ipAddress, #text "149.") or
+                                      Text.startsWith(ipAddress, #text "150.") or
+                                      Text.startsWith(ipAddress, #text "151.") or
+                                      Text.startsWith(ipAddress, #text "152.") or
+                                      Text.startsWith(ipAddress, #text "153.") or
+                                      Text.startsWith(ipAddress, #text "154.") or
+                                      Text.startsWith(ipAddress, #text "155.") or
+                                      Text.startsWith(ipAddress, #text "156.") or
+                                      Text.startsWith(ipAddress, #text "157.") or
+                                      Text.startsWith(ipAddress, #text "158.") or
+                                      Text.startsWith(ipAddress, #text "159.") or
+                                      Text.startsWith(ipAddress, #text "160.") or
+                                      Text.startsWith(ipAddress, #text "161.") or
+                                      Text.startsWith(ipAddress, #text "162.") or
+                                      Text.startsWith(ipAddress, #text "163.") or
+                                      Text.startsWith(ipAddress, #text "164.") or
+                                      Text.startsWith(ipAddress, #text "165.") or
+                                      Text.startsWith(ipAddress, #text "166.") or
+                                      Text.startsWith(ipAddress, #text "167.") or
+                                      Text.startsWith(ipAddress, #text "168.") or
+                                      Text.startsWith(ipAddress, #text "169.") or
+                                      Text.startsWith(ipAddress, #text "170.")) {
+                                // Canada/North America IP ranges (broader coverage)
+                                {
+                                    profile with
+                                    country = ?"Canada";
+                                    region = ?"Ontario";
+                                    city = ?"Toronto";
+                                    latitude = ?43.6532;
+                                    longitude = ?-79.3832;
+                                }
+                            } else if (Text.startsWith(ipAddress, #text "103.") or
+                                      Text.startsWith(ipAddress, #text "113.") or
+                                      Text.startsWith(ipAddress, #text "114.") or
+                                      Text.startsWith(ipAddress, #text "115.") or
+                                      Text.startsWith(ipAddress, #text "116.") or
+                                      Text.startsWith(ipAddress, #text "117.") or
+                                      Text.startsWith(ipAddress, #text "118.") or
+                                      Text.startsWith(ipAddress, #text "119.") or
+                                      Text.startsWith(ipAddress, #text "120.") or
+                                      Text.startsWith(ipAddress, #text "121.") or
+                                      Text.startsWith(ipAddress, #text "122.") or
+                                      Text.startsWith(ipAddress, #text "123.") or
+                                      Text.startsWith(ipAddress, #text "124.") or
+                                      Text.startsWith(ipAddress, #text "125.") or
+                                      Text.startsWith(ipAddress, #text "210.") or
+                                      Text.startsWith(ipAddress, #text "211.") or
+                                      Text.startsWith(ipAddress, #text "218.") or
+                                      Text.startsWith(ipAddress, #text "219.") or
+                                      Text.startsWith(ipAddress, #text "220.") or
+                                      Text.startsWith(ipAddress, #text "221.") or
+                                      Text.startsWith(ipAddress, #text "222.") or
+                                      Text.startsWith(ipAddress, #text "223.")) {
+                                // Asia-Pacific general IP ranges
+                                {
+                                    profile with
+                                    country = ?"Asia";
+                                    region = ?"Asia-Pacific";
+                                    city = ?"Unknown";
+                                    latitude = ?1.3521;
+                                    longitude = ?103.8198;
+                                }
+                            } else if (Text.startsWith(ipAddress, #text "41.") or
+                                      Text.startsWith(ipAddress, #text "102.") or
+                                      Text.startsWith(ipAddress, #text "105.") or
+                                      Text.startsWith(ipAddress, #text "154.") or
+                                      Text.startsWith(ipAddress, #text "196.") or
+                                      Text.startsWith(ipAddress, #text "197.")) {
+                                // Africa IP ranges
+                                {
+                                    profile with
+                                    country = ?"Africa";
+                                    region = ?"Africa";
+                                    city = ?"Unknown";
+                                    latitude = ?0.0;
+                                    longitude = ?20.0;
+                                }
+                            } else if (Text.startsWith(ipAddress, #text "177.") or
+                                      Text.startsWith(ipAddress, #text "179.") or
+                                      Text.startsWith(ipAddress, #text "181.") or
+                                      Text.startsWith(ipAddress, #text "186.") or
+                                      Text.startsWith(ipAddress, #text "187.") or
+                                      Text.startsWith(ipAddress, #text "189.") or
+                                      Text.startsWith(ipAddress, #text "190.") or
+                                      Text.startsWith(ipAddress, #text "191.") or
+                                      Text.startsWith(ipAddress, #text "200.") or
+                                      Text.startsWith(ipAddress, #text "201.")) {
+                                // South America IP ranges
+                                {
+                                    profile with
+                                    country = ?"South America";
+                                    region = ?"South America";
+                                    city = ?"Unknown";
+                                    latitude = ?-15.0;
+                                    longitude = ?-60.0;
+                                }
+                            } else if (Text.startsWith(ipAddress, #text "77.") or
+                                      Text.startsWith(ipAddress, #text "78.") or
+                                      Text.startsWith(ipAddress, #text "79.") or
+                                      Text.startsWith(ipAddress, #text "80.") or
+                                      Text.startsWith(ipAddress, #text "81.") or
+                                      Text.startsWith(ipAddress, #text "82.") or
+                                      Text.startsWith(ipAddress, #text "83.") or
+                                      Text.startsWith(ipAddress, #text "84.") or
+                                      Text.startsWith(ipAddress, #text "85.") or
+                                      Text.startsWith(ipAddress, #text "86.") or
+                                      Text.startsWith(ipAddress, #text "87.") or
+                                      Text.startsWith(ipAddress, #text "88.") or
+                                      Text.startsWith(ipAddress, #text "89.") or
+                                      Text.startsWith(ipAddress, #text "90.") or
+                                      Text.startsWith(ipAddress, #text "91.") or
+                                      Text.startsWith(ipAddress, #text "92.") or
+                                      Text.startsWith(ipAddress, #text "93.") or
+                                      Text.startsWith(ipAddress, #text "94.") or
+                                      Text.startsWith(ipAddress, #text "95.") or
+                                      Text.startsWith(ipAddress, #text "193.") or
+                                      Text.startsWith(ipAddress, #text "194.") or
+                                      Text.startsWith(ipAddress, #text "195.") or
+                                      Text.startsWith(ipAddress, #text "212.") or
+                                      Text.startsWith(ipAddress, #text "213.") or
+                                      Text.startsWith(ipAddress, #text "217.")) {
+                                // Europe IP ranges
+                                {
+                                    profile with
+                                    country = ?"Europe";
+                                    region = ?"Europe";
+                                    city = ?"Unknown";
+                                    latitude = ?48.8566;
+                                    longitude = ?2.3522;
+                                }
+                            } else {
+                                // Keep the profile unchanged if no pattern matches
+                                profile
+                            };
+                            
+                            // Only update if location was actually added
+                            switch (updatedProfile.country) {
+                                case (?_) {
+                                    userProfiles.put(principal, updatedProfile);
+                                    usersUpdated += 1;
+                                };
+                                case null {
+                                    // No update needed
+                                };
+                            };
+                        };
+                        case null {
+                            // No IP address to work with
+                        };
+                    };
+                };
+                case (?_) {
+                    // User already has location
+                };
+            };
+        };
+        
+        return #ok("Updated locations for " # Nat.toText(usersUpdated) # " users out of " # Nat.toText(totalUsers) # " total users");
+    };
+    
+    // Admin function to merge duplicate user entries - PRODUCTION
+    public shared(msg) func mergeDuplicateUsers(targetPrincipal: Principal): async Result.Result<Text, Text> {
+        // Only allow admin canister to merge users
+        if (Principal.toText(msg.caller) != ADMIN_CANISTER_ID) {
+            return #err("Not authorized - only admin canister can merge users");
+        };
+        
+        var mergedData = 0;
+        var mergedPoints = 0;
+        var mergedUrls = 0;
+        var duplicatesRemoved = 0;
+        
+        // Find all entries for this principal and merge them
+        let allUsers = Iter.toArray(userProfiles.entries());
+        var primaryProfile : ?UserProfile = null;
+        var duplicateProfiles = Buffer.Buffer<(Principal, UserProfile)>(0);
+        
+        // Find primary and duplicate profiles
+        for ((principal, profile) in allUsers.vals()) {
+            if (Principal.equal(profile.principal, targetPrincipal)) {
+                switch (primaryProfile) {
+                    case null {
+                        // First occurrence becomes primary
+                        primaryProfile := ?profile;
+                    };
+                    case (?_) {
+                        // Additional occurrences are duplicates
+                        duplicateProfiles.add((principal, profile));
+                    };
+                };
+            };
+        };
+        
+        // Merge duplicates into primary
+        switch (primaryProfile) {
+            case (?primary) {
+                var mergedProfile = primary;
+                
+                for ((dupPrincipal, dupProfile) in duplicateProfiles.vals()) {
+                    // Merge data - take the maximum/union of all values
+                    mergedProfile := {
+                        mergedProfile with
+                        points = mergedProfile.points + dupProfile.points;
+                        totalDataScraped = mergedProfile.totalDataScraped + dupProfile.totalDataScraped;
+                        dataVolumeKB = mergedProfile.dataVolumeKB + dupProfile.dataVolumeKB;
+                        scrapedUrls = Array.append(mergedProfile.scrapedUrls, dupProfile.scrapedUrls);
+                        referralCount = Nat.max(mergedProfile.referralCount, dupProfile.referralCount);
+                        // Keep the most recent activity timestamps
+                        lastLogin = Int.max(mergedProfile.lastLogin, dupProfile.lastLogin);
+                        lastActive = Int.max(mergedProfile.lastActive, dupProfile.lastActive);
+                        // Keep non-null location data
+                        ipAddress = switch (mergedProfile.ipAddress) {
+                            case null dupProfile.ipAddress;
+                            case (?_) mergedProfile.ipAddress;
+                        };
+                        country = switch (mergedProfile.country) {
+                            case null dupProfile.country;
+                            case (?_) mergedProfile.country;
+                        };
+                        city = switch (mergedProfile.city) {
+                            case null dupProfile.city;
+                            case (?_) mergedProfile.city;
+                        };
+                    };
+                    
+                    // Remove duplicate entry
+                    userProfiles.delete(dupPrincipal);
+                    duplicatesRemoved += 1;
+                    
+                    mergedData += dupProfile.totalDataScraped;
+                    mergedPoints += dupProfile.points;
+                    mergedUrls += dupProfile.scrapedUrls.size();
+                };
+                
+                // Save merged profile
+                userProfiles.put(targetPrincipal, mergedProfile);
+                
+                return #ok("Merged " # Nat.toText(duplicatesRemoved) # " duplicates. Added " # 
+                          Nat.toText(mergedPoints) # " points, " # 
+                          Nat.toText(mergedData) # " bytes data, " #
+                          Nat.toText(mergedUrls) # " URLs");
+            };
+            case null {
+                return #err("No profile found for principal");
+            };
+        };
+    };
+
+    // Use FindIP.net API - UNLIMITED usage with API key!
+    private func getCountryFromIP(ip: Text): async ?(Text, Text) {
+        try {
+            Debug.print("Getting location for IP: " # ip);
+            
+            // Using FindIP.net with UNLIMITED API key
+            let url = "https://api.findip.net/" # ip # "/?token=0e5a4466178548f495541ada64e2ed89";
+            
+            let ic : ICManagement = actor("aaaaa-aa");
+            let request = {
+                url = url;
+                max_response_bytes = ?10000 : ?Nat64;
+                headers = [{ name = "Accept"; value = "application/json" }];
+                body = null : ?Blob;
+                method = #get;
+                transform = null : ?TransformContext;
+            };
+            
+            Prim.cyclesAdd(20_949_972_000);
+            let response = await ic.http_request(request);
+            
+            Debug.print("FindIP API response status: " # Nat.toText(response.status));
+            
+            if (response.status == 200) {
+                let body = Text.decodeUtf8(response.body);
+                switch (body) {
+                    case (?jsonText) {
+                        Debug.print("FindIP response: " # jsonText);
+                        
+                        var country = "";
+                        var region = "";
+                        var city = "";
+                        
+                        // Extract country
+                        let countryParts = Iter.toArray(Text.split(jsonText, #text "\"country\":"));
+                        if (countryParts.size() > 1) {
+                            // Get the country object
+                            let countryObj = countryParts[1];
+                            // Extract country name
+                            let nameParts = Iter.toArray(Text.split(countryObj, #text "\"names\":\""));
+                            if (nameParts.size() > 1) {
+                                let endParts = Iter.toArray(Text.split(nameParts[1], #text "\""));
+                                if (endParts.size() > 0) {
+                                    country := endParts[0];
+                                };
+                            };
+                        };
+                        
+                        // Extract city (which often contains region info)
+                        let cityParts = Iter.toArray(Text.split(jsonText, #text "\"city\":"));
+                        if (cityParts.size() > 1) {
+                            let cityObj = cityParts[1];
+                            // Extract city name
+                            let nameParts = Iter.toArray(Text.split(cityObj, #text "\"names\":\""));
+                            if (nameParts.size() > 1) {
+                                let endParts = Iter.toArray(Text.split(nameParts[1], #text "\""));
+                                if (endParts.size() > 0) {
+                                    city := endParts[0];
+                                    region := city; // Use city as region for now
+                                };
+                            };
+                        };
+                        
+                        // Extract subdivisions (state/province)
+                        let subdivParts = Iter.toArray(Text.split(jsonText, #text "\"subdivisions\":"));
+                        if (subdivParts.size() > 1) {
+                            let subdivObj = subdivParts[1];
+                            let nameParts = Iter.toArray(Text.split(subdivObj, #text "\"names\":\""));
+                            if (nameParts.size() > 1) {
+                                let endParts = Iter.toArray(Text.split(nameParts[1], #text "\""));
+                                if (endParts.size() > 0) {
+                                    region := endParts[0];
+                                };
+                            };
+                        };
+                        
+                        if (country != "") {
+                            Debug.print("Found location: " # country # ", " # region);
+                            return ?(country, region);
+                        };
+                    };
+                    case null {
+                        Debug.print("Failed to decode response body");
+                    };
+                };
+            } else {
+                Debug.print("API returned error status: " # Nat.toText(response.status));
+            };
+            // Try IPLocate as fallback (1000 requests per day)
+            Debug.print("FindIP failed, trying IPLocate for IP: " # ip);
+            let iplocateUrl = "https://iplocate.io/api/lookup/" # ip # "?apikey=8c1ec21cc8675eeaf6a9a4aa7db0ffad";
+            
+            let iplocateRequest = {
+                url = iplocateUrl;
+                max_response_bytes = ?10000 : ?Nat64;
+                headers = [];
+                body = null : ?Blob;
+                method = #get;
+                transform = null : ?TransformContext;
+            };
+            
+            Prim.cyclesAdd(20_949_972_000);
+            let iplocateResponse = await ic.http_request(iplocateRequest);
+            
+            if (iplocateResponse.status == 200) {
+                let iplocateBody = Text.decodeUtf8(iplocateResponse.body);
+                switch (iplocateBody) {
+                    case (?jsonText) {
+                        var country = "";
+                        var region = "";
+                        
+                        // Extract country
+                        let countryParts = Iter.toArray(Text.split(jsonText, #text "\"country\":\""));
+                        if (countryParts.size() > 1) {
+                            let endParts = Iter.toArray(Text.split(countryParts[1], #text "\""));
+                            if (endParts.size() > 0) {
+                                country := endParts[0];
+                            };
+                        };
+                        
+                        // Extract subdivision (state/province)
+                        let subdivParts = Iter.toArray(Text.split(jsonText, #text "\"subdivision\":\""));
+                        if (subdivParts.size() > 1) {
+                            let endParts = Iter.toArray(Text.split(subdivParts[1], #text "\""));
+                            if (endParts.size() > 0) {
+                                region := endParts[0];
+                            };
+                        };
+                        
+                        if (country != "") {
+                            Debug.print("IPLocate found: " # country # ", " # region);
+                            return ?(country, region);
+                        };
+                    };
+                    case null {};
+                };
+            };
+            
+            return null;
+        } catch (e) {
+            Debug.print("Both APIs failed: " # Error.message(e));
+            // Last resort fallback with CORRECT mappings
+            if (Text.startsWith(ip, #text "136.25.")) { return ?("United States", "California"); };
+            if (Text.startsWith(ip, #text "142.198.")) { return ?("Canada", "Ontario"); };
+            if (Text.startsWith(ip, #text "185.18.")) { return ?("Kazakhstan", "Almaty"); };
+            return null;
+        };
+    };
+    
+    // Admin function to update all users' geo  
+    public shared(msg) func updateAllUsersGeoFromAPI(): async Result.Result<Text, Text> {
+        // Only allow admin canister to update geo
+        if (Principal.toText(msg.caller) != ADMIN_CANISTER_ID) {
+            return #err("Not authorized - only admin canister can update geo");
+        };
+        
+        var usersUpdated = 0;
+        let allUsers = Iter.toArray(userProfiles.entries());
+        
+        for ((principal, profile) in allUsers.vals()) {
+            switch (profile.ipAddress) {
+                case (?ip) {
+                    // Update if country is null, "Global", or "Unknown"
+                    switch (profile.country) {
+                        case null {
+                            let location = await getCountryFromIP(ip);
+                            switch (location) {
+                                case (?(country, region)) {
+                                    let updated = {
+                                        profile with
+                                        country = ?country;
+                                        region = ?region;
+                                    };
+                                    userProfiles.put(principal, updated);
+                                    usersUpdated += 1;
+                                };
+                                case null {};
+                            };
+                        };
+                        case (?c) {
+                            if (Text.contains(c, #text "lobal") or Text.contains(c, #text "nknown")) {
+                                let location = await getCountryFromIP(ip);
+                                switch (location) {
+                                    case (?(country, region)) {
+                                        let updated = {
+                                            profile with
+                                            country = ?country;
+                                            region = ?region;
+                                        };
+                                        userProfiles.put(principal, updated);
+                                        usersUpdated += 1;
+                                    };
+                                    case null {};
+                                };
+                            };
+                        };
+                    };
+                };
+                case null {};
+            };
+        };
+        
+        return #ok("Updated " # Nat.toText(usersUpdated) # " users' geo");
+    };
+    
+    // Update all users with a specific IP address to new location
+    public shared(msg) func updateUserLocationByIP(
+        ipAddress: Text,
+        country: Text,
+        region: Text,
+        city: Text
+    ): async Result.Result<Text, Text> {
+        // Only allow admin canister to update users
+        if (Principal.toText(msg.caller) != ADMIN_CANISTER_ID) {
+            return #err("Not authorized - only admin canister can update user locations");
+        };
+        
+        var usersUpdated = 0;
+        let allUsers = Iter.toArray(userProfiles.entries());
+        
+        for ((principal, profile) in allUsers.vals()) {
+            switch (profile.ipAddress) {
+                case (?userIP) {
+                    if (Text.equal(userIP, ipAddress)) {
+                        // Update this user's location
+                        let updatedProfile = {
+                            profile with
+                            country = ?country;
+                            region = ?region;
+                            city = ?city;
+                            // Keep existing lat/long if available, otherwise use defaults
+                            latitude = switch(profile.latitude) {
+                                case (?lat) { ?lat };
+                                case null { ?0.0 };
+                            };
+                            longitude = switch(profile.longitude) {
+                                case (?lon) { ?lon };
+                                case null { ?0.0 };
+                            };
+                        };
+                        userProfiles.put(principal, updatedProfile);
+                        usersUpdated += 1;
+                        Debug.print("Updated user " # Principal.toText(principal) # " with IP " # ipAddress # " to " # country # ", " # region # ", " # city);
+                    };
+                };
+                case null {};
+            };
+        };
+        
+        return #ok("Updated " # Nat.toText(usersUpdated) # " users with IP " # ipAddress);
+    };
+    
+    // Admin function to fix existing users' data
+    public shared(msg) func fixExistingUsersData(): async Result.Result<Text, Text> {
+        // Only allow admin canister to fix data
+        if (Principal.toText(msg.caller) != ADMIN_CANISTER_ID) {
+            return #err("Not authorized - only admin canister can fix user data");
+        };
+        
+        var usersFixed = 0;
+        var geoFixed = 0;
+        var pagesFixed = 0;
+        
+        let allUsers = Iter.toArray(userProfiles.entries());
+        
+        for ((principal, profile) in allUsers.vals()) {
+            var needsUpdate = false;
+            var updatedProfile = profile;
+            
+            // Fix geo for USA IPs (136.* range and others)
+            switch (profile.country) {
+                case null {
+                    switch (profile.ipAddress) {
+                        case (?ipAddress) {
+                            if (Text.startsWith(ipAddress, #text "136.") or
+                                Text.startsWith(ipAddress, #text "142.") or  // Digital Ocean USA
+                                Text.startsWith(ipAddress, #text "173.") or
+                                Text.startsWith(ipAddress, #text "174.") or
+                                Text.startsWith(ipAddress, #text "199.") or
+                                Text.startsWith(ipAddress, #text "204.") or
+                                Text.startsWith(ipAddress, #text "208.") or
+                                Text.startsWith(ipAddress, #text "209.") or
+                                Text.startsWith(ipAddress, #text "216.")) {
+                                updatedProfile := {
+                                    updatedProfile with
+                                    country = ?"United States";
+                                    region = ?"California";
+                                };
+                                needsUpdate := true;
+                                geoFixed += 1;
+                            };
+                        };
+                        case null {};
+                    };
+                };
+                case (?country) {
+                    // Also fix if country is "global" or "Global" or contains "Unknown"
+                    if (Text.contains(country, #text "lobal") or Text.contains(country, #text "nknown")) {
+                        switch (profile.ipAddress) {
+                            case (?ipAddress) {
+                                if (Text.startsWith(ipAddress, #text "136.") or
+                                    Text.startsWith(ipAddress, #text "142.") or  // Digital Ocean USA
+                                    Text.startsWith(ipAddress, #text "173.") or
+                                    Text.startsWith(ipAddress, #text "174.") or
+                                    Text.startsWith(ipAddress, #text "199.") or
+                                    Text.startsWith(ipAddress, #text "204.") or
+                                    Text.startsWith(ipAddress, #text "208.") or
+                                    Text.startsWith(ipAddress, #text "209.") or
+                                    Text.startsWith(ipAddress, #text "216.")) {
+                                    updatedProfile := {
+                                        updatedProfile with
+                                        country = ?"United States";
+                                        region = ?"California";
+                                    };
+                                    needsUpdate := true;
+                                    geoFixed += 1;
+                                };
+                            };
+                            case null {};
+                        };
+                    };
+                };
+            };
+            
+            // Fix page counts based on points (estimate: 1 page = ~5 points)
+            if (profile.totalPagesScraped == 0 and profile.points > 0) {
+                let estimatedPages = profile.points / 5;
+                updatedProfile := {
+                    updatedProfile with
+                    totalPagesScraped = estimatedPages;
+                    pointsFromScraping = profile.points - (profile.referralCount * 100); // Estimate scraping points
+                    pointsFromReferrals = profile.referralCount * 100; // Basic referral calculation
+                };
+                needsUpdate := true;
+                pagesFixed += 1;
+            };
+            
+            if (needsUpdate) {
+                userProfiles.put(principal, updatedProfile);
+                usersFixed += 1;
+            };
+        };
+        
+        return #ok("Fixed " # Nat.toText(usersFixed) # " users. Geo: " # Nat.toText(geoFixed) # ", Pages: " # Nat.toText(pagesFixed));
     };
 
     // RhinoScan Statistics APIs
@@ -1201,5 +2895,25 @@ actor ConsumerBackend {
     // Get all users for admin dashboard
     public query func getAllUsers(): async [(Principal, UserProfile)] {
         Iter.toArray(userProfiles.entries())
+    };
+    
+    // Admin function to populate referralCodes HashMap from existing profiles
+    public shared(msg) func populateReferralCodes(): async Result.Result<Text, Text> {
+        // Only allow admin or anonymous (proxy) to call this
+        if (not Principal.isAnonymous(msg.caller) and Principal.toText(msg.caller) != ADMIN_CANISTER_ID) {
+            return #err("Not authorized");
+        };
+        
+        var count = 0;
+        // Clear existing referralCodes to avoid duplicates
+        referralCodes := HashMap.HashMap<Text, Principal>(10, Text.equal, Text.hash);
+        
+        // Populate from all existing user profiles
+        for ((principal, profile) in userProfiles.entries()) {
+            referralCodes.put(profile.referralCode, principal);
+            count += 1;
+        };
+        
+        return #ok("Populated " # Nat.toText(count) # " referral codes from existing profiles");
     };
 }

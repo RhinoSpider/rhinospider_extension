@@ -173,16 +173,17 @@ class ServiceWorkerAdapter {
   /**
    * Update user login with IP address
    * @param {string} ipAddress IP address
+   * @param {string} principalId Principal ID of the user
    * @returns {Promise<Object>} Result
    */
-  async updateUserLogin(ipAddress) {
+  async updateUserLogin(ipAddress, principalId) {
     try {
-      const response = await fetch(`${IC_PROXY_URL}/api/consumer-update-login`, {
+      const response = await fetch(`${IC_PROXY_URL}/api/consumer-update-login-for-principal`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ ipAddress })
+        body: JSON.stringify({ ipAddress, principalId })
       });
 
       if (response.ok) {
@@ -241,9 +242,10 @@ class ServiceWorkerAdapter {
 
   /**
    * Get referral code for the current user
+   * @param {string} principalId Optional principal ID
    * @returns {Promise<Object>} Referral code
    */
-  async getReferralCode() {
+  async getReferralCode(principalId) {
     try {
       const response = await fetch(`${IC_PROXY_URL}/api/consumer-referral-code`, {
         method: 'POST',
@@ -252,7 +254,7 @@ class ServiceWorkerAdapter {
           'x-device-id': this.deviceId || await this.getOrCreateDeviceId(),
           'Authorization': `Bearer ${API_KEY}`
         },
-        body: JSON.stringify({})
+        body: JSON.stringify({ principalId: principalId || null })
       });
 
       if (response.ok) {
@@ -330,30 +332,70 @@ class ServiceWorkerAdapter {
   /**
    * Update user login with IP address
    * @param {string} ipAddress User's IP address
+   * @param {string} principalId Principal ID of the user
    * @returns {Promise<Object>} Result
    */
-  async updateUserLogin(ipAddress) {
+  async updateUserLogin(ipAddress, principalId) {
     try {
-      const response = await fetch(`${IC_PROXY_URL}/api/consumer-update-login`, {
+      const response = await fetch(`${IC_PROXY_URL}/api/consumer-update-login-for-principal`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'x-device-id': this.deviceId || await this.getOrCreateDeviceId(),
           'Authorization': `Bearer ${API_KEY}`
         },
-        body: JSON.stringify({ ipAddress })
+        body: JSON.stringify({ ipAddress, principalId })
       });
 
       if (response.ok) {
         const result = await response.json();
         return result;
+      } else if (response.status === 504) {
+        // 504 Gateway Timeout - IC network is slow, not an error
+        console.log('IC network timeout for IP update (not critical)');
+        return { err: 'Timeout - will retry later' };
       } else {
         console.error('Update user login error:', response.status, response.statusText);
-        throw new Error(`Update user login error: ${response.status} ${response.statusText}`);
+        return { err: `Update user login error: ${response.status}` };
       }
     } catch (error) {
       console.error('Error updating user login:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Get user profile data
+   * @param {string} principalId Principal ID
+   * @param {string} referralCode Referral code
+   * @returns {Promise<Object>} User profile data
+   */
+  async getUserProfile(principalId, referralCode) {
+    try {
+      // Use principal-based lookup for accurate user data
+      const response = await fetch(`${IC_PROXY_URL}/api/user-profile-by-principal`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-device-id': this.deviceId || await this.getOrCreateDeviceId(),
+          'Authorization': `Bearer ${API_KEY}`
+        },
+        body: JSON.stringify({ principalId })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        return result;
+      } else if (response.status === 404) {
+        console.log('User profile not found for principal:', principalId);
+        return null;
+      } else {
+        console.error('Get user profile error:', response.status, response.statusText);
+        return null;
+      }
+    } catch (error) {
+      console.error('Error getting user profile:', error);
+      return null;
     }
   }
 

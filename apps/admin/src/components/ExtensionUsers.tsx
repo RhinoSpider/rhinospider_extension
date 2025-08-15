@@ -74,7 +74,6 @@ export const ExtensionUsers: React.FC = () => {
 
   const filteredUsers = users
     .filter(user => 
-      user.principalId.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (user.referralCode?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
       user.location.toLowerCase().includes(searchTerm.toLowerCase())
     )
@@ -148,7 +147,7 @@ export const ExtensionUsers: React.FC = () => {
                   Data Contributed
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-[#B692F6] uppercase tracking-wider">
-                  IP Address
+                  Region
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-[#B692F6] uppercase tracking-wider">
                   Status
@@ -178,7 +177,7 @@ export const ExtensionUsers: React.FC = () => {
                 filteredUsers.map((user, index) => (
                   <tr key={index} className="hover:bg-[#360D68] hover:bg-opacity-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-white font-mono">
-                      {user.principalId.substring(0, 8)}...{user.principalId.substring(user.principalId.length - 6)}
+                      {user.principalId}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
                       {user.location}
@@ -187,7 +186,7 @@ export const ExtensionUsers: React.FC = () => {
                       {formatDataSize(user.dataContributed)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
-                      {user.ipAddress}
+                      {user.location.split(',')[0] || 'Unknown'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-2 py-1 text-xs rounded-full ${

@@ -1,0 +1,1 @@
+{ "canisters": { "admin_frontend": { "type": "assets", "source": ["apps/admin/dist"], "candid": "apps/admin/candid.did" } } }

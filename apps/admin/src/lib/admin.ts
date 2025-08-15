@@ -374,20 +374,21 @@ export async function getStorageActor() {
   }
 }
 
-export async function getScrapedData(topicId?: string): Promise<ScrapedData[]> {
+export async function getScrapedData(topicId?: string, page: number = 0, pageSize: number = 20): Promise<{ data: ScrapedData[], totalCount: number }> {
   try {
     const storageActor = await getStorageActor();
+    const offset = page * pageSize;
     
-    // If no topic is provided, use getAllData to fetch everything
+    // If no topic is provided, use getDataPaginated to fetch with pagination
     if (!topicId) {
-      console.log(`[admin.ts] getScrapedData called with no topicId, fetching all data`);
-      const allData = await storageActor.getAllData();
+      console.log(`[admin.ts] getScrapedData called with no topicId, fetching page ${page} with size ${pageSize}`);
+      const result = await storageActor.getDataPaginated(offset, pageSize);
       
-      // getAllData returns an array of tuples [id, data], we need just the data
-      const dataArray = allData.map((tuple: [string, any]) => tuple[1]);
+      // getDataPaginated returns {data: [(id, data)], totalCount: number}
+      const dataArray = result.data.map((tuple: [string, any]) => tuple[1]);
       
-      console.log(`[admin.ts] getAllData returned ${dataArray.length} items`);
-      return dataArray;
+      console.log(`[admin.ts] getDataPaginated returned ${dataArray.length} items out of ${result.totalCount} total`);
+      return { data: dataArray, totalCount: Number(result.totalCount) };
     } else {
       // If a specific topic is provided, use getScrapedData with array format
       const topicIds = [topicId];
@@ -397,11 +398,12 @@ export async function getScrapedData(topicId?: string): Promise<ScrapedData[]> {
       const result = await storageActor.getScrapedData(topicIds);
       
       console.log(`[admin.ts] getScrapedData returned ${result?.length || 0} items`);
-      return result || [];
+      // For topic-specific data, we don't have pagination yet, return all
+      return { data: result || [], totalCount: result?.length || 0 };
     }
   } catch (error) {
     console.error('[admin.ts] Error fetching scraped data:', error);
-    return [];
+    return { data: [], totalCount: 0 };
   }
 }
 
@@ -424,19 +426,26 @@ export async function getExtensionUsers(): Promise<ExtensionUser[]> {
         
         if (data.success && data.users) {
           // Convert to ExtensionUser format
-          return data.users.map((user: any, index: number) => ({
-            id: (index + 1).toString(),
-            principalId: user.principal || 'unknown',
-            deviceId: 'extension',
-            dataContributed: user.dataVolumeKB * 1024, // Convert KB to bytes
-            lastActive: new Date(Number(user.lastLogin) / 1_000_000).toISOString(), // Convert nanoseconds to milliseconds
-            joinDate: new Date(Number(user.created) / 1_000_000).toISOString(), // Convert nanoseconds to milliseconds
-            isActive: user.isActive,
-            ipAddress: user.ipAddress || 'unknown',
-            location: user.city && user.country 
-              ? `${user.city}, ${user.country}`
-              : user.country || 'Unknown'
-          }));
+          return data.users.map((user: any, index: number) => {
+            // Handle arrays for optional fields
+            const city = Array.isArray(user.city) ? user.city[0] : user.city;
+            const country = Array.isArray(user.country) ? user.country[0] : user.country;
+            const ipAddr = Array.isArray(user.ipAddress) ? user.ipAddress[0] : user.ipAddress;
+            
+            return {
+              id: (index + 1).toString(),
+              principalId: user.principal || 'unknown',
+              deviceId: 'extension',
+              dataContributed: user.totalDataScraped || 0, // Use totalDataScraped, not dataVolumeKB
+              lastActive: new Date(Number(user.lastLogin) / 1_000_000).toISOString(), // Convert nanoseconds to milliseconds
+              joinDate: new Date(Number(user.created) / 1_000_000).toISOString(), // Convert nanoseconds to milliseconds
+              isActive: user.isActive,
+              ipAddress: ipAddr || '',
+              location: city && country 
+                ? `${city}, ${country}`
+                : city || country || ''
+            };
+          });
         }
       }
     } catch (proxyError) {

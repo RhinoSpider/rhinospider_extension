@@ -121,11 +121,36 @@ export const Overview: React.FC = () => {
           id: IDL.Text,
           name: IDL.Text,
           description: IDL.Text,
-          domain: IDL.Text,
-          selectors: IDL.Vec(IDL.Text),
-          isActive: IDL.Bool,
-          created: IDL.Int,
-          lastUpdated: IDL.Int,
+          status: IDL.Text, // "active" | "inactive"
+          
+          // Search Configuration
+          searchQueries: IDL.Vec(IDL.Text),
+          preferredDomains: IDL.Opt(IDL.Vec(IDL.Text)),
+          excludeDomains: IDL.Opt(IDL.Vec(IDL.Text)),
+          requiredKeywords: IDL.Vec(IDL.Text),
+          excludeKeywords: IDL.Opt(IDL.Vec(IDL.Text)),
+          
+          // Extraction Configuration
+          contentSelectors: IDL.Vec(IDL.Text),
+          titleSelectors: IDL.Opt(IDL.Vec(IDL.Text)),
+          excludeSelectors: IDL.Vec(IDL.Text),
+          minContentLength: IDL.Nat,
+          maxContentLength: IDL.Nat,
+          
+          // Operational Settings
+          maxUrlsPerBatch: IDL.Nat,
+          scrapingInterval: IDL.Nat,
+          priority: IDL.Nat,
+          
+          // Geo settings
+          geolocationFilter: IDL.Opt(IDL.Text),
+          percentageNodes: IDL.Opt(IDL.Nat),
+          randomizationMode: IDL.Opt(IDL.Text),
+          
+          // Tracking
+          createdAt: IDL.Int,
+          lastScraped: IDL.Int,
+          totalUrlsScraped: IDL.Nat,
         });
 
         return IDL.Service({
@@ -155,6 +180,10 @@ export const Overview: React.FC = () => {
         return IDL.Service({
           getAllData: IDL.Func([], [IDL.Vec(IDL.Tuple(IDL.Text, ScrapedData))], ['query']),
           getDataCount: IDL.Func([], [IDL.Nat], ['query']),
+          getDataPaginated: IDL.Func([IDL.Nat, IDL.Nat], [IDL.Record({
+            data: IDL.Vec(IDL.Tuple(IDL.Text, ScrapedData)),
+            totalCount: IDL.Nat
+          })], ['query']),
         });
       };
 
@@ -185,28 +214,36 @@ export const Overview: React.FC = () => {
       };
       
       try {
-        // Use getAllData method that we added to the storage IDL
-        const allData = await storageActor.getAllData();
-        if (!allData) {
-          throw new Error('getAllData returned null/undefined');
-        }
-        dataCount = BigInt(allData.length);
+        // Get total count efficiently
+        dataCount = await storageActor.getDataCount();
         
-        // Calculate today's scraped pages
+        // Get only recent data (last 100 items) to calculate today's count
+        const recentData = await storageActor.getDataPaginated(0, 100);
+        
+        // Calculate today's scraped pages from recent data
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const todayTimestamp = today.getTime() * 1000000; // Convert to nanoseconds
         
-        todayScrapedCount = allData.filter(([_, data]: any) => 
+        todayScrapedCount = recentData.data.filter(([_, data]: any) => 
           Number(data.timestamp) >= todayTimestamp
         ).length;
+        
+        // If all 100 recent items are from today, we might have more
+        if (todayScrapedCount === 100) {
+          // Get more to count properly
+          const moreData = await storageActor.getDataPaginated(100, 400);
+          todayScrapedCount += moreData.data.filter(([_, data]: any) => 
+            Number(data.timestamp) >= todayTimestamp
+          ).length;
+        }
       } catch (e) {
         // Storage canister method might not be implemented yet
         console.error('Could not fetch storage data:', e);
         dataCount = BigInt(0);
         todayScrapedCount = 0;
         
-        // Set storage canister as offline if getAllData fails
+        // Set storage canister as offline if getDataCount fails
         systemStatus.storageCanister = 'offline';
       }
 
@@ -216,8 +253,13 @@ export const Overview: React.FC = () => {
         Number(profile.lastActive) > oneDayAgo
       );
 
-      // Get active topics
-      const activeTopics = (topics as any[]).filter(topic => topic.isActive);
+      // Get active topics - filter by status field
+      const activeTopics = (topics as any[]).filter(topic => {
+        console.log('Topic:', topic.id, 'Status:', topic.status);
+        return topic.status === 'active';
+      });
+      console.log('Topics received:', topics);
+      console.log('Active topics found:', activeTopics.length);
 
       // Create recent activity from users
       const recentActivity = (allUsers as any[])

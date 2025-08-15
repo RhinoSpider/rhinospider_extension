@@ -42,6 +42,11 @@ export const storageIdlFactory = ({ IDL }: any) => {
     'getCycles': IDL.Func([], [IDL.Nat], ['query']),
     'getScrapedData': IDL.Func([IDL.Vec(IDL.Text)], [IDL.Vec(ScrapedData)], ['query']),
     'getAllData': IDL.Func([], [IDL.Vec(IDL.Tuple(IDL.Text, ScrapedData))], ['query']),
+    'getDataPaginated': IDL.Func([IDL.Nat, IDL.Nat], [IDL.Record({
+      data: IDL.Vec(IDL.Tuple(IDL.Text, ScrapedData)),
+      totalCount: IDL.Nat
+    })], ['query']),
+    'getDataCount': IDL.Func([], [IDL.Nat], ['query']),
   });
 };
 

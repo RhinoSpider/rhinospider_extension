@@ -460,12 +460,12 @@ export const ScrapingConfig: React.FC = () => {
                 {/* Stats */}
                 <div className="mt-4 pt-4 border-t border-[#2C2B33] text-xs text-gray-400">
                   <div className="flex justify-between">
-                    <span>Created: {new Date(topic.createdAt).toLocaleDateString()}</span>
+                    <span>Created: {topic.createdAt > 0 ? new Date(Number(topic.createdAt) / 1000000).toLocaleDateString() : 'N/A'}</span>
                     <span>Total URLs Scraped: {topic.totalUrlsScraped}</span>
                     <span>
                       Last Scraped: {
                         topic.lastScraped > 0 
-                          ? new Date(topic.lastScraped).toLocaleString() 
+                          ? new Date(Number(topic.lastScraped) / 1000000).toLocaleString() 
                           : 'Never'
                       }
                     </span>

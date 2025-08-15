@@ -17,9 +17,10 @@ import Char "mo:base/Char";
 import Float "mo:base/Float";
 import Blob "mo:base/Blob";
 import Bool "mo:base/Bool";
+import Prim "mo:⛔";
 import AIHandler "./ai/handler";
 import Types "./types";
-import ExperimentalCycles "mo:base/ExperimentalCycles";
+// Use system Cycles directly instead of deprecated ExperimentalCycles
 import TrieMap "mo:base/TrieMap";
 import SharedTypes "../shared/types";
 
@@ -184,10 +185,41 @@ actor class Storage() = this {
         Buffer.toArray(buffer)
     };
 
-    // Get all scraped data for admin overview
+    // Get all scraped data for admin overview - RETURN ALL DATA
     public query({ caller }) func getAllData(): async [(Text, SharedTypes.ScrapedData)] {
         // TEMPORARY: Allow all callers to read data
+        // Return ALL items - the frontend should handle pagination
         Iter.toArray(scrapedData.entries())
+    };
+    
+    // Get paginated scraped data
+    public query({ caller }) func getDataPaginated(offset: Nat, limit: Nat): async {
+        data: [(Text, SharedTypes.ScrapedData)];
+        totalCount: Nat;
+    } {
+        let allEntries = Iter.toArray(scrapedData.entries());
+        let totalCount = allEntries.size();
+        
+        // Calculate actual limit (max 100 items per page)
+        let actualLimit = Nat.min(limit, 100);
+        
+        // Calculate end index
+        let endIndex = Nat.min(offset + actualLimit, totalCount);
+        
+        // Get the slice
+        let dataSlice = if (offset < totalCount) {
+            Array.tabulate<(Text, SharedTypes.ScrapedData)>(
+                endIndex - offset,
+                func (i) = allEntries[offset + i]
+            )
+        } else {
+            []
+        };
+        
+        {
+            data = dataSlice;
+            totalCount = totalCount;
+        }
     };
     
     // Public method to get data count
@@ -278,19 +310,19 @@ actor class Storage() = this {
         let targetCanister = actor (Principal.toText(target)) : actor {
             wallet_receive : () -> async ();
         };
-        ExperimentalCycles.add(amount);
+        Prim.cyclesAdd(amount);
         await targetCanister.wallet_receive();
         #ok()
     };
 
     // Add a method to get the current cycle balance
     public query func getCycleBalance(): async Nat {
-        ExperimentalCycles.balance()
+        Prim.cyclesBalance()
     };
 
     // Add a method to accept cycles
     public func wallet_receive(): async () {
-        let amount = ExperimentalCycles.available();
-        let accepted = ExperimentalCycles.accept(amount);
+        let amount = Prim.cyclesAvailable();
+        let accepted = Prim.cyclesAccept(amount);
     };
 }

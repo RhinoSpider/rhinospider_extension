@@ -145,13 +145,23 @@ class ProxyClient {
           'x-device-id': this.deviceId || await this.getOrCreateDeviceId(),
           'Authorization': `Bearer ${this.apiKey}`
         },
-        body: JSON.stringify({ nodeCharacteristics })
+        body: JSON.stringify({ 
+          principalId: principalId,
+          nodeCharacteristics 
+        })
       };
 
-      const response = await this.makeRequest('/api/topics', options);
+      // Use the new geo-filtered topics endpoint
+      const response = await this.makeRequest('/api/consumer-topics', options);
 
       if (response.ok) {
         const data = await response.json();
+        // The proxy now returns topics as a direct array
+        if (Array.isArray(data)) {
+          console.log('[ProxyClient] Received', data.length, 'topics from proxy');
+          return data;
+        }
+        // Fallback for old format
         return data.topics || data.ok || [];
       } else {
         console.error('Error getting topics:', response.status, response.statusText);

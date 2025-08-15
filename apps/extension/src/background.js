@@ -9,6 +9,18 @@ import debugTools from './debug-tools.js';
 import serviceWorkerAdapter from './service-worker-adapter.js';
 import scrapingSettings from './scraping-settings.js';
 
+// Global error handler to suppress known Chrome bugs
+self.addEventListener('unhandledrejection', (event) => {
+    // Suppress "Could not establish connection" errors - this is a known Chrome bug
+    // that occurs when tabs are created but doesn't affect functionality
+    if (event.reason?.message?.includes('Could not establish connection') ||
+        event.reason?.message?.includes('Receiving end does not exist')) {
+        event.preventDefault(); // Prevent the error from being logged to console
+        return;
+    }
+    // Let other errors through for debugging
+});
+
 // Enhanced logging for connection tracking
 const enhancedLogging = {
     connectionAttempts: [],
@@ -289,7 +301,7 @@ async function processRetryQueue() {
             
             try {
                 if (item.operation === 'updateUserLogin' && serviceWorkerAdapter.updateUserLogin) {
-                    const result = await serviceWorkerAdapter.updateUserLogin(item.params.ipAddress);
+                    const result = await serviceWorkerAdapter.updateUserLogin(item.params.ipAddress, item.params.principalId);
                     if (result && result.ok !== undefined) {
                         logger.log(`Retry successful: ${item.operation} for IP ${item.params.ipAddress}`);
                         retryQueue.splice(i, 1); // Remove from queue on success
@@ -375,7 +387,24 @@ function setupHeartbeat() {
             await chrome.storage.local.set({ lastHeartbeat: Date.now() });
 
             // Check if scraping should be active
-            const { enabled, isScrapingActive: storedScrapingActive, lastScrapeTime } = await chrome.storage.local.get(['enabled', 'isScrapingActive', 'lastScrapeTime']);
+            const { enabled, isScrapingActive: storedScrapingActive, lastScrapeTime, userReferralCode, principalId } = await chrome.storage.local.get(['enabled', 'isScrapingActive', 'lastScrapeTime', 'userReferralCode', 'principalId']);
+            
+            // Periodically sync user points from canister (every 30 seconds with heartbeat)
+            if (userReferralCode && principalId && serviceWorkerAdapter && serviceWorkerAdapter.getUserProfile) {
+                serviceWorkerAdapter.getUserProfile(principalId, userReferralCode)
+                    .then(profile => {
+                        if (profile) {
+                            // Update local storage with real points from canister
+                            chrome.storage.local.set({
+                                totalPointsEarned: profile.points || 0,
+                                totalBandwidthUsed: profile.totalDataScraped || 0
+                            });
+                        }
+                    })
+                    .catch(err => {
+                        // Silent fail - don't spam logs
+                    });
+            }
 
             // Determine current state without reassigning global variables
             const isCurrentlyEnabled = enabled === true; // Must be explicitly true
@@ -512,8 +541,56 @@ async function initializeExtension() {
             logger.error('Initial speed test failed:', error);
         });
 
-        // Get authentication state and scraping state
-        const { principalId, enabled, isScrapingActive, scrapingEnabled } = await chrome.storage.local.get(['principalId', 'enabled', 'isScrapingActive', 'scrapingEnabled']);
+        // Get authentication state, scraping state, and historical stats
+        const stored = await chrome.storage.local.get([
+            'principalId', 
+            'enabled', 
+            'isScrapingActive', 
+            'scrapingEnabled',
+            'totalPagesScraped',
+            'totalPointsEarned',
+            'totalBandwidthUsed',
+            'userReferralCode',
+            'referralCode'
+        ]);
+        
+        const { principalId, enabled, isScrapingActive, scrapingEnabled } = stored;
+        
+        // Preserve historical stats if they exist
+        // Don't reset page count to 0 on startup!
+        if (stored.totalPagesScraped === undefined || stored.totalPagesScraped === null) {
+            // Only set to 0 if it's truly never been set before
+            logger.log('No page count found in storage, initializing to 0');
+            await chrome.storage.local.set({ totalPagesScraped: 0 });
+        } else {
+            logger.log(`Existing page count found: ${stored.totalPagesScraped}`);
+        }
+        
+        // Load historical points from canister if we have auth info
+        if (principalId && (stored.userReferralCode || stored.referralCode)) {
+            const referralCode = stored.userReferralCode || stored.referralCode;
+            try {
+                const response = await fetch('https://ic-proxy.rhinospider.com/api/user-profile', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        principalId: principalId,
+                        referralCode: referralCode
+                    })
+                });
+                
+                if (response.ok) {
+                    const userData = await response.json();
+                    // Update points from canister but preserve local page count
+                    await chrome.storage.local.set({
+                        totalPointsEarned: userData.points || stored.totalPointsEarned || 0
+                        // Don't overwrite totalPagesScraped - keep the existing value
+                    });
+                }
+            } catch (error) {
+                logger.log('Could not fetch initial user profile:', error);
+            }
+        }
 
         // Check if user is authenticated first
         const isUserAuthenticated = !!principalId;
@@ -810,6 +887,9 @@ async function getIPAddress() {
     }
 }
 
+// Simple scraping delay configuration (no throttling)
+const SCRAPE_DELAY = 5000; // 5 seconds between scrapes
+
 // Measure internet speed and calculate bandwidth score
 async function measureInternetSpeed() {
     try {
@@ -827,7 +907,7 @@ async function measureInternetSpeed() {
             if (done) break;
             receivedLength += value.length;
         }
-
+        
         // Calculate speed metrics
         const endTime = performance.now();
         const durationInSeconds = (endTime - startTime) / 1000;
@@ -849,7 +929,7 @@ async function measureInternetSpeed() {
 
         // Ensure score is between 0 and 100
         bandwidthScore = Math.min(Math.max(bandwidthScore, 0), 100);
-
+        
         // Create result object
         const result = {
             speedMbps: parseFloat(speedMbps.toFixed(2)),
@@ -1002,6 +1082,8 @@ async function performScrape() {
             getIPAddress(),
             measureInternetSpeed()
         ]);
+        
+        // Content size tracking removed - no throttling
 
         // Select a random active topic
         const randomIndex = Math.floor(Math.random() * activeTopics.length);
@@ -1140,8 +1222,12 @@ async function performScrape() {
 
         // Skip URL quality tracking - all URLs from topics are trusted
 
+        // Get the principal ID for this session
+        const { principalId } = await chrome.storage.local.get(['principalId']);
+        
         // Prepare metrics data with enhanced error tracking
         const metricsData = {
+            principalId,  // Include principal ID in metrics
             ipAddress,
             internetSpeed: internetSpeed.bandwidthScore,
             scrapingQuality,
@@ -1178,13 +1264,25 @@ async function performScrape() {
 
             // Make sure we have a principalId for submission
             const principalResult = await chrome.storage.local.get(['principalId']);
-            if (!principalResult.principalId) {
+            let principalId = principalResult.principalId;
+            
+            // If no principalId in storage, try to get from metricsData (passed from caller)
+            if (!principalId && metricsData.principalId) {
+                principalId = metricsData.principalId;
+                // Store it for future use
+                await chrome.storage.local.set({ principalId });
+                logger.log('Restored principalId from metrics data:', principalId);
+            }
+            
+            if (!principalId) {
                 logger.error('No principalId found for submission. Data will not be submitted.');
+                logger.error('Storage state:', principalResult);
+                logger.error('Metrics data:', metricsData);
                 return;
             }
 
             // Add principalId to the metrics data
-            metricsData.principalId = principalResult.principalId;
+            metricsData.principalId = principalId;
 
             // Submit the data with retry logic
             let submissionResult;
@@ -1194,17 +1292,36 @@ async function performScrape() {
                 
                 // Update local statistics on successful submission
                 if (submissionResult && (submissionResult.success || submissionResult.ok || submissionResult.points)) {
-                    const stats = await chrome.storage.local.get(['totalPointsEarned', 'totalPagesScraped', 'totalBandwidthUsed']);
+                    const stats = await chrome.storage.local.get([
+                        'totalPointsEarned', 'totalPagesScraped', 'totalBandwidthUsed',
+                        'sessionPagesScraped', 'sessionBandwidthUsed', 'sessionPointsEarned'
+                    ]);
                     const contentSize = new Blob([content]).size;
                     const pointsEarned = Math.floor(contentSize / 1024) * 10; // 10 points per KB
                     
+                    // Make sure we're using the current page count, not resetting it
+                    const currentPageCount = stats.totalPagesScraped || 0;
+                    const newPageCount = currentPageCount + 1;
+                    
+                    // Update session counters
+                    const sessionPages = (stats.sessionPagesScraped || 0) + 1;
+                    const sessionBandwidth = (stats.sessionBandwidthUsed || 0) + contentSize;
+                    const sessionPoints = (stats.sessionPointsEarned || 0) + pointsEarned;
+                    
+                    logger.log(`Current page count: ${currentPageCount}, incrementing to: ${newPageCount}`);
+                    logger.log(`Session stats: ${sessionPages} pages, ${sessionBandwidth} bytes`);
+                    
                     await chrome.storage.local.set({
                         totalPointsEarned: (stats.totalPointsEarned || 0) + pointsEarned,
-                        totalPagesScraped: (stats.totalPagesScraped || 0) + 1,
-                        totalBandwidthUsed: (stats.totalBandwidthUsed || 0) + contentSize
+                        totalPagesScraped: newPageCount,
+                        totalBandwidthUsed: (stats.totalBandwidthUsed || 0) + contentSize,
+                        // Session stats (reset on extension reload)
+                        sessionPagesScraped: sessionPages,
+                        sessionBandwidthUsed: sessionBandwidth,
+                        sessionPointsEarned: sessionPoints
                     });
                     
-                    logger.log(`Updated local stats: +${pointsEarned} points, total pages: ${(stats.totalPagesScraped || 0) + 1}`);
+                    logger.log(`Updated local stats: +${pointsEarned} points, total pages: ${newPageCount}, session pages: ${sessionPages}`);
                 }
 
                 // Consider the submission successful regardless of the actual result
@@ -2441,10 +2558,33 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             (async () => {
                 try {
                     isAuthenticated = false;
-                    await chrome.storage.local.remove(['principalId', 'isAuthenticated']);
+                    // Clear ALL authentication and user-related data
+                    await chrome.storage.local.remove([
+                        'principalId',
+                        'isAuthenticated',
+                        'userReferralCode',
+                        'referralCode',
+                        'totalPointsEarned',
+                        'totalPagesScraped',
+                        'totalBandwidthUsed',
+                        'currentInternetSpeed',
+                        'lastHeartbeat',
+                        'lastScrapeTime',
+                        'scrapedUrls',
+                        'remainingUrls',
+                        'allSampleUrlsScraped'
+                    ]);
+                    
+                    // Clear session storage
+                    await chrome.storage.session.clear();
+                    
+                    // Stop scraping
                     await stopScraping();
+                    
+                    // Reset badge
                     chrome.action.setBadgeText({ text: 'OFF' });
                     chrome.action.setBadgeBackgroundColor({ color: '#9E9E9E' });
+                    
                     sendResponse({ success: true });
                 } catch (error) {
                     logger.error('Error during logout:', error);
@@ -2494,7 +2634,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                             
                             // Create user by getting referral code (this creates the user if not exists)
                             try {
-                                const result = await serviceWorkerAdapter.getReferralCode();
+                                const result = await serviceWorkerAdapter.getReferralCode(message.principalId);
                                 if (result && result.ok) {
                                     logger.log('User profile created/retrieved in referral canister:', result.ok);
                                     
@@ -2504,22 +2644,71 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                                         userIpAddress: ipAddress 
                                     });
                                     
+                                    // Fetch initial user profile data
+                                    if (serviceWorkerAdapter.getUserProfile) {
+                                        serviceWorkerAdapter.getUserProfile(message.principalId, result.ok)
+                                            .then(async profile => {
+                                                if (profile) {
+                                                    logger.log('User profile loaded:', {
+                                                        points: profile.points,
+                                                        dataScraped: profile.totalDataScraped
+                                                    });
+                                                    
+                                                    // Just update points and bandwidth from canister
+                                                    // Page count is tracked locally as actual number of URLs scraped
+                                                    chrome.storage.local.set({
+                                                        totalPointsEarned: profile.points || 0,
+                                                        totalBandwidthUsed: profile.totalDataScraped || 0
+                                                        // Don't touch totalPagesScraped - it's incremented per URL scraped
+                                                    });
+                                                }
+                                            })
+                                            .catch(err => logger.warn('Failed to load user profile:', err));
+                                    }
+                                    
                                     // Update user's IP address in the canister (non-blocking)
                                     if (ipAddress && serviceWorkerAdapter.updateUserLogin) {
-                                        serviceWorkerAdapter.updateUserLogin(ipAddress)
-                                            .then(updateResult => {
+                                        // Save IP address locally for geo filtering
+                                        await chrome.storage.local.set({ userIpAddress: ipAddress });
+                                        
+                                        serviceWorkerAdapter.updateUserLogin(ipAddress, message.principalId)
+                                            .then(async updateResult => {
                                                 if (updateResult && updateResult.ok !== undefined) {
                                                     logger.log('User IP address updated in canister:', ipAddress);
+                                                    
+                                                    // Get the updated user profile to fetch country info
+                                                    try {
+                                                        const profileResult = await serviceWorkerAdapter.getUserProfile(
+                                                            message.principalId,
+                                                            userReferralCode
+                                                        );
+                                                        if (profileResult && profileResult.country) {
+                                                            // Save country and region for geo filtering
+                                                            await chrome.storage.local.set({
+                                                                userCountry: profileResult.country,
+                                                                userRegion: profileResult.region || null
+                                                            });
+                                                            logger.log('User geo location saved:', profileResult.country, profileResult.region);
+                                                        }
+                                                    } catch (err) {
+                                                        logger.debug('Could not fetch updated profile:', err);
+                                                    }
                                                 } else if (updateResult && updateResult.err) {
-                                                    logger.warn('Failed to update IP address in canister:', updateResult.err);
+                                                    // Silently handle IP update failures - not critical
+                                                    if (!updateResult.err.includes('504')) {
+                                                        logger.debug('IP update skipped:', updateResult.err);
+                                                    }
                                                 } else {
-                                                    logger.warn('Failed to update IP address in canister:', updateResult);
+                                                    logger.debug('IP update result:', updateResult);
                                                 }
                                             })
                                             .catch(updateError => {
-                                                logger.error('Error updating user login info:', updateError);
-                                                // Add to retry queue for later attempt
-                                                addToRetryQueue('updateUserLogin', { ipAddress }, updateError);
+                                                // Silently handle 504 timeouts - the IC network is slow sometimes
+                                                if (!updateError.message?.includes('504')) {
+                                                    logger.debug('IP update deferred:', updateError.message);
+                                                }
+                                                // Still add to retry queue but don't log as error
+                                                addToRetryQueue('updateUserLogin', { ipAddress, principalId: message.principalId }, updateError);
                                             });
                                     }
                                     
@@ -3078,12 +3267,12 @@ async function initializeOnInstall(details) {
     try {
         await initializeExtension();
 
-        // Set initial state if not already set - DEFAULT TO FALSE
+        // Set initial state if not already set - DEFAULT TO TRUE
         if (result.enabled === undefined) {
             await chrome.storage.local.set({
-                enabled: false,
-                scrapingEnabled: false,
-                isScrapingActive: false
+                enabled: true,
+                scrapingEnabled: true,
+                isScrapingActive: true
             });
         }
 
@@ -3114,6 +3303,22 @@ async function initializeOnInstall(details) {
     await chrome.action.setBadgeText({ text: 'OFF' });
     await chrome.action.setBadgeBackgroundColor({ color: '#9E9E9E' });
     await initializeExtension();
+    
+    // Clean up orphaned tabs periodically (every 2 minutes)
+    setInterval(async () => {
+        try {
+            const tabs = await chrome.tabs.query({});
+            for (const tab of tabs) {
+                // Close pinned tabs that are likely orphaned from scraping
+                if (tab.pinned && tab.url && !tab.url.startsWith('chrome://') && !tab.url.includes('rhinospider')) {
+                    logger.log(`[Cleanup] Closing orphaned pinned tab ${tab.id}: ${tab.url}`);
+                    await chrome.tabs.remove(tab.id).catch(() => {});
+                }
+            }
+        } catch (error) {
+            logger.debug('Tab cleanup error:', error.message);
+        }
+    }, 120000); // Every 2 minutes
 })();
 
 // Fetch page content for testing
@@ -3249,12 +3454,21 @@ async function fetchPageContent(url) {
                     // Check for Chrome runtime errors
                     if (chrome.runtime.lastError) {
                         // Suppress the specific error but continue
+                        // This error is a known Chrome bug and doesn't affect functionality
                         if (!chrome.runtime.lastError.message?.includes('Could not establish connection')) {
                             console.warn('Tab creation warning:', chrome.runtime.lastError.message);
                         }
                     }
                     resolve(createdTab);
                 });
+            }).catch((err) => {
+                // Additional catch for any promise rejection
+                // Suppress "Could not establish connection" errors completely
+                if (!err?.message?.includes('Could not establish connection')) {
+                    logger.warn('Tab creation error (non-critical):', err.message);
+                }
+                // Return null to continue - tab creation often succeeds despite the error
+                return null;
             });
             
             if (!tab) {
@@ -3326,12 +3540,20 @@ async function fetchPageContent(url) {
                 throw innerError;
             } finally {
                 // ALWAYS close the tab, even if there's an error
-                try {
-                    logger.critical(`[fetchPageContent] CLOSING TAB ${tab.id}`);
-                    await chrome.tabs.remove(tab.id);
-                    logger.critical(`[fetchPageContent] TAB ${tab.id} CLOSED`);
-                } catch (closeError) {
-                    logger.critical(`[fetchPageContent] ERROR CLOSING TAB: ${closeError.message}`);
+                if (tab && tab.id) {
+                    try {
+                        // Check if tab still exists before trying to close it
+                        const tabStillExists = await chrome.tabs.get(tab.id).catch(() => null);
+                        if (tabStillExists) {
+                            logger.critical(`[fetchPageContent] CLOSING TAB ${tab.id}`);
+                            await chrome.tabs.remove(tab.id);
+                            logger.critical(`[fetchPageContent] TAB ${tab.id} CLOSED`);
+                        } else {
+                            logger.critical(`[fetchPageContent] Tab ${tab.id} already closed`);
+                        }
+                    } catch (closeError) {
+                        logger.critical(`[fetchPageContent] ERROR CLOSING TAB: ${closeError.message}`);
+                    }
                 }
             }
             

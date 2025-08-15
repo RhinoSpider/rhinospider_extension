@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "RhinoSpider",
-  "version": "5.1.1",
-  "description": "RhinoSpider Chrome Extension",
+  "version": "5.5.0",
+  "description": "RhinoSpider Chrome Extension - Now with Analytics",
   "permissions": [
     "storage",
     "tabs",

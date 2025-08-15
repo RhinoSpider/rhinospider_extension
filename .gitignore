@@ -50,5 +50,9 @@ node_modules
 # Extension config file
 apps/extension/config.js
 
-# Extension config file
-apps/extension/config.js
+# API Keys and sensitive files
+API_KEYS.md
+*api*keys*
+*.key
+*.pem
+*.cert

@@ -45,7 +45,9 @@ export const ScrapedData: React.FC = () => {
   const [topics, setTopics] = useState<ScrapingTopic[]>([]);
   const [selectedTopic, setSelectedTopic] = useState<string>('');
   const [selectedGeo, setSelectedGeo] = useState<string>('');
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(1); // 1-based pagination
+  const [itemsPerPage] = useState(20);
+  const [totalPages, setTotalPages] = useState(0);
   const [loading, setLoading] = useState(false);
   const [totalItems, setTotalItems] = useState(0);
   const [topicStats, setTopicStats] = useState<Record<string, TopicStats>>({});
@@ -92,17 +94,29 @@ export const ScrapedData: React.FC = () => {
       
       try {
         if (selectedTopic) {
-          // Get data for the selected topic using the admin library function
-          console.log(`[ScrapedData] Fetching data for topic: ${selectedTopic}`);
-          // Pass the topic ID as a string - the library will handle creating the array
-          allData = await getScrapedData(selectedTopic);
+          // Get ALL data for the selected topic (no pagination from server for topic-specific data)
+          console.log(`[ScrapedData] Fetching ALL data for topic: ${selectedTopic}`);
+          const result = await getScrapedData(selectedTopic, 0, 1000); // Get up to 1000 items
+          allData = result.data;
           console.log(`[ScrapedData] Received ${allData.length} items for topic ${selectedTopic}`);
         } else {
-          // If no topic is selected, let the admin.ts library handle it
-          // It will automatically fetch topics and use the first available topic ID
-          console.log('[ScrapedData] No topic selected, letting admin.ts handle topic selection');
-          allData = await getScrapedData();
-          console.log(`[ScrapedData] Received ${allData.length} items`);
+          // Fetch ALL data for filtering and client-side pagination
+          console.log('[ScrapedData] No topic selected, fetching ALL data for client-side filtering');
+          // Fetch in batches to get all data
+          let offset = 0;
+          const batchSize = 100;
+          let hasMore = true;
+          
+          while (hasMore) {
+            const result = await getScrapedData(undefined, offset / batchSize, batchSize);
+            allData = allData.concat(result.data);
+            offset += batchSize;
+            hasMore = result.data.length === batchSize && offset < result.totalCount;
+            
+            // Safety limit to prevent infinite loop
+            if (offset >= 1000) break;
+          }
+          console.log(`[ScrapedData] Received total of ${allData.length} items`);
         }
       } catch (error: any) { // Type assertion for error
         console.error(`[ScrapedData] Failed to load data:`, error);
@@ -120,13 +134,27 @@ export const ScrapedData: React.FC = () => {
           const topic = topics.find(t => t.id === item.topic);
           if (!topic) return false;
           
-          // If topic has no geo filter, it's global
-          if (!topic.geolocationFilter) {
+          // Handle different types of geolocationFilter
+          let topicGeoFilter = topic.geolocationFilter;
+          
+          // Convert to string if it's an array or object
+          if (Array.isArray(topicGeoFilter)) {
+            topicGeoFilter = topicGeoFilter.join(',');
+          } else if (typeof topicGeoFilter === 'object' && topicGeoFilter !== null) {
+            // If it's an object, try to extract a value
+            topicGeoFilter = topicGeoFilter.toString();
+          }
+          
+          // If topic has no geo filter or it's empty, it's global
+          if (!topicGeoFilter || topicGeoFilter === '') {
             return selectedGeo === 'GLOBAL';
           }
           
+          // Ensure it's a string before splitting
+          const geoFilterStr = String(topicGeoFilter);
+          
           // Check if topic's geo matches selected geo
-          const topicGeos = topic.geolocationFilter.split(',').map(g => g.trim());
+          const topicGeos = geoFilterStr.split(',').map(g => g.trim());
           const selectedGeos = selectedGeo.split(',').map(g => g.trim());
           
           // Check for overlap between topic's geos and selected geos
@@ -162,6 +190,7 @@ export const ScrapedData: React.FC = () => {
       });
       
       setTotalItems(sortedData.length);
+      setTotalPages(Math.ceil(sortedData.length / ITEMS_PER_PAGE));
       
       // Calculate topic statistics
       const stats: Record<string, TopicStats> = {};
@@ -189,11 +218,11 @@ export const ScrapedData: React.FC = () => {
           
           stats[item.topic].successRate = 
             ((stats[item.topic].successRate * (stats[item.topic].count - 1)) + 
-            (item.status === 'success' ? 1 : 0)) / stats[item.topic].count;
+            ((item.status === 'success' || item.status === 'completed') ? 1 : 0)) / stats[item.topic].count;
         });
         setTopicStats(stats);
         
-        // Paginate
+        // Apply client-side pagination on the filtered and sorted data
         const start = (currentPage - 1) * ITEMS_PER_PAGE;
         const paginatedData = sortedData.slice(start, start + ITEMS_PER_PAGE);
         setData(paginatedData);
@@ -234,7 +263,7 @@ export const ScrapedData: React.FC = () => {
     return `${size.toFixed(1)} ${units[unitIndex]}`;
   };
 
-  const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+  // Removed - totalPages is now a state variable
 
   const chartData = {
     labels: Object.values(topicStats).map(stat => stat.name),
@@ -429,6 +458,30 @@ export const ScrapedData: React.FC = () => {
                             NEW
                           </span>
                         )}
+                        {/* Add geo location badge */}
+                        {(() => {
+                          let geoFilter = topic?.geolocationFilter;
+                          // Handle different types of geolocationFilter
+                          if (Array.isArray(geoFilter)) {
+                            geoFilter = geoFilter.join(', ');
+                          } else if (typeof geoFilter === 'object' && geoFilter !== null) {
+                            geoFilter = geoFilter.toString();
+                          }
+                          
+                          if (geoFilter && geoFilter !== '') {
+                            return (
+                              <span className="bg-blue-500 text-white text-xs font-semibold px-2 py-0.5 rounded">
+                                📍 {geoFilter}
+                              </span>
+                            );
+                          } else {
+                            return (
+                              <span className="bg-gray-600 text-white text-xs font-semibold px-2 py-0.5 rounded">
+                                🌍 Global
+                              </span>
+                            );
+                          }
+                        })()}
                       </div>
                       <a
                         href={item.url}
@@ -448,21 +501,78 @@ export const ScrapedData: React.FC = () => {
                     <div className="text-xs text-gray-500">
                       Size: {formatBytes(item.content.length)}
                     </div>
+                    <div className="text-xs text-green-400">
+                      +{Math.floor(item.content.length / 1024) * 10} pts
+                    </div>
                   </div>
                 </div>
 
                 {selectedItem?.id === item.id && (
                   <div className="mt-4 space-y-4">
-                    <div>
-                      <div className="text-sm text-[#B692F6] mb-1">Content Preview</div>
-                      <div className="text-white text-sm bg-black/30 p-3 rounded max-h-40 overflow-auto">
-                        {item.content}
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <div className="text-sm text-[#B692F6] mb-1">Content Preview</div>
+                        <div className="text-white text-sm bg-black/30 p-3 rounded max-h-40 overflow-auto">
+                          {item.content.substring(0, 500)}...
+                        </div>
                       </div>
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          // Create a modal or expand view for full content
+                          const modal = document.createElement('div');
+                          modal.className = 'fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-8';
+                          modal.innerHTML = `
+                            <div class="bg-[#131217] rounded-lg max-w-4xl w-full max-h-[80vh] overflow-auto p-6">
+                              <div class="flex justify-between items-start mb-4">
+                                <h2 class="text-xl font-bold text-white">Full Details</h2>
+                                <button class="text-gray-400 hover:text-white" onclick="this.parentElement.parentElement.parentElement.remove()">✕</button>
+                              </div>
+                              <div class="space-y-4">
+                                <div>
+                                  <div class="text-[#B692F6] font-semibold mb-2">URL</div>
+                                  <div class="text-white">${item.url}</div>
+                                </div>
+                                <div>
+                                  <div class="text-[#B692F6] font-semibold mb-2">Full Content</div>
+                                  <div class="text-white bg-black/30 p-4 rounded max-h-96 overflow-auto whitespace-pre-wrap">${item.content}</div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-4">
+                                  <div>
+                                    <div class="text-[#B692F6] font-semibold mb-2">Metadata</div>
+                                    <div class="text-white text-sm">
+                                      <div>ID: ${item.id}</div>
+                                      <div>Topic: ${topic?.name || item.topic}</div>
+                                      <div>Client: ${item.client_id.toText()}</div>
+                                      <div>Source: ${item.source}</div>
+                                      <div>Status: ${item.status}</div>
+                                      <div>Timestamp: ${formatDate(item.timestamp)}</div>
+                                      <div>Scraping Time: ${(Number(item.scraping_time) / 1000).toFixed(2)}s</div>
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div class="text-[#B692F6] font-semibold mb-2">Metrics</div>
+                                    <div class="text-white text-sm">
+                                      <div>Content Size: ${formatBytes(item.content.length)}</div>
+                                      <div>Points Generated: ${Math.floor(item.content.length / 1024) * 10} points</div>
+                                      <div>Bandwidth Used: ${formatBytes(item.content.length)}</div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          `;
+                          document.body.appendChild(modal);
+                        }}
+                        className="ml-4 px-3 py-1 bg-[#B692F6] text-[#131217] text-sm font-semibold rounded hover:bg-[#A580F5] transition-colors"
+                      >
+                        View Full Details
+                      </button>
                     </div>
                     <div className="grid grid-cols-3 gap-4">
                       <div>
                         <div className="text-sm text-[#B692F6] mb-1">Client ID</div>
-                        <div className="text-white text-sm">{item.client_id.toText()}</div>
+                        <div className="text-white text-sm font-mono text-xs">{item.client_id.toText().substring(0, 20)}...</div>
                       </div>
                       <div>
                         <div className="text-sm text-[#B692F6] mb-1">Source</div>
@@ -471,15 +581,29 @@ export const ScrapedData: React.FC = () => {
                       <div>
                         <div className="text-sm text-[#B692F6] mb-1">Status</div>
                         <div className={`text-sm ${
-                          item.status === 'success' ? 'text-green-400' : 'text-red-400'
+                          item.status === 'success' || item.status === 'completed' ? 'text-green-400' : 
+                          item.status === 'error' || item.status === 'failed' ? 'text-red-400' : 
+                          'text-yellow-400'
                         }`}>
-                          {item.status}
+                          {item.status === 'completed' ? 'success' : item.status}
                         </div>
                       </div>
                       <div>
                         <div className="text-sm text-[#B692F6] mb-1">Scraping Time</div>
                         <div className="text-white text-sm">
                           {(Number(item.scraping_time) / 1000).toFixed(2)}s
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-sm text-[#B692F6] mb-1">Points Generated</div>
+                        <div className="text-white text-sm">
+                          {Math.floor(item.content.length / 1024) * 10} pts
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-sm text-[#B692F6] mb-1">Bandwidth Used</div>
+                        <div className="text-white text-sm">
+                          {formatBytes(item.content.length)}
                         </div>
                       </div>
                     </div>

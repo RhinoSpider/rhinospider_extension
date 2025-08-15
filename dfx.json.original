@@ -1,0 +1,48 @@
+{
+  "canisters": {
+    "admin_frontend": {
+      "frontend": {
+        "entrypoint": "apps/admin/dist/index.html"
+      },
+      "source": [
+        "apps/admin/dist/"
+      ],
+      "type": "assets",
+      "canister_id": {
+        "ic": "sxsvc-aqaaa-aaaaj-az4ta-cai"
+      }
+    },
+    "admin_backend": {
+      "main": "canisters/admin/main.mo",
+      "type": "motoko"
+    },
+    "storage": {
+      "main": "canisters/storage/main.mo",
+      "type": "motoko",
+      "canister_id": {
+        "ic": "hhaip-uiaaa-aaaao-a4khq-cai"
+      }
+    },
+    "consumer": {
+      "main": "canisters/consumer/main.mo",
+      "type": "motoko",
+      "canister_id": {
+        "ic": "t3pjp-kqaaa-aaaao-a4ooq-cai"
+      }
+    }
+  },
+  "defaults": {
+    "build": {
+      "packtool": ""
+    }
+  },
+  "networks": {
+    "ic": {
+      "providers": [
+        "https://ic0.app"
+      ],
+      "type": "persistent"
+    }
+  },
+  "version": 1
+}

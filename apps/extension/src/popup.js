@@ -1,4 +1,6 @@
 // Simplified popup for RhinoSpider extension
+import './analytics.js';
+
 document.addEventListener('DOMContentLoaded', initialize);
 
 // DOM Elements
@@ -65,7 +67,12 @@ async function checkAuthStatus() {
         // Check Chrome storage for existing auth
         const stored = await chrome.storage.local.get(['principalId', 'isAuthenticated']);
         
-        if (stored.principalId && stored.isAuthenticated) {
+        // If we have a principalId, we're authenticated (even if isAuthenticated flag is missing)
+        if (stored.principalId) {
+            // Make sure isAuthenticated is set
+            if (!stored.isAuthenticated) {
+                await chrome.storage.local.set({ isAuthenticated: true });
+            }
             showAuthenticatedView();
         } else {
             showLoginView();
@@ -93,6 +100,11 @@ async function handleLogin() {
 
 async function handleDashboard() {
     try {
+        // Track dashboard open
+        if (window.analytics) {
+            window.analytics.trackDashboardOpen();
+        }
+        
         // Open dashboard in new tab
         await chrome.tabs.create({
             url: chrome.runtime.getURL('pages/dashboard.html')
@@ -108,7 +120,19 @@ async function handleDashboard() {
 
 async function handleLogout() {
     try {
-        await chrome.storage.local.remove(['principalId', 'isAuthenticated']);
+        // Clear ALL authentication and user-related data from Chrome storage
+        await chrome.storage.local.remove([
+            'principalId',
+            'isAuthenticated',
+            'userReferralCode',
+            'referralCode',
+            'totalPointsEarned',
+            'totalPagesScraped',
+            'totalBandwidthUsed'
+        ]);
+        
+        // Reset session storage to ensure clean state
+        await chrome.storage.session.clear();
         
         // Notify background script
         await chrome.runtime.sendMessage({ type: 'LOGOUT' });
@@ -119,14 +143,31 @@ async function handleLogout() {
         elements.pointsEarned.textContent = '0';
         elements.pagesScraped.textContent = '0';
         elements.scrapingToggle.checked = false;
+        
+        // Reload popup to ensure clean state
+        setTimeout(() => window.location.reload(), 100);
     } catch (error) {
         console.error('Logout error:', error);
-        showError('Logout failed. Please try again.');
+        // Even if logout fails, try to clear local data
+        await chrome.storage.local.remove([
+            'principalId',
+            'isAuthenticated',
+            'userReferralCode',
+            'referralCode'
+        ]);
+        showLoginView();
+        // Reload popup anyway
+        setTimeout(() => window.location.reload(), 100);
     }
 }
 
 async function handleToggle() {
     const enabled = elements.scrapingToggle.checked;
+    
+    // Track extension toggle
+    if (window.analytics) {
+        window.analytics.trackExtensionToggle(enabled);
+    }
     
     try {
         // Update storage
@@ -157,6 +198,8 @@ async function loadState() {
         // Load all state from storage
         const state = await chrome.storage.local.get([
             'principalId',
+            'userReferralCode',
+            'referralCode',
             'enabled',
             'isScrapingActive',
             'totalPointsEarned',
@@ -175,14 +218,59 @@ async function loadState() {
         elements.scrapingToggle.checked = isEnabled;
         updateStatusBadge(isEnabled);
         
-        // Update stats
-        elements.pointsEarned.textContent = state.totalPointsEarned || '0';
-        elements.pagesScraped.textContent = state.totalPagesScraped || '0';
-        
-        // Update bandwidth and speed
-        if (elements.bandwidthUsedPopup) {
-            const bandwidth = state.totalBandwidthUsed || 0;
-            elements.bandwidthUsedPopup.textContent = formatBandwidth(bandwidth);
+        // ALWAYS fetch user's real data from canister - NO LOCAL FALLBACKS
+        if (state.principalId) {
+            try {
+                // Try to get user data by principal (more reliable than referral code)
+                const response = await fetch('https://ic-proxy.rhinospider.com/api/user-profile-by-principal', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        principalId: state.principalId
+                    })
+                });
+                
+                if (response.ok) {
+                    const userData = await response.json();
+                    console.log('Popup: Loaded YOUR data from canister:', userData);
+                    
+                    // Show ONLY the user's real data from canister - same as dashboard
+                    elements.pointsEarned.textContent = userData.points || '0';
+                    
+                    // Show pages scraped from canister - same as dashboard
+                    const totalPagesFromCanister = userData.scrapedUrls ? userData.scrapedUrls.length : 0;
+                    elements.pagesScraped.textContent = totalPagesFromCanister;
+                    
+                    // Show real bandwidth from YOUR account
+                    if (elements.bandwidthUsedPopup) {
+                        const bandwidth = userData.totalDataScraped || 0;
+                        elements.bandwidthUsedPopup.textContent = formatBandwidth(bandwidth);
+                    }
+                } else {
+                    console.log('User not found in canister yet - showing zeros');
+                    // User doesn't exist yet - show zeros, not anonymous data
+                    elements.pointsEarned.textContent = '0';
+                    elements.pagesScraped.textContent = '0';
+                    if (elements.bandwidthUsedPopup) {
+                        elements.bandwidthUsedPopup.textContent = '0 KB';
+                    }
+                }
+            } catch (error) {
+                console.error('Popup: Error fetching user data:', error);
+                // On error, show zeros - NEVER show anonymous data
+                elements.pointsEarned.textContent = '0';
+                elements.pagesScraped.textContent = '0';
+                if (elements.bandwidthUsedPopup) {
+                    elements.bandwidthUsedPopup.textContent = '0 KB';
+                }
+            }
+        } else {
+            // Not logged in - show zeros
+            elements.pointsEarned.textContent = '0';
+            elements.pagesScraped.textContent = '0';
+            if (elements.bandwidthUsedPopup) {
+                elements.bandwidthUsedPopup.textContent = '0 KB';
+            }
         }
         if (elements.currentSpeedPopup) {
             const speed = state.currentInternetSpeed;
@@ -257,18 +345,9 @@ function getSpeedColor(score) {
 // Listen for state updates from background script
 chrome.storage.onChanged.addListener((changes, namespace) => {
     if (namespace === 'local') {
-        // Update stats if they changed
-        if (changes.totalPointsEarned) {
-            elements.pointsEarned.textContent = changes.totalPointsEarned.newValue || '0';
-        }
-        if (changes.totalPagesScraped) {
-            elements.pagesScraped.textContent = changes.totalPagesScraped.newValue || '0';
-        }
-        // Update bandwidth and speed display
-        if (changes.totalBandwidthUsed && elements.bandwidthUsedPopup) {
-            const bandwidth = changes.totalBandwidthUsed.newValue || 0;
-            elements.bandwidthUsedPopup.textContent = formatBandwidth(bandwidth);
-        }
+        // Don't update stats from storage - we want canister data only
+        // Stats are fetched from canister in loadState()
+        // Bandwidth is also fetched from canister, not local storage
         if (changes.currentInternetSpeed && elements.currentSpeedPopup) {
             const speed = changes.currentInternetSpeed.newValue;
             if (speed && speed.speedMbps) {
@@ -283,7 +362,19 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
         }
         // Update auth state if it changed
         if (changes.isAuthenticated || changes.principalId) {
-            checkAuthStatus();
+            // Force immediate auth check when login status changes
+            if (changes.isAuthenticated?.newValue === true && changes.principalId?.newValue) {
+                // User just logged in
+                showAuthenticatedView();
+                elements.principalId.textContent = changes.principalId.newValue;
+                // Reload state to get fresh data
+                loadState();
+            } else if (changes.isAuthenticated?.newValue === false) {
+                // User logged out
+                showLoginView();
+            } else {
+                checkAuthStatus();
+            }
             if (changes.principalId?.newValue) {
                 elements.principalId.textContent = changes.principalId.newValue;
             }

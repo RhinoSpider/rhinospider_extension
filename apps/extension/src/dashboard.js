@@ -4,6 +4,7 @@ import { Principal } from '@dfinity/principal';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { RhinoScan } from './pages/RhinoScan.jsx';
+import './analytics.js';
 
 // Configuration
 const II_URL = 'https://identity.ic0.app';
@@ -54,6 +55,11 @@ async function initialize() {
     // Set up event listeners
     if (loginButton) loginButton.addEventListener('click', handleLogin);
     if (logoutButton) logoutButton.addEventListener('click', handleLogout);
+    
+    // Also add listener for header logout button
+    const headerLogoutBtn = document.getElementById('headerLogoutBtn');
+    if (headerLogoutBtn) headerLogoutBtn.addEventListener('click', handleLogout);
+    
     if (extensionToggle) extensionToggle.addEventListener('change', handleExtensionToggle);
     
     // Navigation setup
@@ -66,6 +72,14 @@ async function initialize() {
     
     // Check authentication status
     await checkAuthStatus();
+    
+    // Update header principal when logged in
+    if (currentPrincipal) {
+        const headerPrincipal = document.getElementById('headerPrincipal');
+        if (headerPrincipal) {
+            headerPrincipal.textContent = currentPrincipal.slice(0, 8) + '...';
+        }
+    }
     
     // Refresh data periodically if authenticated
     setInterval(async () => {
@@ -87,17 +101,20 @@ async function initialize() {
                 updateExtensionStatusText(enabled);
             }
             
-            // Update stats if they change
-            if (changes.totalPointsEarned && pointsElement) {
-                pointsElement.textContent = changes.totalPointsEarned.newValue || 0;
+            // Update ONLY session stats when storage changes (don't overwrite canister data)
+            if (changes.sessionPagesScraped) {
+                const sessionPagesEl = document.getElementById('sessionPagesScraped');
+                if (sessionPagesEl) {
+                    sessionPagesEl.textContent = changes.sessionPagesScraped.newValue || 0;
+                }
             }
-            if (changes.totalPagesScraped && pagesElement) {
-                pagesElement.textContent = changes.totalPagesScraped.newValue || 0;
+            if (changes.sessionBandwidthUsed) {
+                const sessionBandwidthEl = document.getElementById('sessionBandwidthUsed');
+                if (sessionBandwidthEl) {
+                    sessionBandwidthEl.textContent = formatBandwidth(changes.sessionBandwidthUsed.newValue || 0);
+                }
             }
-            if (changes.totalBandwidthUsed && bandwidthUsedElement) {
-                const bandwidth = changes.totalBandwidthUsed.newValue || 0;
-                bandwidthUsedElement.textContent = formatBandwidth(bandwidth);
-            }
+            // Don't update main counters here - they should only show canister data
             if (changes.currentInternetSpeed && currentSpeedElement) {
                 const speed = changes.currentInternetSpeed.newValue;
                 if (speed && speed.speedMbps) {
@@ -118,8 +135,11 @@ async function checkAuthStatus() {
             const identity = authClient.getIdentity();
             currentPrincipal = identity.getPrincipal().toString();
             
-            // Store principal in Chrome storage
-            await chrome.storage.local.set({ principalId: currentPrincipal });
+            // Store principal and authentication status in Chrome storage
+            await chrome.storage.local.set({ 
+                principalId: currentPrincipal,
+                isAuthenticated: true 
+            });
             
             showDashboard();
             await loadDashboardData();
@@ -129,6 +149,8 @@ async function checkAuthStatus() {
             if (stored.principalId) {
                 currentPrincipal = stored.principalId;
                 isAuthenticated = true;
+                // Ensure isAuthenticated is persisted to storage
+                await chrome.storage.local.set({ isAuthenticated: true });
                 showDashboard();
                 await loadDashboardData();
             } else {
@@ -153,6 +175,14 @@ function showDashboard() {
 
 async function handleLogin() {
     try {
+        // Track login attempt
+        if (window.analytics) {
+            window.analytics.sendEvent('login_attempt', {
+                event_category: 'engagement',
+                event_label: 'dashboard'
+            });
+        }
+        
         loginButton.disabled = true;
         loginButton.textContent = 'Logging in...';
         
@@ -167,11 +197,44 @@ async function handleLogin() {
                 const identity = authClient.getIdentity();
                 currentPrincipal = identity.getPrincipal().toString();
                 
-                // Store in Chrome storage
-                await chrome.storage.local.set({ 
-                    principalId: currentPrincipal,
-                    isAuthenticated: true 
-                });
+                // Track successful login
+                if (window.analytics) {
+                    window.analytics.trackLogin('internet_identity');
+                }
+                
+                // Get the user's actual referral code from the consumer canister
+                try {
+                    const response = await fetch('https://ic-proxy.rhinospider.com/api/consumer-referral-code', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            principalId: currentPrincipal
+                        })
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.referralCode) {
+                            // Store the user's actual referral code
+                            await chrome.storage.local.set({ 
+                                principalId: currentPrincipal,
+                                isAuthenticated: true,
+                                userReferralCode: data.referralCode,
+                                referralCode: data.referralCode
+                            });
+                            console.log('Got user referral code:', data.referralCode);
+                        }
+                    }
+                } catch (err) {
+                    console.log('Could not fetch referral code:', err);
+                    // Still continue with login even if we can't get referral code
+                    await chrome.storage.local.set({ 
+                        principalId: currentPrincipal,
+                        isAuthenticated: true 
+                    });
+                }
                 
                 // Notify background script
                 await chrome.runtime.sendMessage({
@@ -200,17 +263,60 @@ async function handleLogin() {
 
 async function handleLogout() {
     try {
-        await authClient.logout();
-        await chrome.storage.local.remove(['principalId', 'isAuthenticated']);
+        // First, disable the extension to stop scraping
+        await chrome.storage.local.set({ 
+            enabled: false, 
+            isScrapingActive: false 
+        });
         
-        // Notify background script
+        // Notify background script to stop scraping
         await chrome.runtime.sendMessage({ type: 'LOGOUT' });
         
+        // Wait a bit for any pending submissions to complete
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Logout from Internet Identity
+        await authClient.logout();
+        
+        // Clear authentication data but keep principalId for a bit longer
+        await chrome.storage.local.remove([
+            'isAuthenticated',
+            'userReferralCode',
+            'referralCode',
+            'totalPointsEarned',
+            'totalPagesScraped',
+            'totalBandwidthUsed'
+        ]);
+        
+        // Reset session storage to ensure clean state
+        await chrome.storage.session.clear();
+        
+        // Reset local state
         isAuthenticated = false;
         currentPrincipal = null;
-        showLogin();
+        
+        // Clear principalId after a delay to allow final submissions
+        setTimeout(async () => {
+            await chrome.storage.local.remove(['principalId']);
+        }, 3000);
+        
+        // Force reload the page to ensure clean state
+        window.location.reload();
     } catch (error) {
         console.error('Logout error:', error);
+        // Even if logout fails, try to clear local data
+        await chrome.storage.local.set({ 
+            enabled: false, 
+            isScrapingActive: false 
+        });
+        await chrome.storage.local.remove([
+            'isAuthenticated',
+            'userReferralCode',
+            'referralCode'
+        ]);
+        isAuthenticated = false;
+        currentPrincipal = null;
+        window.location.reload();
     }
 }
 
@@ -236,6 +342,15 @@ function handleNavigation(target) {
             rhinoscanRoot = ReactDOM.createRoot(rhinoscanContainer);
             rhinoscanRoot.render(React.createElement(RhinoScan));
         }
+    } else if (target === 'settings') {
+        // Add privacy policy toggle listener when settings section is loaded
+        setTimeout(() => {
+            const privacyToggleBtn = document.getElementById('privacyPolicyToggle');
+            if (privacyToggleBtn && !privacyToggleBtn.hasEventListener) {
+                privacyToggleBtn.addEventListener('click', togglePrivacyPolicy);
+                privacyToggleBtn.hasEventListener = true;
+            }
+        }, 100);
     }
 }
 
@@ -261,10 +376,18 @@ async function handleExtensionToggle() {
     }
 }
 
+// Refresh dashboard data (called after actions like applying referral)
+async function refreshDashboardData() {
+    console.log('Refreshing dashboard data...');
+    await loadDashboardData();
+    // loadExtensionStats is not defined, skip it
+    await loadReferralData();
+}
+
 async function loadDashboardData() {
     try {
         // Load extension state
-        const state = await chrome.storage.local.get(['enabled', 'isScrapingActive']);
+        const state = await chrome.storage.local.get(['enabled', 'isScrapingActive', 'usedReferralCode', 'referredBy']);
         const isEnabled = state.enabled !== false;
         if (extensionToggle) {
             extensionToggle.checked = isEnabled;
@@ -277,48 +400,130 @@ async function loadDashboardData() {
             userProfileElement.textContent = `Principal ID: ${currentPrincipal || 'Not logged in'}`;
         }
         
-        // Try to fetch real user data from consumer canister
+        // Display referral history if user was referred
+        if (state.usedReferralCode) {
+            const referralHistoryEl = document.getElementById('referral-history');
+            if (referralHistoryEl) {
+                referralHistoryEl.innerHTML = `
+                    <div style="background: #e3f2fd; padding: 10px; border-radius: 5px; margin: 10px 0;">
+                        <strong>Referral Status:</strong><br>
+                        You were referred with code: <code>${state.usedReferralCode}</code><br>
+                        <small>Referred by: ${state.referredBy || 'Unknown'}</small>
+                    </div>
+                `;
+            }
+        }
+        
+        // ALWAYS fetch real user data from consumer canister by principal
         try {
-            // Get referral code from storage (it's saved as userReferralCode)
-            const { userReferralCode, referralCode } = await chrome.storage.local.get(['userReferralCode', 'referralCode']);
-            const actualReferralCode = userReferralCode || referralCode;
+            console.log('Fetching user profile for principal:', currentPrincipal);
             
-            console.log('Fetching user profile with:', { actualReferralCode, currentPrincipal });
-            
-            if (actualReferralCode && currentPrincipal) {
-                // Use the proxy client to get user profile
-                const response = await fetch('https://ic-proxy.rhinospider.com/api/user-profile', {
+            if (currentPrincipal) {
+                // Get user profile by principal ID - more reliable than referral code
+                const response = await fetch('https://ic-proxy.rhinospider.com/api/user-profile-by-principal', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        principalId: currentPrincipal,
-                        referralCode: actualReferralCode
+                        principalId: currentPrincipal
                     })
                 });
                 
                 if (response.ok) {
                     const userData = await response.json();
                     
-                    // Update display with real data from canister
-                    if (pointsElement && userData.points !== undefined) {
-                        pointsElement.textContent = userData.points;
-                    }
-                    if (pagesElement && userData.totalDataScraped !== undefined) {
-                        // Convert bytes to page count (rough estimate: 5KB per page)
-                        const pageCount = Math.floor(userData.totalDataScraped / 5120);
-                        pagesElement.textContent = pageCount;
-                    }
-                    if (bandwidthUsedElement && userData.totalDataScraped !== undefined) {
-                        bandwidthUsedElement.textContent = formatBandwidth(userData.totalDataScraped);
+                    // Update display with YOUR real data from canister - NO MIXING WITH LOCAL
+                    if (pointsElement) {
+                        pointsElement.textContent = userData.points || 0;
                     }
                     
-                    console.log('Loaded user data from canister:', userData);
+                    // Update split points display
+                    const pointsFromScrapingEl = document.getElementById('pointsFromScraping');
+                    const pointsFromReferralsEl = document.getElementById('pointsFromReferrals');
+                    
+                    // Calculate referral points based on referral count (same logic as in loadReferralData)
+                    let referralPoints = 0;
+                    const referralCount = userData.referralCount || 0;
+                    if (referralCount <= 10) {
+                        referralPoints = referralCount * 100;
+                    } else if (referralCount <= 30) {
+                        referralPoints = 1000 + (referralCount - 10) * 50;
+                    } else if (referralCount <= 70) {
+                        referralPoints = 2000 + (referralCount - 30) * 25;
+                    } else {
+                        referralPoints = 3000 + (referralCount - 70) * 5;
+                    }
+                    
+                    if (pointsFromScrapingEl) {
+                        // Scraping points = total points - referral points
+                        const scrapingPoints = (userData.points || 0) - referralPoints;
+                        pointsFromScrapingEl.textContent = Math.max(0, scrapingPoints);
+                    }
+                    if (pointsFromReferralsEl) {
+                        pointsFromReferralsEl.textContent = referralPoints;
+                    }
+                    
+                    // Show pages scraped - combine canister total with local session
+                    if (pagesElement) {
+                        // Main counter shows canister total (all-time from backend)
+                        // userData.scrapedUrls contains all URLs ever scraped by this user
+                        const totalPagesFromCanister = userData.scrapedUrls ? userData.scrapedUrls.length : 0;
+                        pagesElement.textContent = totalPagesFromCanister;
+                        
+                        // Get local session stats
+                        const localStats = await chrome.storage.local.get(['sessionPagesScraped']);
+                        
+                        // Update session and total pages displays
+                        const sessionPagesEl = document.getElementById('sessionPagesScraped');
+                        const totalPagesEl = document.getElementById('totalPagesScraped');
+                        if (sessionPagesEl) sessionPagesEl.textContent = localStats.sessionPagesScraped || 0;
+                        if (totalPagesEl) totalPagesEl.textContent = totalPagesFromCanister; // All-time from canister
+                    }
+                    
+                    // Show YOUR bandwidth used
+                    if (bandwidthUsedElement) {
+                        bandwidthUsedElement.textContent = formatBandwidth(userData.totalDataScraped || 0);
+                    }
+                    
+                    // Update session and total bandwidth
+                    const sessionBandwidthEl = document.getElementById('sessionBandwidthUsed');
+                    const totalBandwidthEl = document.getElementById('totalBandwidthUsed');
+                    if (sessionBandwidthEl) {
+                        const sessionBandwidth = await chrome.storage.local.get(['sessionBandwidthUsed']);
+                        sessionBandwidthEl.textContent = formatBandwidth(sessionBandwidth.sessionBandwidthUsed || 0);
+                    }
+                    if (totalBandwidthEl) {
+                        totalBandwidthEl.textContent = formatBandwidth(userData.totalDataScraped || 0);
+                    }
+                    
+                    // Update header principal display
+                    const headerPrincipal = document.getElementById('headerPrincipal');
+                    if (headerPrincipal) {
+                        headerPrincipal.textContent = currentPrincipal.slice(0, 8) + '...';
+                    }
+                    
+                    // Show referral history if available
+                    if (userData.referralHistory && userData.referralHistory.length > 0) {
+                        const referralListEl = document.getElementById('referralHistoryList');
+                        if (referralListEl) {
+                            referralListEl.innerHTML = userData.referralHistory.map((ref, index) => `
+                                <div style="padding: 8px; background: rgba(255,255,255,0.05); margin: 4px 0; border-radius: 4px;">
+                                    <strong>User:</strong> ${ref.userPrincipal || 'Unknown'}<br>
+                                    <strong>When:</strong> ${new Date(Number(ref.timestamp) / 1000000).toLocaleDateString()}<br>
+                                    <strong>Points:</strong> ${ref.pointsAwarded}
+                                </div>
+                            `).join('');
+                        }
+                    }
+                    
+                    console.log('Loaded YOUR data from canister:', userData);
                 } else {
-                    console.log('Could not fetch user profile from canister, using local stats');
-                    // Fall back to local stats
-                    loadLocalStats();
+                    console.log('User not found in canister - showing zeros');
+                    // User doesn't exist yet - show zeros, NOT anonymous data
+                    if (pointsElement) pointsElement.textContent = '0';
+                    if (pagesElement) pagesElement.textContent = '0';  
+                    if (bandwidthUsedElement) bandwidthUsedElement.textContent = '0 KB';
                 }
             } else {
                 console.log('Missing data for API call:', { 
@@ -353,19 +558,26 @@ async function loadDashboardData() {
     }
 }
 
-// Helper function to load local stats as fallback
+// Helper function to load local stats as fallback (when no canister data)
 async function loadLocalStats() {
-    const stats = await chrome.storage.local.get(['totalPointsEarned', 'totalPagesScraped', 'totalBandwidthUsed']);
+    // When there's no canister data, show zeros for main counters
+    // and only show session data in session fields
+    const stats = await chrome.storage.local.get(['sessionPointsEarned', 'sessionPagesScraped', 'sessionBandwidthUsed']);
     if (pointsElement) {
-        pointsElement.textContent = stats.totalPointsEarned || 0;
+        pointsElement.textContent = 0; // No canister data means 0 all-time points
     }
     if (pagesElement) {
-        pagesElement.textContent = stats.totalPagesScraped || 0;
+        pagesElement.textContent = 0; // No canister data means 0 all-time pages
     }
     if (bandwidthUsedElement) {
-        const bandwidth = stats.totalBandwidthUsed || 0;
-        bandwidthUsedElement.textContent = formatBandwidth(bandwidth);
+        bandwidthUsedElement.textContent = '0 B'; // No canister data means 0 all-time bandwidth
     }
+    
+    // Update session displays
+    const sessionPagesEl = document.getElementById('sessionPagesScraped');
+    const sessionBandwidthEl = document.getElementById('sessionBandwidthUsed');
+    if (sessionPagesEl) sessionPagesEl.textContent = stats.sessionPagesScraped || 0;
+    if (sessionBandwidthEl) sessionBandwidthEl.textContent = formatBandwidth(stats.sessionBandwidthUsed || 0);
 }
 
 function updateExtensionStatusText(enabled) {
@@ -393,25 +605,63 @@ function getSpeedColor(score) {
 
 async function loadReferralData() {
     try {
-        // For now, use mock data - this can be replaced with real canister calls
-        const referralCode = generateReferralCode();
+        // Get the actual referral code from storage or API
+        const stored = await chrome.storage.local.get(['userReferralCode', 'principalId']);
+        let referralCode = stored.userReferralCode;
+        let referralCount = 0;
+        let referralPoints = 0;
+        
+        // Always fetch fresh data from API to get updated counts
+        if (stored.principalId) {
+            try {
+                const response = await fetch('https://ic-proxy.rhinospider.com/api/user-profile-by-principal', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ principalId: stored.principalId })
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    referralCode = data.referralCode;
+                    referralCount = data.referralCount || 0;
+                    // Calculate referral points based on referral count
+                    // Using the tier system from the canister
+                    if (referralCount <= 10) {
+                        referralPoints = referralCount * 100;
+                    } else if (referralCount <= 30) {
+                        referralPoints = 1000 + (referralCount - 10) * 50;
+                    } else if (referralCount <= 70) {
+                        referralPoints = 2000 + (referralCount - 30) * 25;
+                    } else {
+                        referralPoints = 3000 + (referralCount - 70) * 5;
+                    }
+                    
+                    // Save referral code to storage for quick access
+                    if (referralCode) {
+                        await chrome.storage.local.set({ userReferralCode: referralCode });
+                    }
+                }
+            } catch (err) {
+                console.error('Error fetching referral data:', err);
+            }
+        }
+        
         const referralData = {
-            code: referralCode,
-            referrals: 0,
-            points: 0
+            code: referralCode || 'Loading...',
+            referrals: referralCount,
+            points: referralPoints
         };
         
         // Update referral UI
         const codeDisplay = document.getElementById('referralCode');
-        const referralCount = document.getElementById('referralCount');
-        const referralPoints = document.getElementById('referralPoints');
+        const referralCountEl = document.getElementById('referralCount');
+        const referralPointsEl = document.getElementById('referralPoints');
         const copyButton = document.getElementById('copyReferralCode');
         const useCodeInput = document.getElementById('useReferralCode');
         const useCodeButton = document.getElementById('applyReferralCode');
         
         if (codeDisplay) codeDisplay.textContent = referralData.code;
-        if (referralCount) referralCount.textContent = referralData.referrals;
-        if (referralPoints) referralPoints.textContent = referralData.points;
+        if (referralCountEl) referralCountEl.textContent = referralData.referrals;
+        if (referralPointsEl) referralPointsEl.textContent = referralData.points;
         
         // Set up copy functionality
         if (copyButton) {
@@ -427,9 +677,60 @@ async function loadReferralData() {
             useCodeButton.onclick = async () => {
                 const code = useCodeInput.value.trim();
                 if (code) {
-                    // Here you would validate and apply the referral code
-                    showMessage('Referral code applied successfully!', 'success');
-                    useCodeInput.value = '';
+                    try {
+                        // Apply the referral code via the proxy
+                        const response = await fetch('https://ic-proxy.rhinospider.com/api/consumer-use-referral', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ 
+                                code: code,
+                                principalId: currentPrincipal
+                            })
+                        });
+                        
+                        const result = await response.json();
+                        
+                        if (result.ok) {
+                            // Success - show UI feedback
+                            showMessage('✅ Referral code applied successfully!', 'success');
+                            
+                            // Update UI to show referral info
+                            const referralSection = document.querySelector('.referral-applied');
+                            if (!referralSection) {
+                                // Create a section to show applied referral
+                                const referralInfo = document.createElement('div');
+                                referralInfo.className = 'referral-applied';
+                                referralInfo.innerHTML = `
+                                    <div style="background: #4CAF50; color: white; padding: 10px; border-radius: 5px; margin: 10px 0;">
+                                        <strong>✅ Referral Applied!</strong><br>
+                                        Code: ${code}<br>
+                                        <small>You'll receive bonus points when you start scraping!</small>
+                                    </div>
+                                `;
+                                useCodeInput.parentElement.appendChild(referralInfo);
+                            }
+                            
+                            // Clear the input
+                            useCodeInput.value = '';
+                            
+                            // Store that we've used a referral
+                            await chrome.storage.local.set({ 
+                                usedReferralCode: code,
+                                referredBy: result.referrer || 'Unknown'
+                            });
+                            
+                            // Refresh user data to show updated points
+                            setTimeout(() => refreshDashboardData(), 2000);
+                        } else {
+                            // Error - show message
+                            showMessage(`❌ Error: ${result.err || 'Failed to apply referral code'}`, 'error');
+                        }
+                    } catch (error) {
+                        console.error('Error applying referral code:', error);
+                        showMessage('❌ Failed to apply referral code. Please try again.', 'error');
+                    }
                 }
             };
         }
@@ -460,6 +761,68 @@ function showError(message) {
 }
 
 function showMessage(message, type = 'info') {
-    // Simple message display - can be enhanced
+    // Show message in console
     console.log(`[${type}] ${message}`);
+    
+    // Create or update UI message element
+    let messageEl = document.getElementById('system-message');
+    if (!messageEl) {
+        messageEl = document.createElement('div');
+        messageEl.id = 'system-message';
+        messageEl.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 8px;
+            z-index: 10000;
+            font-weight: 500;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+            max-width: 400px;
+        `;
+        document.body.appendChild(messageEl);
+    }
+    
+    // Set color based on type
+    const colors = {
+        success: '#4CAF50',
+        error: '#f44336',
+        info: '#2196F3',
+        warning: '#ff9800'
+    };
+    
+    messageEl.style.backgroundColor = colors[type] || colors.info;
+    messageEl.style.color = 'white';
+    messageEl.textContent = message;
+    messageEl.style.display = 'block';
+    
+    // Auto-hide after 5 seconds
+    setTimeout(() => {
+        messageEl.style.display = 'none';
+    }, 5000);
 }
+
+// Privacy Policy toggle function
+function togglePrivacyPolicy() {
+    const content = document.getElementById('privacyPolicyContent');
+    const toggle = document.getElementById('privacyToggle');
+    
+    if (content && toggle) {
+        if (content.style.display === 'none' || content.style.display === '') {
+            content.style.display = 'block';
+            toggle.style.transform = 'rotate(180deg)';
+        } else {
+            content.style.display = 'none';
+            toggle.style.transform = 'rotate(0deg)';
+        }
+    }
+}
+
+// Add event listener for privacy policy toggle when DOM loads
+document.addEventListener('DOMContentLoaded', function() {
+    const privacyToggleBtn = document.getElementById('privacyPolicyToggle');
+    if (privacyToggleBtn) {
+        privacyToggleBtn.addEventListener('click', togglePrivacyPolicy);
+    }
+});

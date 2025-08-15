@@ -1,6 +1,8 @@
 # RhinoSpider
 
-RhinoSpider is a DePIN (Decentralized Physical Infrastructure Network) platform for distributed web scraping built on the Internet Computer Protocol (ICP). Users contribute their bandwidth for web scraping while earning points and rewards.
+RhinoSpider is a DePIN (Decentralized Physical Infrastructure Network) platform for distributed web intelligence built on the Internet Computer Protocol (ICP). Users contribute their bandwidth for web data collection while earning points and rewards.
+
+**Current Version**: 5.5.0 (Chrome Extension)
 
 ## Project Structure
 
@@ -32,12 +34,14 @@ rhinospider/
 
 ## Key Features
 
+- 🌍 **Geo-Filtered Content**: Regional content distribution based on user location
+- 📊 **Google Analytics**: Built-in analytics for usage tracking
 - 🔍 **Search-Based Discovery**: Topics use search queries instead of URL patterns
 - 🔄 **URL Deduplication**: Tracks scraped URLs per user to avoid duplicates  
-- 💎 **Points System**: Earn 10 points per KB of data scraped
-- 🔗 **Referral System**: Earn rewards for bringing new users
-- 🤖 **Optional AI Enhancement**: Global AI configuration (disabled by default)
+- 💎 **Points System**: Earn points based on data quality and size
+- 🔗 **Referral System**: Tiered rewards for bringing new users
 - 🔐 **Internet Identity**: Secure Web3 authentication
+- 🛡️ **Enhanced Security**: API keys removed from repository, secure deployment
 
 ## Documentation
 

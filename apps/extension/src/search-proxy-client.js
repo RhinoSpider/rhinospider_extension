@@ -161,10 +161,19 @@ class SearchProxyClient {
     console.log('[SearchProxyClient] getUrlsForTopics called with topics:', topics);
     
     try {
+      // Get user's geo information from storage
+      const geoData = await chrome.storage.local.get(['userCountry', 'userRegion', 'userIpAddress']);
+      
       const body = {
         extensionId: chrome.runtime.id,
         topics: topics,
-        batchSize: limit * topics.length
+        batchSize: limit * topics.length,
+        // Include geo information to filter URLs based on user's location
+        geoLocation: {
+          country: geoData.userCountry || null,
+          region: geoData.userRegion || null,
+          ipAddress: geoData.userIpAddress || null
+        }
       };
 
       const options = {
@@ -214,6 +223,9 @@ class SearchProxyClient {
    */
   async getUrlForTopic(topic) {
     console.log('[SearchProxyClient] getUrlForTopic called for topic:', topic);
+    
+    // REMOVED CLIENT-SIDE GEO FILTERING - Proxy now handles this server-side
+    // Topics returned from proxy are already filtered for user's location
     
     try {
       // Call the search proxy to get URLs for this topic

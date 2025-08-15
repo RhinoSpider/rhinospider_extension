@@ -34,7 +34,7 @@
 
 ### Digital Ocean Server
 - **IP**: 143.244.133.154
-- **Credentials**: root / ffGpA2saNS47qr
+- **Credentials**: [REMOVED - Use SSH key authentication]
 - **Services**: Search proxy running on PM2
 
 ### Admin Principals Added

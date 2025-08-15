@@ -1,0 +1,19 @@
+{
+  "canisters": {
+    "consumer": {
+      "main": "main.mo",
+      "type": "motoko"
+    }
+  },
+  "defaults": {
+    "build": {
+      "packtool": ""
+    }
+  },
+  "networks": {
+    "ic": {
+      "providers": ["https://icp0.io"]
+    }
+  },
+  "version": 1
+}

@@ -334,17 +334,50 @@ export const PointsManagement: React.FC = () => {
         <div className="bg-[#1E1E2E] rounded-lg p-6">
           <h2 className="text-xl font-semibold text-white mb-4">Top Contributors</h2>
           <div className="space-y-2">
-            {stats.topContributors.map(([principal, points], index) => (
-              <div key={principal} className="flex items-center justify-between p-3 bg-[#360D68] rounded">
-                <div className="flex items-center space-x-3">
-                  <span className="text-[#B692F6] font-bold">#{index + 1}</span>
-                  <span className="text-white text-sm font-mono">
-                    {principal.substring(0, 8)}...{principal.substring(principal.length - 6)}
-                  </span>
+            {stats.topContributors.map(([principal, points], index) => {
+              // Find user data for this principal
+              const userData = users.find(u => u.principal === principal);
+              
+              // Calculate referral points based on tier system
+              let referralPoints = 0;
+              if (userData) {
+                const referralCount = Number(userData.referralCount);
+                if (referralCount <= 10) {
+                  referralPoints = referralCount * 100;
+                } else if (referralCount <= 30) {
+                  referralPoints = 1000 + (referralCount - 10) * 50;
+                } else if (referralCount <= 70) {
+                  referralPoints = 2000 + (referralCount - 30) * 25;
+                } else {
+                  referralPoints = 3000 + (referralCount - 70) * 5;
+                }
+              }
+              
+              const totalPoints = Number(points);
+              const scrapingPoints = Math.max(0, totalPoints - referralPoints);
+              
+              return (
+                <div key={principal} className="flex items-center justify-between p-3 bg-[#360D68] rounded">
+                  <div className="flex items-center space-x-3">
+                    <span className="text-[#B692F6] font-bold">#{index + 1}</span>
+                    <div className="flex flex-col">
+                      <span className="text-white text-sm font-mono">
+                        {principal.substring(0, 8)}...{principal.substring(principal.length - 6)}
+                      </span>
+                      <span className="text-gray-400 text-xs">
+                        {userData?.country || 'Unknown'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-white font-semibold">{formatNumber(points)} pts</div>
+                    <div className="text-xs text-gray-400">
+                      S: {formatNumber(BigInt(scrapingPoints))} | R: {formatNumber(BigInt(referralPoints))}
+                    </div>
+                  </div>
                 </div>
-                <span className="text-white font-semibold">{formatNumber(points)} pts</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

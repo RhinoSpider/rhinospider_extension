@@ -136,6 +136,7 @@ actor Admin {
     private let ADMIN_PRINCIPAL_3: Text = "m2x6b-rijrs-nmddl-i4o4z-x2ymi-5equa-cgtmd-y5pag-6f6p4-plfjj-vae"; // Atharva's principal
     private let ADMIN_PRINCIPAL_4: Text = "vnsgt-djy2g-igpvh-sevfi-ota4n-dtquw-nz7i6-4glkr-ijmrd-5w3uh-gae"; // New admin 1
     private let ADMIN_PRINCIPAL_5: Text = "a4kj7-zxayv-chbcy-xugju-sv5ct-qvah7-6qcet-zkoz2-ehngi-bcg5c-eqe"; // New admin 2
+    private let ADMIN_PRINCIPAL_6: Text = "5pw6j-226rd-77ttz-t3gca-x7bz4-fskes-oplrr-3plut-isotu-6rygj-tqe"; // Grant submission admin
     
 
     // Stable storage
@@ -181,6 +182,10 @@ actor Admin {
         let adminPrincipal5 = Principal.fromText(ADMIN_PRINCIPAL_5);
         admins.put(adminPrincipal5, true);
         
+        // Add admin principal 6
+        let adminPrincipal6 = Principal.fromText(ADMIN_PRINCIPAL_6);
+        admins.put(adminPrincipal6, true);
+        
         // Also add to users collection as SuperAdmins
         users.put(userPrincipal, {
             principal = userPrincipal;
@@ -221,6 +226,13 @@ actor Admin {
             principal = adminPrincipal5;
             role = #SuperAdmin;
             addedBy = adminPrincipal5;
+            addedAt = Time.now();
+        });
+        
+        users.put(adminPrincipal6, {
+            principal = adminPrincipal6;
+            role = #SuperAdmin;
+            addedBy = adminPrincipal6;
             addedAt = Time.now();
         });
         
@@ -295,6 +307,12 @@ actor Admin {
         // Explicitly allow admin principal 5
         if (Text.equal(callerStr, ADMIN_PRINCIPAL_5)) {
             Debug.print("Admin principal 5 authorized via Text.equal");
+            return true;
+        };
+        
+        // Explicitly allow admin principal 6
+        if (Text.equal(callerStr, ADMIN_PRINCIPAL_6)) {
+            Debug.print("Admin principal 6 authorized via Text.equal");
             return true;
         };
         
@@ -411,8 +429,35 @@ actor Admin {
             return #err("At least one content selector is required");
         };
         
-        topics.put(topic.id, topic);
-        #ok(topic)
+        // Create topic with proper timestamps and all required fields
+        let newTopic = {
+            id = topic.id;
+            name = topic.name;
+            description = topic.description;
+            status = topic.status;
+            searchQueries = topic.searchQueries;
+            preferredDomains = topic.preferredDomains;
+            excludeDomains = topic.excludeDomains;
+            requiredKeywords = topic.requiredKeywords;
+            excludeKeywords = topic.excludeKeywords;
+            contentSelectors = topic.contentSelectors;
+            titleSelectors = topic.titleSelectors;
+            excludeSelectors = topic.excludeSelectors;
+            minContentLength = topic.minContentLength;
+            maxContentLength = topic.maxContentLength;
+            maxUrlsPerBatch = topic.maxUrlsPerBatch;
+            scrapingInterval = topic.scrapingInterval;
+            priority = topic.priority;
+            geolocationFilter = topic.geolocationFilter;
+            percentageNodes = topic.percentageNodes;
+            randomizationMode = topic.randomizationMode;
+            createdAt = Time.now();  // Use current timestamp
+            lastScraped = 0;  // Initialize to 0
+            totalUrlsScraped = 0;  // Initialize to 0
+        };
+        
+        topics.put(topic.id, newTopic);
+        #ok(newTopic)
     };
 
     public shared({ caller }) func updateTopic(id: Text, updates: {
@@ -505,6 +550,28 @@ actor Admin {
             };
         };
     };
+    
+    // Update topic statistics when data is scraped
+    public shared({ caller }) func updateTopicStats(topicId: Text) : async Result.Result<(), Text> {
+        // Allow both authorized users and consumer canister to update stats
+        if (not _isAuthorized(caller) and not _isConsumerCanister(caller)) {
+            return #err("Unauthorized");
+        };
+        
+        switch (topics.get(topicId)) {
+            case null { #err("Topic not found") };
+            case (?topic) {
+                let updatedTopic = {
+                    topic with
+                    lastScraped = Time.now();
+                    totalUrlsScraped = topic.totalUrlsScraped + 1;
+                };
+                topics.put(topicId, updatedTopic);
+                Debug.print("Updated topic stats for " # topicId # ": lastScraped=" # Int.toText(Time.now()) # ", totalUrlsScraped=" # Nat.toText(updatedTopic.totalUrlsScraped));
+                #ok()
+            };
+        };
+    };
 
     // Global AI Configuration
     public shared({ caller }) func setGlobalAIConfig(config: ?GlobalAIConfig) : async Result.Result<(), Text> {
@@ -590,5 +657,106 @@ actor Admin {
         // This should call the consumer canister to update points
         // For now, return a stub response
         #ok("Manual points assignment needs to be implemented through consumer canister")
+    };
+    
+    // Fix existing users data in consumer canister
+    public shared({ caller }) func fixExistingUsersData() : async Result.Result<Text, Text> {
+        if (not _isAuthorized(caller)) {
+            return #err("Unauthorized");
+        };
+        
+        // Call consumer canister's fix function
+        let consumer : actor {
+            fixExistingUsersData : () -> async Result.Result<Text, Text>;
+        } = actor("t3pjp-kqaaa-aaaao-a4ooq-cai");
+        
+        try {
+            await consumer.fixExistingUsersData()
+        } catch (e) {
+            #err("Failed to fix user data: " # Error.message(e))
+        }
+    };
+    
+    // Update all users geo using real IP API
+    public shared({ caller }) func updateAllUsersGeo() : async Result.Result<Text, Text> {
+        if (not _isAuthorized(caller)) {
+            return #err("Unauthorized");
+        };
+        
+        // Call consumer canister's update geo function
+        let consumer : actor {
+            updateAllUsersGeoFromAPI : () -> async Result.Result<Text, Text>;
+        } = actor("t3pjp-kqaaa-aaaao-a4ooq-cai");
+        
+        try {
+            await consumer.updateAllUsersGeoFromAPI()
+        } catch (e) {
+            #err("Failed to update geo: " # Error.message(e))
+        }
+    };
+    
+    // Manual geo update for specific users
+    public shared({ caller }) func manualGeoUpdate() : async Result.Result<Text, Text> {
+        if (not _isAuthorized(caller)) {
+            return #err("Unauthorized");
+        };
+        
+        // Manually update known users with their correct geo
+        let consumer : actor {
+            updateUserLocationByIP : (Text, Text, Text, Text) -> async Result.Result<Text, Text>;
+        } = actor("t3pjp-kqaaa-aaaao-a4ooq-cai");
+        
+        var results = "";
+        
+        // Update known IPs for all users with those IPs
+        // 136.25.89.88 -> USA
+        try {
+            let result1 = await consumer.updateUserLocationByIP(
+                "136.25.89.88",
+                "United States",
+                "Illinois",  
+                "Chicago"
+            );
+            switch(result1) {
+                case (#ok(msg)) { results := results # "IP 136.25.89.88: " # msg # "; "; };
+                case (#err(e)) { results := results # "IP 136.25.89.88 error: " # e # "; "; };
+            };
+        } catch (e) {
+            results := results # "IP 136.25.89.88 failed; ";
+        };
+        
+        // 142.198.58.95 -> Canada
+        try {
+            let result2 = await consumer.updateUserLocationByIP(
+                "142.198.58.95",
+                "Canada",
+                "Ontario",
+                "Toronto"  
+            );
+            switch(result2) {
+                case (#ok(msg)) { results := results # "IP 142.198.58.95: " # msg # "; "; };
+                case (#err(e)) { results := results # "IP 142.198.58.95 error: " # e # "; "; };
+            };
+        } catch (e) {
+            results := results # "IP 142.198.58.95 failed; ";
+        };
+        
+        // 185.18.214.249 -> Kazakhstan
+        try {
+            let result3 = await consumer.updateUserLocationByIP(
+                "185.18.214.249",
+                "Kazakhstan",
+                "Almaty",
+                "Almaty"
+            );
+            switch(result3) {
+                case (#ok(msg)) { results := results # "IP 185.18.214.249: " # msg # "; "; };
+                case (#err(e)) { results := results # "IP 185.18.214.249 error: " # e # "; "; };
+            };
+        } catch (e) {
+            results := results # "IP 185.18.214.249 failed; ";
+        };
+        
+        return #ok(results);
     };
 }

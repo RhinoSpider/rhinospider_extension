@@ -14,6 +14,35 @@
             min-height: 100vh;
         }
         
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-20px); }
+            100% { transform: translateY(0px); }
+        }
+        
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(182, 146, 246, 0.7); }
+            70% { box-shadow: 0 0 0 20px rgba(182, 146, 246, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(182, 146, 246, 0); }
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
         #login-container {
             position: fixed;
             top: 0;
@@ -23,8 +52,22 @@
             display: none;
             justify-content: center;
             align-items: center;
-            background: linear-gradient(to bottom right, #131217, #360D68, #131217);
+            background: linear-gradient(-45deg, #0a0e27, #360D68, #B692F6, #360D68, #0a0e27);
+            background-size: 400% 400%;
+            animation: gradientShift 15s ease infinite;
             z-index: 1000;
+            overflow: hidden;
+        }
+        
+        #login-container::before {
+            content: '';
+            position: absolute;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle at 20% 80%, transparent 20%, rgba(182, 146, 246, 0.1) 20.5%, rgba(182, 146, 246, 0.1) 30%, transparent 30.5%),
+                        radial-gradient(circle at 80% 20%, transparent 20%, rgba(54, 13, 104, 0.1) 20.5%, rgba(54, 13, 104, 0.1) 30%, transparent 30.5%),
+                        radial-gradient(circle at 40% 40%, transparent 20%, rgba(182, 146, 246, 0.05) 20.5%, rgba(182, 146, 246, 0.05) 30%, transparent 30.5%);
+            animation: float 20s ease-in-out infinite;
         }
         
         #login-container.visible {
@@ -32,47 +75,168 @@
         }
         
         .login-box {
-            background-color: white;
-            padding: 2.5rem;
-            border-radius: 24px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 3rem;
+            border-radius: 32px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3),
+                        inset 0 0 0 1px rgba(255, 255, 255, 0.1);
             text-align: center;
-            max-width: 400px;
+            max-width: 450px;
             width: 90%;
             margin: 1rem;
+            position: relative;
+            animation: slideIn 0.6s ease-out;
+            overflow: hidden;
+        }
+        
+        .login-box::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(182, 146, 246, 0.1) 0%, transparent 70%);
+            animation: float 10s ease-in-out infinite reverse;
+            pointer-events: none;
+        }
+        
+        .rhino-logo {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            animation: pulse 2s infinite;
+            position: relative;
+            z-index: 1;
         }
         
         .login-box h1 {
-            color: #121212;
-            font-size: 24px;
-            margin-bottom: 12px;
+            color: white;
+            font-size: 32px;
+            margin-bottom: 8px;
+            font-weight: 700;
+            background: linear-gradient(120deg, #B692F6, #ffffff, #B692F6);
+            background-size: 200% auto;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: gradientShift 3s ease infinite;
+            position: relative;
+            z-index: 1;
         }
         
-        .login-box p {
-            color: rgba(18, 18, 18, 0.7);
-            margin-bottom: 24px;
+        .login-box .tagline {
+            color: rgba(255, 255, 255, 0.6);
+            margin-bottom: 32px;
+            font-size: 14px;
+            letter-spacing: 0.5px;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .features-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 32px;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .feature-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 14px;
+            text-align: left;
+            opacity: 0;
+            animation: slideIn 0.5s ease-out forwards;
+        }
+        
+        .feature-item:nth-child(1) { animation-delay: 0.1s; }
+        .feature-item:nth-child(2) { animation-delay: 0.2s; }
+        .feature-item:nth-child(3) { animation-delay: 0.3s; }
+        
+        .feature-icon {
+            width: 24px;
+            height: 24px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            flex-shrink: 0;
         }
         
         #login-button {
-            background: linear-gradient(to right, #360D68, #B692F6);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 14px 28px;
+            padding: 16px 32px;
             border: none;
-            border-radius: 8px;
+            border-radius: 16px;
             cursor: pointer;
             font-size: 16px;
-            font-weight: 500;
+            font-weight: 600;
             width: 100%;
-            transition: opacity 0.2s;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            z-index: 1;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        #login-button::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            transition: left 0.6s ease;
         }
         
         #login-button:hover:not(:disabled) {
-            opacity: 0.9;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+        
+        #login-button:hover:not(:disabled)::before {
+            left: 100%;
         }
         
         #login-button:disabled {
             opacity: 0.5;
             cursor: not-allowed;
+            transform: none;
+        }
+        
+        .security-badge {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 24px;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 12px;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .security-badge::before {
+            content: '🔒';
+            font-size: 14px;
         }
         
         #dashboard-container {
@@ -155,6 +319,82 @@
             justify-content: space-between;
             align-items: center;
             margin-bottom: 32px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 16px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.8);
+        }
+        
+        .header-logout-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: transparent;
+            color: rgba(255, 255, 255, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 14px;
+        }
+        
+        .header-logout-btn:hover {
+            background: rgba(255, 0, 0, 0.1);
+            border-color: rgba(255, 100, 100, 0.5);
+            color: #ff6666;
+        }
+        
+        .points-breakdown {
+            margin-top: 8px;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.6);
+            display: flex;
+            gap: 16px;
+        }
+        
+        .points-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .points-label {
+            color: rgba(255, 255, 255, 0.5);
+        }
+        
+        .bandwidth-throttle-control {
+            margin-top: 16px;
+            padding: 16px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 8px;
+        }
+        
+        .throttle-slider {
+            width: 100%;
+            margin: 12px 0;
+        }
+        
+        .throttle-info {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.6);
         }
         
         .section-title {
@@ -369,16 +609,38 @@
     <div id="app">
         <div id="login-container">
             <div class="login-box">
-                <h1>Welcome to RhinoSpider</h1>
-                <p>Please login to access your dashboard</p>
+                <div class="rhino-logo">>^&lt;</div>
+                <h1>RhinoSpider</h1>
+                <p class="tagline">Decentralized Web Intelligence Network</p>
+                
+                <div class="features-list">
+                    <div class="feature-item">
+                        <div class="feature-icon">💎</div>
+                        <span>Earn points for contributing data</span>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-icon">🌍</div>
+                        <span>Join a global network of contributors</span>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-icon">🔐</div>
+                        <span>Secure blockchain-based rewards</span>
+                    </div>
+                </div>
+                
                 <button id="login-button">Login with Internet Identity</button>
+                
+                <div class="security-badge">
+                    Secured by Internet Computer Protocol
+                </div>
+                
                 <div id="loginError"></div>
             </div>
         </div>
         <div id="dashboard-container" class="hidden">
             <div class="sidebar">
                 <div class="logo">
-                    <span>🦏</span>
+                    <span>>^&lt;</span>
                     <span>RhinoSpider</span>
                 </div>
                 <div class="nav-item active" data-target="dashboard">Dashboard</div>
@@ -392,6 +654,16 @@
                 <div id="dashboard" class="content-section active">
                     <div class="section-header">
                         <h2 class="section-title">Dashboard</h2>
+                        <div class="header-actions">
+                            <div class="user-info">
+                                <span>👤</span>
+                                <span id="headerPrincipal">Not logged in</span>
+                            </div>
+                            <button class="header-logout-btn" id="headerLogoutBtn">
+                                <span>🚪</span>
+                                <span>Logout</span>
+                            </button>
+                        </div>
                     </div>
                     <div class="dashboard-stats">
                         <div class="stat-card">
@@ -399,12 +671,32 @@
                             <div id="userProfile"></div>
                         </div>
                         <div class="stat-card">
-                            <h3>Points Earned</h3>
+                            <h3>Total Points</h3>
                             <div class="stat-value" id="pointsEarned">0</div>
+                            <div class="points-breakdown">
+                                <div class="points-item">
+                                    <span class="points-label">Scraping:</span>
+                                    <span id="pointsFromScraping">0</span>
+                                </div>
+                                <div class="points-item">
+                                    <span class="points-label">Referrals:</span>
+                                    <span id="pointsFromReferrals">0</span>
+                                </div>
+                            </div>
                         </div>
                         <div class="stat-card">
                             <h3>Pages Scraped</h3>
                             <div class="stat-value" id="pagesScraped">0</div>
+                            <div class="points-breakdown">
+                                <div class="points-item">
+                                    <span class="points-label">Session:</span>
+                                    <span id="sessionPagesScraped">0</span>
+                                </div>
+                                <div class="points-item">
+                                    <span class="points-label">All Time:</span>
+                                    <span id="totalPagesScraped">0</span>
+                                </div>
+                            </div>
                         </div>
                         <div class="stat-card">
                             <h3>Extension Status</h3>
@@ -414,7 +706,16 @@
                         <div class="stat-card">
                             <h3>Bandwidth Used</h3>
                             <div class="stat-value" id="bandwidthUsed" style="font-size: 18px; color: #B692F6;">0 KB</div>
-                            <p style="font-size: 12px; color: rgba(255,255,255,0.5); margin-top: 8px;">Data shared for points</p>
+                            <div class="points-breakdown">
+                                <div class="points-item">
+                                    <span class="points-label">Session:</span>
+                                    <span id="sessionBandwidthUsed">0 KB</span>
+                                </div>
+                                <div class="points-item">
+                                    <span class="points-label">All Time:</span>
+                                    <span id="totalBandwidthUsed">0 KB</span>
+                                </div>
+                            </div>
                         </div>
                         <div class="stat-card">
                             <h3>Current Speed</h3>
@@ -455,6 +756,13 @@
                             </div>
                             <div class="message" id="referralMessage"></div>
                         </div>
+                        
+                        <div class="stat-card">
+                            <h3>Referral History</h3>
+                            <div id="referralHistoryList" style="max-height: 400px; overflow-y: auto;">
+                                <p style="color: rgba(255, 255, 255, 0.5);">No referrals yet</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 
@@ -467,6 +775,8 @@
                         <h3>Extension Settings</h3>
                         <p style="color: rgba(255, 255, 255, 0.7);">Use the popup button to control the extension</p>
                     </div>
+                    
+                    <!-- Removed Bandwidth Throttling -->
                     
                     <!-- Tab-based Scraping Consent Notice -->
                     <div class="stat-card" style="background: rgba(182, 146, 246, 0.1); border: 1px solid rgba(182, 146, 246, 0.3);">
@@ -487,6 +797,47 @@
                             <p style="color: #4CAF50; font-size: 14px; margin: 0;">
                                 ✅ You have consented to background tab scraping
                             </p>
+                        </div>
+                    </div>
+                    
+                    <!-- Privacy Policy -->
+                    <div class="stat-card">
+                        <h3 id="privacyPolicyToggle" style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                            🔒 Privacy Policy 
+                            <span id="privacyToggle" style="font-size: 12px; transform: rotate(0deg); transition: transform 0.3s;">▼</span>
+                        </h3>
+                        <div id="privacyPolicyContent" style="display: none; margin-top: 16px; padding: 16px; background: rgba(255, 255, 255, 0.05); border-radius: 8px; border-left: 3px solid #B692F6;">
+                            <h4 style="color: #B692F6; margin: 0 0 12px 0;">Why Privacy Matters to Us</h4>
+                            <p style="color: rgba(255, 255, 255, 0.8); font-size: 14px; line-height: 1.5; margin: 0 0 16px 0;">
+                                At RhinoSpider, privacy is a fundamental right. We protect your personal information while enabling you to contribute to the global data economy.
+                            </p>
+                            
+                            <h4 style="color: #B692F6; margin: 16px 0 8px 0;">What We Protect</h4>
+                            <ul style="color: rgba(255, 255, 255, 0.7); margin: 0; padding-left: 20px; list-style: none;">
+                                <li style="margin: 6px 0;">❌ <strong>No Real IP Addresses</strong> - Only country-level location</li>
+                                <li style="margin: 6px 0;">❌ <strong>No Personal Info</strong> - Anonymous principals only</li>
+                                <li style="margin: 6px 0;">❌ <strong>No Browsing History</strong> - Only chosen scraping URLs</li>
+                                <li style="margin: 6px 0;">❌ <strong>No Device Tracking</strong> - No fingerprinting</li>
+                            </ul>
+                            
+                            <h4 style="color: #B692F6; margin: 16px 0 8px 0;">How We Protect You</h4>
+                            <ul style="color: rgba(255, 255, 255, 0.7); margin: 0; padding-left: 20px; list-style: none;">
+                                <li style="margin: 6px 0;">🔒 <strong>Data Anonymization</strong> - All user data is anonymized</li>
+                                <li style="margin: 6px 0;">🌍 <strong>Geographic Privacy</strong> - Only country-level geo-filtering</li>
+                                <li style="margin: 6px 0;">📊 <strong>Bandwidth Safety</strong> - Smart usage controls</li>
+                                <li style="margin: 6px 0;">🛡️ <strong>Content Safety</strong> - No adult/illegal content</li>
+                            </ul>
+                            
+                            <h4 style="color: #B692F6; margin: 16px 0 8px 0;">Decentralized Architecture</h4>
+                            <p style="color: rgba(255, 255, 255, 0.7); font-size: 13px; line-height: 1.4; margin: 0;">
+                                RhinoSpider runs on Internet Computer blockchain with cryptographic security, transparent code, and no central server storing your data.
+                            </p>
+                            
+                            <div style="margin-top: 16px; padding: 12px; background: rgba(76, 175, 80, 0.1); border-radius: 6px; border: 1px solid rgba(76, 175, 80, 0.3);">
+                                <p style="color: #4CAF50; font-size: 13px; margin: 0;">
+                                    ✅ <strong>Your Rights:</strong> Full control, transparency, deletion, and withdrawal at any time
+                                </p>
+                            </div>
                         </div>
                     </div>
                     
