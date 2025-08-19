@@ -62,7 +62,11 @@ class ProxyClient {
 
       return response;
     } catch (error) {
-      console.error('[ProxyClient] Request error:', error);
+      // Only log non-network errors to console
+      if (!error.message?.includes('Failed to fetch') && 
+          !error.message?.includes('NetworkError')) {
+        console.error('[ProxyClient] Request error:', error);
+      }
 
       // Track the failed attempt if logging is enabled
       if (globalThis.rhinoSpiderLogging) {

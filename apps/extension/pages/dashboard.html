@@ -669,6 +669,12 @@
                         <div class="stat-card">
                             <h3>Principal ID</h3>
                             <div id="userProfile"></div>
+                            <div class="points-breakdown" style="margin-top: 12px;">
+                                <div class="points-item">
+                                    <span class="points-label">📍 Location:</span>
+                                    <span id="userLocation" style="color: #B692F6;">Loading...</span>
+                                </div>
+                            </div>
                         </div>
                         <div class="stat-card">
                             <h3>Total Points</h3>
@@ -841,28 +847,6 @@
                         </div>
                     </div>
                     
-                    <!-- Scraping Statistics -->
-                    <div class="stat-card">
-                        <h3>Scraping Statistics</h3>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;">
-                            <div>
-                                <p style="color: rgba(255, 255, 255, 0.5); font-size: 12px; margin: 0;">Session Duration</p>
-                                <p style="color: #B692F6; font-size: 18px; margin: 4px 0;" id="sessionDuration">0 min</p>
-                            </div>
-                            <div>
-                                <p style="color: rgba(255, 255, 255, 0.5); font-size: 12px; margin: 0;">Avg Scrape Time</p>
-                                <p style="color: #B692F6; font-size: 18px; margin: 4px 0;" id="avgScrapeTime">0s</p>
-                            </div>
-                            <div>
-                                <p style="color: rgba(255, 255, 255, 0.5); font-size: 12px; margin: 0;">Success Rate</p>
-                                <p style="color: #00FF88; font-size: 18px; margin: 4px 0;" id="successRate">100%</p>
-                            </div>
-                            <div>
-                                <p style="color: rgba(255, 255, 255, 0.5); font-size: 12px; margin: 0;">Data Quality</p>
-                                <p style="color: #00FF88; font-size: 18px; margin: 4px 0;" id="dataQuality">Good</p>
-                            </div>
-                        </div>
-                    </div>
                 </div>
                 
                 <!-- RhinoScan Section -->

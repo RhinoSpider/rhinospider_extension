@@ -52,6 +52,7 @@ async function initialize() {
     bandwidthUsedElement = document.getElementById('bandwidthUsed');
     currentSpeedElement = document.getElementById('currentSpeed');
     
+    // Storage listener will handle logout trigger from popup (see storage.onChanged below)
     // Set up event listeners
     if (loginButton) loginButton.addEventListener('click', handleLogin);
     if (logoutButton) logoutButton.addEventListener('click', handleLogout);
@@ -92,6 +93,15 @@ async function initialize() {
     // Listen for storage changes to update the dashboard in real-time
     chrome.storage.onChanged.addListener((changes, area) => {
         if (area === 'local') {
+            // Check for logout trigger from popup - JUST LIKE TOGGLE!
+            if (changes.triggerLogout && changes.triggerLogout.newValue === true) {
+                console.log('Dashboard: Detected logout trigger from popup via storage');
+                // Clear the trigger flag immediately
+                chrome.storage.local.remove(['triggerLogout', 'triggerLogoutTime']);
+                // Call logout
+                handleLogout();
+            }
+            
             // Update extension status if it changes
             if (changes.enabled || changes.isScrapingActive) {
                 const enabled = changes.enabled?.newValue || changes.isScrapingActive?.newValue || false;
@@ -263,45 +273,27 @@ async function handleLogin() {
 
 async function handleLogout() {
     try {
-        // First, disable the extension to stop scraping
-        await chrome.storage.local.set({ 
-            enabled: false, 
-            isScrapingActive: false 
-        });
-        
-        // Notify background script to stop scraping
-        await chrome.runtime.sendMessage({ type: 'LOGOUT' });
-        
-        // Wait a bit for any pending submissions to complete
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Logout from Internet Identity
+        // Logout from Internet Identity first
         await authClient.logout();
         
-        // Clear authentication data but keep principalId for a bit longer
-        await chrome.storage.local.remove([
-            'isAuthenticated',
-            'userReferralCode',
-            'referralCode',
-            'totalPointsEarned',
-            'totalPagesScraped',
-            'totalBandwidthUsed'
-        ]);
+        // Notify background script to handle complete logout
+        const response = await chrome.runtime.sendMessage({ type: 'LOGOUT' });
         
-        // Reset session storage to ensure clean state
-        await chrome.storage.session.clear();
-        
-        // Reset local state
-        isAuthenticated = false;
-        currentPrincipal = null;
-        
-        // Clear principalId after a delay to allow final submissions
-        setTimeout(async () => {
-            await chrome.storage.local.remove(['principalId']);
-        }, 3000);
-        
-        // Force reload the page to ensure clean state
-        window.location.reload();
+        if (response && response.success) {
+            // Reset local state
+            isAuthenticated = false;
+            currentPrincipal = null;
+            
+            // Close the dashboard tab
+            window.close();
+        } else {
+            // If background logout fails, try direct cleanup
+            await chrome.storage.local.clear();
+            await chrome.storage.session.clear();
+            
+            // Still try to close the tab
+            window.close();
+        }
     } catch (error) {
         console.error('Logout error:', error);
         // Even if logout fails, try to clear local data
@@ -386,14 +378,54 @@ async function refreshDashboardData() {
 
 async function loadDashboardData() {
     try {
-        // Load extension state
-        const state = await chrome.storage.local.get(['enabled', 'isScrapingActive', 'usedReferralCode', 'referredBy']);
+        // Load extension state and statistics
+        const state = await chrome.storage.local.get([
+            'enabled', 
+            'isScrapingActive', 
+            'usedReferralCode', 
+            'referredBy',
+            'sessionStartTime',
+            'sessionPagesScraped',
+            'sessionSuccessCount',
+            'sessionFailureCount',
+            'totalScrapeTime',
+            'lastScrapeTime'
+        ]);
         const isEnabled = state.enabled !== false;
         if (extensionToggle) {
             extensionToggle.checked = isEnabled;
         }
         // Update status text
         updateExtensionStatusText(isEnabled);
+        
+        // Update scraping statistics dynamically
+        updateScrapingStatistics(state);
+        
+        // Set up interval to update statistics every 5 seconds while extension is active
+        if (state.enabled && !window.statsUpdateInterval) {
+            window.statsUpdateInterval = setInterval(async () => {
+                const currentState = await chrome.storage.local.get([
+                    'sessionStartTime',
+                    'sessionPagesScraped',
+                    'sessionSuccessCount',
+                    'sessionFailureCount',
+                    'totalScrapeTime',
+                    'enabled'
+                ]);
+                
+                if (currentState.enabled) {
+                    updateScrapingStatistics(currentState);
+                } else {
+                    // Clear interval if extension is disabled
+                    clearInterval(window.statsUpdateInterval);
+                    window.statsUpdateInterval = null;
+                }
+            }, 5000);
+        } else if (!state.enabled && window.statsUpdateInterval) {
+            // Clear interval if extension is disabled
+            clearInterval(window.statsUpdateInterval);
+            window.statsUpdateInterval = null;
+        }
         
         // Load user profile
         if (userProfileElement) {
@@ -442,23 +474,37 @@ async function loadDashboardData() {
                     const pointsFromScrapingEl = document.getElementById('pointsFromScraping');
                     const pointsFromReferralsEl = document.getElementById('pointsFromReferrals');
                     
-                    // Calculate referral points based on referral count (same logic as in loadReferralData)
+                    // Use canister-provided points breakdown if available, otherwise calculate
                     let referralPoints = 0;
-                    const referralCount = userData.referralCount || 0;
-                    if (referralCount <= 10) {
-                        referralPoints = referralCount * 100;
-                    } else if (referralCount <= 30) {
-                        referralPoints = 1000 + (referralCount - 10) * 50;
-                    } else if (referralCount <= 70) {
-                        referralPoints = 2000 + (referralCount - 30) * 25;
+                    let scrapingPoints = 0;
+                    
+                    if (userData.pointsFromReferrals !== undefined && userData.pointsFromScraping !== undefined) {
+                        // Use the actual values from canister (most accurate)
+                        referralPoints = userData.pointsFromReferrals;
+                        scrapingPoints = userData.pointsFromScraping;
+                        console.log('Using canister-provided points breakdown:', { referralPoints, scrapingPoints });
                     } else {
-                        referralPoints = 3000 + (referralCount - 70) * 5;
+                        // Fall back to calculated values for older accounts
+                        console.log('Canister missing points breakdown, calculating from referralCount');
+                        const referralCount = userData.referralCount || 0;
+                        
+                        // Calculate using tiered system
+                        if (referralCount <= 10) {
+                            referralPoints = referralCount * 100;
+                        } else if (referralCount <= 30) {
+                            referralPoints = 1000 + (referralCount - 10) * 50;
+                        } else if (referralCount <= 70) {
+                            referralPoints = 2000 + (referralCount - 30) * 25;
+                        } else {
+                            referralPoints = 3000 + (referralCount - 70) * 5;
+                        }
+                        
+                        // Scraping points = total - referral points
+                        scrapingPoints = Math.max(0, (userData.points || 0) - referralPoints);
                     }
                     
                     if (pointsFromScrapingEl) {
-                        // Scraping points = total points - referral points
-                        const scrapingPoints = (userData.points || 0) - referralPoints;
-                        pointsFromScrapingEl.textContent = Math.max(0, scrapingPoints);
+                        pointsFromScrapingEl.textContent = scrapingPoints;
                     }
                     if (pointsFromReferralsEl) {
                         pointsFromReferralsEl.textContent = referralPoints;
@@ -466,10 +512,22 @@ async function loadDashboardData() {
                     
                     // Show pages scraped - combine canister total with local session
                     if (pagesElement) {
-                        // Main counter shows canister total (all-time from backend)
-                        // userData.scrapedUrls contains all URLs ever scraped by this user
-                        const totalPagesFromCanister = userData.scrapedUrls ? userData.scrapedUrls.length : 0;
-                        pagesElement.textContent = totalPagesFromCanister;
+                        // Use totalPagesScraped field from canister (more reliable than scrapedUrls array)
+                        // The scrapedUrls array might be truncated for performance
+                        const totalPagesFromCanister = userData.totalPagesScraped || 0;
+                        const scrapedUrlsCount = userData.scrapedUrls ? userData.scrapedUrls.length : 0;
+                        
+                        // Use the maximum of both values to ensure accuracy
+                        const actualTotalPages = Math.max(totalPagesFromCanister, scrapedUrlsCount);
+                        
+                        console.log('[Dashboard] Page counts from canister:', {
+                            totalPagesScraped: userData.totalPagesScraped,
+                            scrapedUrlsLength: scrapedUrlsCount,
+                            actualTotal: actualTotalPages,
+                            rawUserData: userData
+                        });
+                        
+                        pagesElement.textContent = actualTotalPages;
                         
                         // Get local session stats
                         const localStats = await chrome.storage.local.get(['sessionPagesScraped']);
@@ -478,7 +536,8 @@ async function loadDashboardData() {
                         const sessionPagesEl = document.getElementById('sessionPagesScraped');
                         const totalPagesEl = document.getElementById('totalPagesScraped');
                         if (sessionPagesEl) sessionPagesEl.textContent = localStats.sessionPagesScraped || 0;
-                        if (totalPagesEl) totalPagesEl.textContent = totalPagesFromCanister; // All-time from canister
+                        // Show the actual total from canister
+                        if (totalPagesEl) totalPagesEl.textContent = actualTotalPages;
                     }
                     
                     // Show YOUR bandwidth used
@@ -503,6 +562,20 @@ async function loadDashboardData() {
                         headerPrincipal.textContent = currentPrincipal.slice(0, 8) + '...';
                     }
                     
+                    // Update location display
+                    const userLocationEl = document.getElementById('userLocation');
+                    if (userLocationEl) {
+                        const city = userData.city || 'Unknown';
+                        const country = userData.country || 'Unknown';
+                        if (city !== 'Unknown' && country !== 'Unknown') {
+                            userLocationEl.textContent = `${city}, ${country}`;
+                        } else if (country !== 'Unknown') {
+                            userLocationEl.textContent = country;
+                        } else {
+                            userLocationEl.textContent = 'Location not detected';
+                        }
+                    }
+                    
                     // Show referral history if available
                     if (userData.referralHistory && userData.referralHistory.length > 0) {
                         const referralListEl = document.getElementById('referralHistoryList');
@@ -518,6 +591,13 @@ async function loadDashboardData() {
                     }
                     
                     console.log('Loaded YOUR data from canister:', userData);
+                    console.log('Points breakdown:', {
+                        totalPoints: userData.points,
+                        pointsFromScraping: userData.pointsFromScraping,
+                        pointsFromReferrals: userData.pointsFromReferrals,
+                        referralCount: userData.referralCount,
+                        calculatedReferralPoints: userData.referralCount ? (userData.referralCount <= 10 ? userData.referralCount * 100 : 0) : 0
+                    });
                 } else {
                     console.log('User not found in canister - showing zeros');
                     // User doesn't exist yet - show zeros, NOT anonymous data
@@ -587,6 +667,73 @@ function updateExtensionStatusText(enabled) {
     }
 }
 
+// Update scraping statistics dynamically
+function updateScrapingStatistics(state) {
+    // Calculate session duration
+    const sessionDurationEl = document.getElementById('sessionDuration');
+    if (sessionDurationEl) {
+        if (state.sessionStartTime) {
+            const duration = Date.now() - state.sessionStartTime;
+            const minutes = Math.floor(duration / 60000);
+            sessionDurationEl.textContent = `${minutes} min`;
+        } else {
+            sessionDurationEl.textContent = '0 min';
+        }
+    }
+    
+    // Calculate average scrape time
+    const avgScrapeTimeEl = document.getElementById('avgScrapeTime');
+    if (avgScrapeTimeEl) {
+        if (state.totalScrapeTime && state.sessionPagesScraped > 0) {
+            const avgTime = Math.round(state.totalScrapeTime / state.sessionPagesScraped / 1000);
+            avgScrapeTimeEl.textContent = `${avgTime}s`;
+        } else {
+            avgScrapeTimeEl.textContent = '0s';
+        }
+    }
+    
+    // Calculate success rate
+    const successRateEl = document.getElementById('successRate');
+    if (successRateEl) {
+        const successCount = state.sessionSuccessCount || 0;
+        const failureCount = state.sessionFailureCount || 0;
+        const total = successCount + failureCount;
+        if (total > 0) {
+            const rate = Math.round((successCount / total) * 100);
+            successRateEl.textContent = `${rate}%`;
+            successRateEl.style.color = rate >= 80 ? '#00FF88' : (rate >= 50 ? '#FFA500' : '#FF4444');
+        } else {
+            successRateEl.textContent = '100%';
+        }
+    }
+    
+    // Update data quality based on success rate
+    const dataQualityEl = document.getElementById('dataQuality');
+    if (dataQualityEl) {
+        const successCount = state.sessionSuccessCount || 0;
+        const failureCount = state.sessionFailureCount || 0;
+        const total = successCount + failureCount;
+        if (total > 0) {
+            const rate = (successCount / total) * 100;
+            if (rate >= 90) {
+                dataQualityEl.textContent = 'Excellent';
+                dataQualityEl.style.color = '#00FF88';
+            } else if (rate >= 75) {
+                dataQualityEl.textContent = 'Good';
+                dataQualityEl.style.color = '#4CAF50';
+            } else if (rate >= 50) {
+                dataQualityEl.textContent = 'Fair';
+                dataQualityEl.style.color = '#FFA500';
+            } else {
+                dataQualityEl.textContent = 'Poor';
+                dataQualityEl.style.color = '#FF4444';
+            }
+        } else {
+            dataQualityEl.textContent = 'Good';
+        }
+    }
+}
+
 function formatBandwidth(bytes) {
     if (bytes === 0) return '0 B';
     if (bytes < 1024) return `${bytes} B`;
@@ -623,16 +770,22 @@ async function loadReferralData() {
                     const data = await response.json();
                     referralCode = data.referralCode;
                     referralCount = data.referralCount || 0;
-                    // Calculate referral points based on referral count
-                    // Using the tier system from the canister
-                    if (referralCount <= 10) {
-                        referralPoints = referralCount * 100;
-                    } else if (referralCount <= 30) {
-                        referralPoints = 1000 + (referralCount - 10) * 50;
-                    } else if (referralCount <= 70) {
-                        referralPoints = 2000 + (referralCount - 30) * 25;
+                    // Use canister-provided referral points if available
+                    if (data.pointsFromReferrals !== undefined) {
+                        referralPoints = data.pointsFromReferrals;
+                        console.log('Referral page: Using canister referral points:', referralPoints);
                     } else {
-                        referralPoints = 3000 + (referralCount - 70) * 5;
+                        // Fall back to calculated tier system for older accounts
+                        console.log('Referral page: Calculating referral points from count:', referralCount);
+                        if (referralCount <= 10) {
+                            referralPoints = referralCount * 100;
+                        } else if (referralCount <= 30) {
+                            referralPoints = 1000 + (referralCount - 10) * 50;
+                        } else if (referralCount <= 70) {
+                            referralPoints = 2000 + (referralCount - 30) * 25;
+                        } else {
+                            referralPoints = 3000 + (referralCount - 70) * 5;
+                        }
                     }
                     
                     // Save referral code to storage for quick access
@@ -677,6 +830,12 @@ async function loadReferralData() {
             useCodeButton.onclick = async () => {
                 const code = useCodeInput.value.trim();
                 if (code) {
+                    // Add loading state
+                    useCodeButton.disabled = true;
+                    const originalText = useCodeButton.textContent;
+                    useCodeButton.textContent = 'Applying...';
+                    useCodeButton.style.opacity = '0.7';
+                    
                     try {
                         // Apply the referral code via the proxy
                         const response = await fetch('https://ic-proxy.rhinospider.com/api/consumer-use-referral', {
@@ -692,24 +851,18 @@ async function loadReferralData() {
                         
                         const result = await response.json();
                         
+                        // Reset button state
+                        useCodeButton.disabled = false;
+                        useCodeButton.textContent = originalText;
+                        useCodeButton.style.opacity = '1';
+                        
                         if (result.ok) {
-                            // Success - show UI feedback
-                            showMessage('✅ Referral code applied successfully!', 'success');
-                            
-                            // Update UI to show referral info
-                            const referralSection = document.querySelector('.referral-applied');
-                            if (!referralSection) {
-                                // Create a section to show applied referral
-                                const referralInfo = document.createElement('div');
-                                referralInfo.className = 'referral-applied';
-                                referralInfo.innerHTML = `
-                                    <div style="background: #4CAF50; color: white; padding: 10px; border-radius: 5px; margin: 10px 0;">
-                                        <strong>✅ Referral Applied!</strong><br>
-                                        Code: ${code}<br>
-                                        <small>You'll receive bonus points when you start scraping!</small>
-                                    </div>
-                                `;
-                                useCodeInput.parentElement.appendChild(referralInfo);
+                            // Success - show message below the input
+                            const messageEl = document.getElementById('referralMessage');
+                            if (messageEl) {
+                                messageEl.innerHTML = `✅ Referral code applied successfully! Code: ${code}`;
+                                messageEl.className = 'message success';
+                                messageEl.style.display = 'block';
                             }
                             
                             // Clear the input
@@ -723,13 +876,46 @@ async function loadReferralData() {
                             
                             // Refresh user data to show updated points
                             setTimeout(() => refreshDashboardData(), 2000);
+                            
+                            // Hide message after 5 seconds
+                            setTimeout(() => {
+                                if (messageEl) {
+                                    messageEl.style.display = 'none';
+                                }
+                            }, 5000);
                         } else {
-                            // Error - show message
-                            showMessage(`❌ Error: ${result.err || 'Failed to apply referral code'}`, 'error');
+                            // Error - show message below the input
+                            const messageEl = document.getElementById('referralMessage');
+                            if (messageEl) {
+                                messageEl.innerHTML = `❌ Error: ${result.err || 'Failed to apply referral code'}`;
+                                messageEl.className = 'message error';
+                                messageEl.style.display = 'block';
+                                
+                                // Hide error after 5 seconds
+                                setTimeout(() => {
+                                    messageEl.style.display = 'none';
+                                }, 5000);
+                            }
                         }
                     } catch (error) {
                         console.error('Error applying referral code:', error);
-                        showMessage('❌ Failed to apply referral code. Please try again.', 'error');
+                        
+                        // Reset button state on error
+                        useCodeButton.disabled = false;
+                        useCodeButton.textContent = originalText;
+                        useCodeButton.style.opacity = '1';
+                        
+                        const messageEl = document.getElementById('referralMessage');
+                        if (messageEl) {
+                            messageEl.innerHTML = '❌ Failed to apply referral code. Please try again.';
+                            messageEl.className = 'message error';
+                            messageEl.style.display = 'block';
+                            
+                            // Hide error after 5 seconds
+                            setTimeout(() => {
+                                messageEl.style.display = 'none';
+                            }, 5000);
+                        }
                     }
                 }
             };

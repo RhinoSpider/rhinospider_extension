@@ -53,7 +53,12 @@ function setupEventListeners() {
     elements.loginButton?.addEventListener('click', handleLogin);
     
     // Logout button
-    elements.logoutButton?.addEventListener('click', handleLogout);
+    if (elements.logoutButton) {
+        console.log('Popup: Logout button found, adding listener');
+        elements.logoutButton.addEventListener('click', handleLogout);
+    } else {
+        console.error('Popup: Logout button NOT found!');
+    }
     
     // Dashboard button
     elements.dashboardButton?.addEventListener('click', handleDashboard);
@@ -66,15 +71,18 @@ async function checkAuthStatus() {
     try {
         // Check Chrome storage for existing auth
         const stored = await chrome.storage.local.get(['principalId', 'isAuthenticated']);
+        console.log('Popup: checkAuthStatus - stored data:', stored);
         
         // If we have a principalId, we're authenticated (even if isAuthenticated flag is missing)
         if (stored.principalId) {
+            console.log('Popup: Found principalId, showing authenticated view');
             // Make sure isAuthenticated is set
             if (!stored.isAuthenticated) {
                 await chrome.storage.local.set({ isAuthenticated: true });
             }
             showAuthenticatedView();
         } else {
+            console.log('Popup: No principalId found, showing login view');
             showLoginView();
         }
     } catch (error) {
@@ -119,45 +127,26 @@ async function handleDashboard() {
 }
 
 async function handleLogout() {
+    console.log('Popup: handleLogout called!');
     try {
-        // Clear ALL authentication and user-related data from Chrome storage
-        await chrome.storage.local.remove([
-            'principalId',
-            'isAuthenticated',
-            'userReferralCode',
-            'referralCode',
-            'totalPointsEarned',
-            'totalPagesScraped',
-            'totalBandwidthUsed'
-        ]);
+        // Use storage change to trigger logout - EXACTLY like toggle does!
+        // Set a special flag that dashboard will see
+        await chrome.storage.local.set({ 
+            triggerLogout: true,
+            triggerLogoutTime: Date.now() 
+        });
+        console.log('Popup: Set triggerLogout flag in storage');
         
-        // Reset session storage to ensure clean state
-        await chrome.storage.session.clear();
-        
-        // Notify background script
-        await chrome.runtime.sendMessage({ type: 'LOGOUT' });
-        
-        showLoginView();
-        
-        // Reset stats display
-        elements.pointsEarned.textContent = '0';
-        elements.pagesScraped.textContent = '0';
-        elements.scrapingToggle.checked = false;
-        
-        // Reload popup to ensure clean state
-        setTimeout(() => window.location.reload(), 100);
+        // Give dashboard a moment to see the change and start logout
+        setTimeout(() => {
+            // Close popup after dashboard gets the signal
+            window.close();
+        }, 100);
     } catch (error) {
-        console.error('Logout error:', error);
-        // Even if logout fails, try to clear local data
-        await chrome.storage.local.remove([
-            'principalId',
-            'isAuthenticated',
-            'userReferralCode',
-            'referralCode'
-        ]);
-        showLoginView();
-        // Reload popup anyway
-        setTimeout(() => window.location.reload(), 100);
+        console.error('Popup: Logout error:', error);
+        // Fallback - clear storage and close
+        chrome.storage.local.remove(['principalId', 'isAuthenticated']);
+        window.close();
     }
 }
 

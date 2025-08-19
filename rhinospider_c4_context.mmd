@@ -1,0 +1,39 @@
+C4Context
+    title RhinoSpider System Context - Version 5.5.0
+    
+    Person(user, "User", "Data contributor")
+    Person(admin, "Administrator", "System manager")
+    
+    System_Boundary(rhinospider, "RhinoSpider Platform") {
+        System(extension, "Chrome Extension", "Data collection client")
+        System(dashboard, "Dashboard", "User interface")
+        System(admin_panel, "Admin Panel", "Management interface")
+    }
+    
+    System_Boundary(icp_network, "Internet Computer") {
+        System(canisters, "Canisters", "Smart contracts")
+    }
+    
+    System_Boundary(proxy_services, "Proxy Layer") {
+        System(ic_proxy, "IC Proxy", "Canister interface")
+        System(search_proxy, "Search Proxy", "URL discovery")
+    }
+    
+    System_Ext(identity, "Internet Identity", "Authentication service")
+    System_Ext(ipwhois, "IPWhois", "Geolocation API")
+    System_Ext(search, "Search Engines", "URL sources")
+    
+    Rel(user, extension, "Uses")
+    Rel(user, dashboard, "Views data")
+    Rel(admin, admin_panel, "Manages")
+    
+    Rel(extension, ic_proxy, "Submits data")
+    Rel(extension, search_proxy, "Gets URLs")
+    Rel(dashboard, ic_proxy, "API calls")
+    Rel(admin_panel, ic_proxy, "Admin API")
+    
+    Rel(ic_proxy, canisters, "Actor calls")
+    Rel(search_proxy, search, "Queries")
+    
+    Rel(canisters, identity, "Authentication")
+    Rel(canisters, ipwhois, "Location data")

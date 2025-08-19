@@ -235,9 +235,9 @@
 }
 
 .verification-links {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  gap: 16px;
 }
 
 .verification-item {
@@ -255,6 +255,10 @@
   color: #B692F6;
   text-decoration: none;
   transition: opacity 0.2s;
+  font-family: monospace;
+  font-size: 0.8rem;
+  word-break: break-all;
+  display: inline-block;
 }
 
 .verification-item a:hover {

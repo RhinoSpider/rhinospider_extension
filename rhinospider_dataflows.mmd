@@ -1,0 +1,71 @@
+graph LR
+    %% RhinoSpider Data Flow Diagrams v5.5.0
+    
+    subgraph user_registration["User Registration Process"]
+        reg1[User opens extension]
+        reg2[Clicks login button]
+        reg3[Internet Identity auth]
+        reg4[Principal ID generated]
+        reg5[Profile created in Consumer Canister]
+        reg6[Referral code generated]
+        reg7[IP geolocation lookup]
+        reg8[Profile stored]
+        
+        reg1 --> reg2
+        reg2 --> reg3
+        reg3 --> reg4
+        reg4 --> reg5
+        reg5 --> reg6
+        reg6 --> reg7
+        reg7 --> reg8
+    end
+    
+    subgraph data_collection["Data Collection Process"]
+        col1[Request topics from Admin Canister]
+        col2[Get topic list]
+        col3[Query Search Proxy for URLs]
+        col4[Receive URL list]
+        col5[Open browser tab]
+        col6[Inject content script]
+        col7[Extract data]
+        col8[Submit to IC Proxy]
+        col9[Calculate points]
+        col10[Store in Storage Canister]
+        
+        col1 --> col2
+        col2 --> col3
+        col3 --> col4
+        col4 --> col5
+        col5 --> col6
+        col6 --> col7
+        col7 --> col8
+        col8 --> col9
+        col9 --> col10
+    end
+    
+    subgraph referral_system["Referral System"]
+        ref1[New user enters code]
+        ref2[Validate in Consumer Canister]
+        ref3{Code valid?}
+        ref4[Link accounts]
+        ref5[Calculate tier bonus]
+        ref6[Award points to referrer]
+        ref7[Return error]
+        
+        ref1 --> ref2
+        ref2 --> ref3
+        ref3 -->|Yes| ref4
+        ref3 -->|No| ref7
+        ref4 --> ref5
+        ref5 --> ref6
+    end
+    
+    %% Tier system note
+    tier_note[Referral Tiers:<br/>First 10 referrals = 100 points<br/>Next 20 = 50 points<br/>Next 40 = 25 points<br/>Remaining = 5 points]
+    
+    ref5 -.-> tier_note
+    
+    style user_registration fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style data_collection fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
+    style referral_system fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px
+    style tier_note fill:#fffde7,stroke:#f57f17,stroke-width:1px

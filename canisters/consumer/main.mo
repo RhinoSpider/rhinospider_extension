@@ -99,8 +99,43 @@ actor ConsumerBackend {
         };
     };
 
+    // Stable storage for UserProfile - V3 includes all fields
+    type StableUserProfile = {
+        principal: Principal;
+        devices: [Text];
+        created: Int;
+        lastLogin: Int;
+        ipAddress: ?Text;
+        country: ?Text;
+        region: ?Text;
+        city: ?Text;
+        latitude: ?Float;
+        longitude: ?Float;
+        lastActive: Int;
+        isActive: Bool;
+        dataVolumeKB: Nat;
+        referralCode: Text;
+        referralCount: Nat;
+        points: Nat;
+        totalDataScraped: Nat;
+        referredBy: ?Principal;
+        scrapedUrls: [Text];
+        referralHistory: [ReferralUse];
+        pointsFromScraping: Nat;
+        pointsFromReferrals: Nat;
+        sessionPagesScraped: Nat;
+        totalPagesScraped: Nat;
+        sessionBandwidthUsed: Nat;
+        totalBandwidthUsed: Nat;
+        preferences: {
+            notificationsEnabled: Bool;
+            theme: Text;
+        };
+    };
+    
     // User profiles with stable storage - using old type for compatibility
     private stable var stableUserProfilesV2: [(Principal, UserProfileV2)] = [];
+    private stable var stableUserProfilesV3: [(Principal, StableUserProfile)] = [];
     private var userProfiles = HashMap.HashMap<Principal, UserProfile>(10, Principal.equal, Principal.hash);
     
     // Referral system storage
@@ -166,8 +201,8 @@ actor ConsumerBackend {
 
     // Upgrade hooks
     system func preupgrade() {
-        // Convert current profiles to V2 format for stable storage
-        let v2Profiles = Array.map<(Principal, UserProfile), (Principal, UserProfileV2)>(
+        // Save current profiles to V3 format which includes ALL fields
+        let v3Profiles = Array.map<(Principal, UserProfile), (Principal, StableUserProfile)>(
             Iter.toArray(userProfiles.entries()),
             func ((principal, profile)) = (principal, {
                 principal = profile.principal;
@@ -188,17 +223,62 @@ actor ConsumerBackend {
                 points = profile.points;
                 totalDataScraped = profile.totalDataScraped;
                 referredBy = profile.referredBy;
+                scrapedUrls = profile.scrapedUrls;
+                referralHistory = profile.referralHistory;
+                pointsFromScraping = profile.pointsFromScraping;
+                pointsFromReferrals = profile.pointsFromReferrals;
+                sessionPagesScraped = profile.sessionPagesScraped;
+                totalPagesScraped = profile.totalPagesScraped;
+                sessionBandwidthUsed = profile.sessionBandwidthUsed;
+                totalBandwidthUsed = profile.totalBandwidthUsed;
                 preferences = profile.preferences;
-                // Note: scrapedUrls is not saved in V2 format
             })
         );
-        stableUserProfilesV2 := v2Profiles;
+        stableUserProfilesV3 := v3Profiles;
+        // Clear V2 since we're using V3 now
+        stableUserProfilesV2 := [];
         stableReferralCodes := Iter.toArray(referralCodes.entries());
     };
 
     system func postupgrade() {
-        // Migrate from V2 to current format
-        if (stableUserProfilesV2.size() > 0) {
+        // First check if we have V3 profiles (includes all fields)
+        if (stableUserProfilesV3.size() > 0) {
+            // Restore from V3 - all fields preserved
+            let restoredProfiles = Array.map<(Principal, StableUserProfile), (Principal, UserProfile)>(
+                stableUserProfilesV3,
+                func ((principal, profile)) = (principal, {
+                    principal = profile.principal;
+                    devices = profile.devices;
+                    created = profile.created;
+                    lastLogin = profile.lastLogin;
+                    ipAddress = profile.ipAddress;
+                    country = profile.country;
+                    region = profile.region;
+                    city = profile.city;
+                    latitude = profile.latitude;
+                    longitude = profile.longitude;
+                    lastActive = profile.lastActive;
+                    isActive = profile.isActive;
+                    dataVolumeKB = profile.dataVolumeKB;
+                    referralCode = profile.referralCode;
+                    referralCount = profile.referralCount;
+                    points = profile.points;
+                    totalDataScraped = profile.totalDataScraped;
+                    referredBy = profile.referredBy;
+                    scrapedUrls = profile.scrapedUrls;
+                    referralHistory = profile.referralHistory;
+                    pointsFromScraping = profile.pointsFromScraping;
+                    pointsFromReferrals = profile.pointsFromReferrals;
+                    sessionPagesScraped = profile.sessionPagesScraped;
+                    totalPagesScraped = profile.totalPagesScraped;
+                    sessionBandwidthUsed = profile.sessionBandwidthUsed;
+                    totalBandwidthUsed = profile.totalBandwidthUsed;
+                    preferences = profile.preferences;
+                })
+            );
+            userProfiles := HashMap.fromIter<Principal, UserProfile>(restoredProfiles.vals(), 10, Principal.equal, Principal.hash);
+        } else if (stableUserProfilesV2.size() > 0) {
+            // Migrate from V2 to current format (for backwards compatibility)
             let migratedProfiles = Array.map<(Principal, UserProfileV2), (Principal, UserProfile)>(
                 stableUserProfilesV2,
                 func ((principal, oldProfile)) = (principal, {
@@ -489,6 +569,25 @@ actor ConsumerBackend {
         };
         return 5; // Default minimum bonus
     };
+
+    // Calculate total referral points earned based on tiered system
+    private func calculateTotalReferralPoints(referralCount: Nat): Nat {
+        var totalPoints = 0;
+        var remainingReferrals = referralCount;
+        var previousLimit = 0;
+        
+        for (tier in referralTiers.vals()) {
+            if (remainingReferrals > 0) {
+                let referralsInThisTier = Nat.min(remainingReferrals, tier.limit - previousLimit);
+                totalPoints := totalPoints + (referralsInThisTier * tier.points);
+                remainingReferrals := Int.abs(remainingReferrals - referralsInThisTier);
+                previousLimit := tier.limit;
+            };
+        };
+        
+        return totalPoints;
+    };
+
 
     // GeoIP lookup function
     private func getLocationFromIP(ip: Text): async ?{country: Text; region: Text; city: Text; lat: Float; lon: Float} {
@@ -931,6 +1030,119 @@ actor ConsumerBackend {
                 #err(#NotFound)
             };
         }
+    };
+    
+    // Admin function to fix all users' points breakdown
+    public shared(msg) func recalculateAllUsersPoints(): async Result.Result<Text, Text> {
+        let caller = msg.caller;
+        
+        // Only allow authenticated users (admin/controllers)
+        if (not isAuthenticated(caller)) {
+            return #err("Not authorized - admin only");
+        };
+        
+        var updatedCount = 0;
+        var processedCount = 0;
+        
+        for ((principal, profile) in userProfiles.entries()) {
+            processedCount += 1;
+            
+            // Only update if referral points are wrong
+            if (profile.referralCount > 0 and profile.pointsFromReferrals == 0) {
+                // Calculate referral points based on tier system
+                var calculatedReferralPoints : Nat = 0;
+                
+                // First 10 referrals: 100 points each
+                if (profile.referralCount <= 10) {
+                    calculatedReferralPoints := profile.referralCount * 100;
+                } else if (profile.referralCount <= 30) {
+                    // First 10 at 100, next 20 at 50
+                    calculatedReferralPoints := 1000 + ((profile.referralCount - 10) * 50);
+                } else if (profile.referralCount <= 70) {
+                    // First 10 at 100, next 20 at 50, next 40 at 25
+                    calculatedReferralPoints := 2000 + ((profile.referralCount - 30) * 25);
+                } else {
+                    // First 10 at 100, next 20 at 50, next 40 at 25, rest at 5
+                    calculatedReferralPoints := 3000 + ((profile.referralCount - 70) * 5);
+                };
+                
+                // Calculate scraping points (total - referral)
+                let calculatedScrapingPoints = if (profile.points > calculatedReferralPoints) {
+                    profile.points - calculatedReferralPoints
+                } else {
+                    profile.points // If something is off, at least keep total points valid
+                };
+                
+                // Update the profile
+                let updatedProfile = {
+                    profile with
+                    pointsFromReferrals = calculatedReferralPoints;
+                    pointsFromScraping = calculatedScrapingPoints;
+                };
+                
+                userProfiles.put(principal, updatedProfile);
+                updatedCount += 1;
+            };
+        };
+        
+        #ok("Processed " # Nat.toText(processedCount) # " users, updated " # Nat.toText(updatedCount) # " users with incorrect referral points")
+    };
+    
+    // Fix points breakdown for migrated users
+    // This recalculates pointsFromReferrals based on referralCount
+    public shared(msg) func recalculatePointsBreakdown(): async Result.Result<Text, Text> {
+        let caller = msg.caller;
+        
+        // Allow admin or the user themselves to call
+        if (not isAuthenticated(caller)) {
+            return #err("Not authorized");
+        };
+        
+        switch (userProfiles.get(caller)) {
+            case (?profile) {
+                // Calculate referral points based on tier system
+                var calculatedReferralPoints : Nat = 0;
+                if (profile.referralCount > 0) {
+                    // First 10 referrals: 100 points each
+                    if (profile.referralCount <= 10) {
+                        calculatedReferralPoints := profile.referralCount * 100;
+                    } else if (profile.referralCount <= 30) {
+                        // First 10 at 100, next 20 at 50
+                        calculatedReferralPoints := 1000 + ((profile.referralCount - 10) * 50);
+                    } else if (profile.referralCount <= 70) {
+                        // First 10 at 100, next 20 at 50, next 40 at 25
+                        calculatedReferralPoints := 2000 + ((profile.referralCount - 30) * 25);
+                    } else {
+                        // First 10 at 100, next 20 at 50, next 40 at 25, rest at 5
+                        calculatedReferralPoints := 3000 + ((profile.referralCount - 70) * 5);
+                    };
+                };
+                
+                // Calculate scraping points (total minus referral)
+                let calculatedScrapingPoints = if (profile.points > calculatedReferralPoints) {
+                    profile.points - calculatedReferralPoints
+                } else {
+                    profile.points // If something is off, at least keep total points
+                };
+                
+                // Update the profile with correct breakdown
+                let updatedProfile = {
+                    profile with
+                    pointsFromReferrals = calculatedReferralPoints;
+                    pointsFromScraping = calculatedScrapingPoints;
+                };
+                
+                userProfiles.put(caller, updatedProfile);
+                
+                return #ok("Points breakdown recalculated: " # 
+                    Nat.toText(calculatedScrapingPoints) # " from scraping, " # 
+                    Nat.toText(calculatedReferralPoints) # " from " # 
+                    Nat.toText(profile.referralCount) # " referrals");
+            };
+            case null {
+                return #err("Profile not found");
+            };
+        };
     };
     
     // Referral system functions
@@ -2683,11 +2895,17 @@ actor ConsumerBackend {
             // Fix page counts based on points (estimate: 1 page = ~5 points)
             if (profile.totalPagesScraped == 0 and profile.points > 0) {
                 let estimatedPages = profile.points / 5;
+                // Calculate actual referral points using tier system
+                let calculatedReferralPoints = calculateTotalReferralPoints(profile.referralCount);
+                let calculatedScrapingPoints = if (profile.points > calculatedReferralPoints) {
+                    profile.points - calculatedReferralPoints
+                } else { 0 };
+                
                 updatedProfile := {
                     updatedProfile with
                     totalPagesScraped = estimatedPages;
-                    pointsFromScraping = profile.points - (profile.referralCount * 100); // Estimate scraping points
-                    pointsFromReferrals = profile.referralCount * 100; // Basic referral calculation
+                    pointsFromScraping = calculatedScrapingPoints;
+                    pointsFromReferrals = calculatedReferralPoints;
                 };
                 needsUpdate := true;
                 pagesFixed += 1;

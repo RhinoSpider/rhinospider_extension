@@ -45,7 +45,12 @@ async function makeRequest(service, endpoint, options = {}) {
     console.log(`[RhinoSpider] Connection attempt to ${url}: SUCCESS`);
     return response;
   } catch (error) {
-    console.error(`[ConnectionHandler] Failed to connect to ${url}: ${error.message}`);
+    // Only log non-network errors to avoid console spam
+    if (!error.message?.includes('Failed to fetch') && 
+        !error.message?.includes('NetworkError') &&
+        !error.message?.includes('ERR_INTERNET_DISCONNECTED')) {
+      console.error(`[ConnectionHandler] Failed to connect to ${url}: ${error.message}`);
+    }
     throw error;
   }
 }
@@ -70,7 +75,11 @@ async function testConnection(service) {
     }
     return false;
   } catch (error) {
-    console.error(`[ConnectionHandler] Health check failed for ${service}:`, error);
+    // Silently handle network failures during health checks
+    if (!error.message?.includes('Failed to fetch') && 
+        !error.message?.includes('NetworkError')) {
+      console.error(`[ConnectionHandler] Health check failed for ${service}:`, error);
+    }
     return false;
   }
 }

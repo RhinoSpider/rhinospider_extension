@@ -357,6 +357,7 @@ const TOPICS_CACHE_DURATION = 30 * 60 * 1000; // 30 minutes in milliseconds
 
 // Authentication state
 let isAuthenticated = false;
+let currentPrincipal = null;
 
 // Service worker adapter is imported above, no need to declare it again
 
@@ -616,6 +617,7 @@ async function initializeExtension() {
 
         // Set authentication state
         isAuthenticated = !!principalId;
+        currentPrincipal = principalId || null;
         logger.log(`[AUTH] Status: ${isAuthenticated ? 'Authenticated' : 'Not authenticated'}`);
 
         // Set up action listeners
@@ -978,6 +980,9 @@ function getBandwidthRating(score) {
 async function performScrape() {
     logger.critical('[CRITICAL] [performScrape] FUNCTION CALLED');
     
+    // Track scraping time for statistics
+    const startTime = Date.now();
+    
     // Track this operation
     const operationId = Date.now();
     activeOperations.add(operationId);
@@ -1308,8 +1313,12 @@ async function performScrape() {
                     const sessionBandwidth = (stats.sessionBandwidthUsed || 0) + contentSize;
                     const sessionPoints = (stats.sessionPointsEarned || 0) + pointsEarned;
                     
+                    // Track session success count (increment even if submission fails due to cycles)
+                    const sessionStats = await chrome.storage.local.get(['sessionSuccessCount', 'sessionFailureCount']);
+                    const sessionSuccessCount = (sessionStats.sessionSuccessCount || 0) + 1;
+                    
                     logger.log(`Current page count: ${currentPageCount}, incrementing to: ${newPageCount}`);
-                    logger.log(`Session stats: ${sessionPages} pages, ${sessionBandwidth} bytes`);
+                    logger.log(`Session stats: ${sessionPages} pages, ${sessionBandwidth} bytes, ${sessionSuccessCount} successful`);
                     
                     await chrome.storage.local.set({
                         totalPointsEarned: (stats.totalPointsEarned || 0) + pointsEarned,
@@ -1318,7 +1327,10 @@ async function performScrape() {
                         // Session stats (reset on extension reload)
                         sessionPagesScraped: sessionPages,
                         sessionBandwidthUsed: sessionBandwidth,
-                        sessionPointsEarned: sessionPoints
+                        sessionPointsEarned: sessionPoints,
+                        sessionSuccessCount: sessionSuccessCount,
+                        // Track total scrape time for average calculation
+                        totalScrapeTime: (stats.totalScrapeTime || 0) + (Date.now() - startTime)
                     });
                     
                     logger.log(`Updated local stats: +${pointsEarned} points, total pages: ${newPageCount}, session pages: ${sessionPages}`);
@@ -1593,6 +1605,21 @@ async function startScraping() {
         if (isScrapingActive) {
             // Even if active, ensure the state is properly saved
             chrome.storage.local.set({ enabled: true, isScrapingActive: true, lastStartTime: Date.now() });
+        } else {
+            // Starting a new session - reset session counters and set start time
+            await chrome.storage.local.set({ 
+                enabled: true, 
+                isScrapingActive: true, 
+                lastStartTime: Date.now(),
+                sessionStartTime: Date.now(),
+                sessionPagesScraped: 0,
+                sessionBandwidthUsed: 0,
+                sessionPointsEarned: 0,
+                sessionSuccessCount: 0,
+                sessionFailureCount: 0,
+                totalScrapeTime: 0
+            });
+            logger.log('Session counters reset for new scraping session');
         }
 
         // Check if topics are loaded
@@ -2554,37 +2581,84 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             return true;
         
         case 'LOGOUT':
-            // Handle logout request from popup
+            // Handle logout request from popup or dashboard
+            logger.log('LOGOUT message received from:', sender.tab ? 'dashboard' : 'popup');
             (async () => {
                 try {
+                    logger.log('Processing logout request');
+                    
+                    // Stop scraping first
+                    await stopScraping();
+                    
+                    // Reset global auth state FIRST
                     isAuthenticated = false;
-                    // Clear ALL authentication and user-related data
-                    await chrome.storage.local.remove([
-                        'principalId',
-                        'isAuthenticated',
-                        'userReferralCode',
-                        'referralCode',
-                        'totalPointsEarned',
-                        'totalPagesScraped',
-                        'totalBandwidthUsed',
-                        'currentInternetSpeed',
-                        'lastHeartbeat',
-                        'lastScrapeTime',
-                        'scrapedUrls',
-                        'remainingUrls',
-                        'allSampleUrlsScraped'
-                    ]);
+                    currentPrincipal = null;
+                    
+                    // Clear ALL storage data BEFORE closing tabs - complete reset
+                    await chrome.storage.local.clear();
+                    logger.log('Local storage cleared');
                     
                     // Clear session storage
                     await chrome.storage.session.clear();
+                    logger.log('Session storage cleared');
                     
-                    // Stop scraping
-                    await stopScraping();
+                    // Give storage time to propagate the clear
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    
+                    // Verify it's actually cleared
+                    const checkStorage = await chrome.storage.local.get(['principalId', 'isAuthenticated']);
+                    if (checkStorage.principalId || checkStorage.isAuthenticated) {
+                        logger.error('WARNING: Auth data still exists after clear!', checkStorage);
+                        // Force remove it
+                        await chrome.storage.local.remove(['principalId', 'isAuthenticated', 'userReferralCode', 'referralCode']);
+                        logger.log('Force removed auth data');
+                    }
+                    
+                    // NOW close all dashboard tabs from THIS extension only
+                    const extensionUrl = chrome.runtime.getURL('pages/dashboard.html');
+                    const tabs = await chrome.tabs.query({ url: extensionUrl });
+                    logger.log(`Found ${tabs.length} dashboard tabs to close`);
+                    for (const tab of tabs) {
+                        await chrome.tabs.remove(tab.id);
+                    }
+                    logger.log('Dashboard tabs closed');
+                    
+                    // Double-check storage is still clear after closing tabs
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    const finalCheck = await chrome.storage.local.get(['principalId', 'isAuthenticated']);
+                    if (finalCheck.principalId || finalCheck.isAuthenticated) {
+                        logger.error('CRITICAL: Auth data reappeared after closing tabs!', finalCheck);
+                        // Force clear again
+                        await chrome.storage.local.clear();
+                        await chrome.storage.local.remove(['principalId']);
+                    }
+                    
+                    // Clear session storage
+                    await chrome.storage.session.clear();
+                    logger.log('Session storage cleared');
                     
                     // Reset badge
                     chrome.action.setBadgeText({ text: 'OFF' });
                     chrome.action.setBadgeBackgroundColor({ color: '#9E9E9E' });
                     
+                    // Reset all in-memory state
+                    // Reset topics that are actually declared
+                    topics = [];
+                    aiConfig = null;
+                    currentTopic = null;
+                    lastScrapedUrls = {};
+                    
+                    // Reset scraping state
+                    isScrapingActive = false;
+                    isEnabled = false;
+                    shouldStopScraping = false;
+                    
+                    // Note: The following variables don't exist in this codebase
+                    // They might be handled differently or stored only in chrome.storage
+                    // referralCode, scrapingTopics, activeTab, remainingUrls, scrapedUrls,
+                    // totalPointsEarned, totalPagesScraped, totalBandwidthUsed
+                    
+                    logger.log('Logout completed successfully');
                     sendResponse({ success: true });
                 } catch (error) {
                     logger.error('Error during logout:', error);
@@ -2612,12 +2686,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
                 // Set authentication state
                 isAuthenticated = true;
+                currentPrincipal = message.principalId;
 
                 // Store principalId in local storage
                 chrome.storage.local.set({ principalId: message.principalId }, () => {
-                    // Enable extension by default after login for automatic scraping
-                    chrome.storage.local.set({ enabled: true, isScrapingActive: true, scrapingEnabled: true }, async () => {
-                        logger.log('Extension is enabled by default after login, starting automatic scraping');
+                    // DO NOT enable extension by default - user must manually start
+                    chrome.storage.local.set({ enabled: false, isScrapingActive: false, scrapingEnabled: false }, async () => {
+                        logger.log('Login complete, extension remains OFF - user must manually start');
+                        
+                        // Ensure badge shows OFF after login
+                        chrome.action.setBadgeText({ text: 'OFF' });
+                        chrome.action.setBadgeBackgroundColor({ color: '#9E9E9E' });
                         
                         // Create user profile in referral canister
                         try {
@@ -2747,9 +2826,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                                     logger.log(`Empty topics array initialized (${topics.length} topics)`);
                                 }
 
-                                // Start scraping automatically since extension is enabled by default
-                                logger.log('Topics loaded, starting automatic scraping');
-                                startScraping();
+                                // DO NOT start scraping automatically - user must manually enable
+                                logger.log('Topics loaded, waiting for user to manually start scraping');
+                                // startScraping(); // Commented out - user must manually start
                             } catch (error) {
                                 logger.error('Error loading topics after login:', error);
 
@@ -2764,15 +2843,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
                                 logger.log(`Empty topics array initialized (${topics.length} topics)`);
 
-                                // Start scraping automatically since extension is enabled by default
-                                logger.log('Topics loaded, starting automatic scraping');
-                                startScraping();
+                                // DO NOT start scraping automatically - user must manually enable
+                                logger.log('Topics loaded, waiting for user to manually start scraping');
+                                // startScraping(); // Commented out - user must manually start
                             }
                         } else {
                             logger.log(`Topics already loaded (${topics.length} topics)`);
-                            // Start scraping automatically since extension is enabled by default
-                            logger.log('Extension is enabled by default - starting automatic scraping');
-                            startScraping();
+                            // DO NOT start scraping automatically - user must manually enable
+                            logger.log('Topics loaded, waiting for user to manually start scraping');
                         }
 
                         // Send response back to dashboard

@@ -1,0 +1,75 @@
+erDiagram
+    %% RhinoSpider Data Model v5.5.0
+    
+    UserProfile {
+        principal id PK
+        string username
+        integer points
+        string referral_code UK
+        principal referred_by FK
+        integer referral_count
+        timestamp last_login
+        timestamp created_at
+        string ip_address
+        string country
+        string city
+        string region
+        float latitude
+        float longitude
+    }
+    
+    ScrapedData {
+        text id PK
+        principal user_id FK
+        string url
+        string title
+        text content
+        string topic
+        integer points_awarded
+        timestamp created_at
+        string css_selector
+        integer content_size
+    }
+    
+    ScrapingTopic {
+        text id PK
+        string name
+        string description
+        array keywords
+        array target_domains
+        array css_selectors
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    ReferralCode {
+        text code PK
+        principal user_id FK
+        integer usage_count
+        timestamp created_at
+    }
+    
+    Session {
+        text session_id PK
+        principal user_id FK
+        string auth_method
+        timestamp login_time
+        timestamp expiry_time
+        string ip_address
+    }
+    
+    AdminUser {
+        principal id PK
+        string role
+        array permissions
+        timestamp created_at
+    }
+    
+    %% Relationships
+    UserProfile ||--o{ ScrapedData : submits
+    UserProfile ||--o| ReferralCode : owns
+    UserProfile ||--o{ Session : has
+    UserProfile }o--o| UserProfile : referred_by
+    ScrapingTopic ||--o{ ScrapedData : categorizes
+    AdminUser ||--o{ ScrapingTopic : manages

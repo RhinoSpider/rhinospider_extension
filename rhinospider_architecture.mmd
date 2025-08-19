@@ -1,0 +1,79 @@
+%%{init: {'theme':'base', 'themeVariables': { 'primaryColor':'#f4f4f4', 'primaryTextColor':'#333', 'primaryBorderColor':'#ccc', 'lineColor':'#333', 'secondaryColor':'#f4f4f4', 'tertiaryColor':'#f4f4f4', 'background':'#fff'}}}%%
+
+flowchart TB
+    %% RhinoSpider System Architecture v5.5.0
+    
+    subgraph client_layer["Client Applications"]
+        ext[Chrome Extension v5.5.0<br/>Background Worker<br/>Content Scripts<br/>Tab Management]
+        dashboard[User Dashboard<br/>React 18.2<br/>Embedded in Extension]
+    end
+    
+    subgraph proxy_layer["Proxy Services"]
+        ic_proxy[IC Proxy Server<br/>Node.js Express<br/>Port 3001<br/>ic-proxy.rhinospider.com]
+        search_proxy[Search Proxy<br/>Node.js<br/>Port 3000<br/>search-proxy.rhinospider.com]
+    end
+    
+    subgraph blockchain["Internet Computer Blockchain"]
+        consumer[Consumer Canister<br/>t3pjp-kqaaa<br/>User Management<br/>Points System<br/>Referrals]
+        storage[Storage Canister<br/>hhaip-uiaaa<br/>Data Repository<br/>Pagination Support]
+        admin_backend[Admin Backend Canister<br/>wvset-niaaa<br/>Topic Management<br/>Configuration<br/>System Logic]
+        admin_frontend[Admin Frontend Canister<br/>xxxxx-xxxxx<br/>Next.js App<br/>Static Assets<br/>admin.rhinospider.com]
+        auth[Auth Canister<br/>rdmx6-jaaaa<br/>Identity Service]
+    end
+    
+    subgraph external["External Services"]
+        identity[Internet Identity<br/>Authentication]
+        ipwhois[IPWhois API<br/>Geolocation]
+        search_engines[Search APIs<br/>Google/Bing/DDG]
+    end
+    
+    subgraph infrastructure["Infrastructure"]
+        vps[Digital Ocean VPS<br/>Ubuntu 22.04<br/>143.244.133.154]
+        pm2[PM2 Process Manager]
+        nginx[Nginx Proxy]
+    end
+    
+    %% Primary data flow connections
+    ext --> ic_proxy
+    ext --> search_proxy
+    dashboard --> ic_proxy
+    
+    %% Admin frontend is served from canister
+    admin_frontend -.->|Serves UI| browser[Browser]
+    browser -->|API Calls| ic_proxy
+    
+    ic_proxy --> consumer
+    ic_proxy --> storage
+    ic_proxy --> admin_backend
+    ic_proxy --> auth
+    
+    %% Admin frontend talks to admin backend
+    admin_frontend --> admin_backend
+    admin_frontend --> auth
+    
+    search_proxy --> search_engines
+    
+    consumer --> storage
+    consumer --> ipwhois
+    auth --> identity
+    
+    %% Infrastructure relationships
+    vps -.-> pm2
+    vps -.-> nginx
+    pm2 -.-> ic_proxy
+    pm2 -.-> search_proxy
+    nginx -.-> ic_proxy
+    nginx -.-> search_proxy
+    
+    %% Styling
+    classDef clientStyle fill:#e8f4f8,stroke:#1976d2,stroke-width:2px
+    classDef proxyStyle fill:#fff8e1,stroke:#f57c00,stroke-width:2px
+    classDef blockchainStyle fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef externalStyle fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    classDef infraStyle fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    
+    class ext,dashboard,browser clientStyle
+    class ic_proxy,search_proxy proxyStyle
+    class consumer,storage,admin_backend,admin_frontend,auth blockchainStyle
+    class identity,ipwhois,search_engines externalStyle
+    class vps,pm2,nginx infraStyle

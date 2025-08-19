@@ -356,7 +356,7 @@ export const RhinoScan = () => {
               target="_blank"
               rel="noopener noreferrer"
             >
-              hhaip-uiaaa...
+              hhaip-uiaaa-aaaao-a4khq-cai
             </a>
           </div>
           <div className="verification-item">
@@ -366,7 +366,7 @@ export const RhinoScan = () => {
               target="_blank"
               rel="noopener noreferrer"
             >
-              tgyl5-yyaaa...
+              t3pjp-kqaaa-aaaao-a4ooq-cai
             </a>
           </div>
         </div>

@@ -62,7 +62,11 @@ class SearchProxyClient {
 
       return response;
     } catch (error) {
-      console.error('[SearchProxyClient] Request error:', error);
+      // Only log non-network errors to console
+      if (!error.message?.includes('Failed to fetch') && 
+          !error.message?.includes('NetworkError')) {
+        console.error('[SearchProxyClient] Request error:', error);
+      }
 
       // Track the failed attempt if logging is enabled
       if (globalThis.rhinoSpiderLogging) {

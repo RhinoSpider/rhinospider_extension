@@ -1,0 +1,64 @@
+flowchart TD
+    %% RhinoSpider Technical Architecture
+    %% Version 5.5.0
+    %% December 2024
+    
+    subgraph Frontend["Frontend Layer"]
+        CE[Chrome Extension v5.5.0]
+        UD[User Dashboard - React<br/>Embedded in Extension]
+    end
+    
+    subgraph Proxy["Proxy Services - Node.js"]
+        ICP[IC Proxy :3001]
+        SP[Search Proxy :3000]
+    end
+    
+    subgraph ICP_Network["Internet Computer Protocol - Canisters"]
+        CC[Consumer Canister<br/>t3pjp-kqaaa]
+        SC[Storage Canister<br/>hhaip-uiaaa]
+        ABC[Admin Backend Canister<br/>wvset-niaaa]
+        AFC[Admin Frontend Canister<br/>Next.js Hosted]
+        AU[Auth Canister<br/>rdmx6-jaaaa]
+    end
+    
+    subgraph External["External APIs"]
+        II[Internet Identity]
+        GEO[IPWhois Geolocation]
+        SE[Search Engines]
+    end
+    
+    subgraph Infra["Infrastructure"]
+        VPS[Digital Ocean VPS<br/>143.244.133.154]
+        PM2[PM2]
+        NGX[Nginx]
+    end
+    
+    %% User Browser
+    BR[User Browser] --> AFC
+    BR --> ICP
+    
+    %% Main connections
+    CE --> ICP
+    CE --> SP
+    UD --> ICP
+    
+    ICP --> CC
+    ICP --> SC
+    ICP --> ABC
+    ICP --> AU
+    
+    AFC --> ABC
+    AFC --> AU
+    
+    SP --> SE
+    
+    CC --> SC
+    CC --> GEO
+    AU --> II
+    
+    VPS --> PM2
+    VPS --> NGX
+    PM2 --> ICP
+    PM2 --> SP
+    NGX --> ICP
+    NGX --> SP

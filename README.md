@@ -2,7 +2,7 @@
 
 RhinoSpider is a DePIN (Decentralized Physical Infrastructure Network) platform for distributed web intelligence built on the Internet Computer Protocol (ICP). Users contribute their bandwidth for web data collection while earning points and rewards.
 
-**Current Version**: 5.5.0 (Chrome Extension)
+**Current Version**: 5.6.0 (Chrome Extension)
 
 ## Project Structure
 
@@ -10,45 +10,52 @@ RhinoSpider is a DePIN (Decentralized Physical Infrastructure Network) platform 
 rhinospider/
 ├── apps/
 │   ├── admin/             # Admin dashboard application
-│   ├── extension/         # Chrome extension
+│   ├── extension/         # Chrome extension v5.5.0
 │   ├── backend/           # Backend services
 │   ├── scraper-service/   # Scraper service
 │   └── viewer/            # Content viewer
-├── packages/
-│   ├── scraping-core/     # Core scraping functionality
-│   ├── ui/                # Shared UI components
-│   └── web3-client/       # Web3 client utilities
 ├── canisters/             # ICP canisters
 │   ├── admin/             # Admin canister
-│   ├── analytics/         # Analytics canister
-│   ├── auth/              # Authentication canister
 │   ├── consumer/          # Consumer canister
 │   ├── storage/           # Storage canister
-│   └── user_profile/      # User profile canister
+│   └── auth/              # Authentication canister
 ├── services/              # Backend services
 │   ├── ic-proxy/          # IC Proxy service
-│   ├── scraper/           # Scraper service
 │   └── search-proxy/      # Search proxy service
-└── docs/                  # Documentation
+└── docs/                  
+    └── common/            # Unified documentation
+        ├── extension/     # Extension docs
+        ├── admin/         # Admin panel docs
+        ├── services/      # Backend services docs
+        └── deployment/    # Deployment guides
 ```
 
 ## Key Features
 
-- 🌍 **Geo-Filtered Content**: Regional content distribution based on user location
-- 📊 **Google Analytics**: Built-in analytics for usage tracking
-- 🔍 **Search-Based Discovery**: Topics use search queries instead of URL patterns
-- 🔄 **URL Deduplication**: Tracks scraped URLs per user to avoid duplicates  
-- 💎 **Points System**: Earn points based on data quality and size
-- 🔗 **Referral System**: Tiered rewards for bringing new users
-- 🔐 **Internet Identity**: Secure Web3 authentication
-- 🛡️ **Enhanced Security**: API keys removed from repository, secure deployment
+### For Users
+- 🎯 **Enhanced Popup Interface**: All features in a compact, tabbed popup
+- 💰 **Points System**: Earn 10 points per KB of data contributed
+- 🔍 **RhinoScan**: AI-powered content discovery
+- 🌍 **Geo-Filtered Content**: Regional content distribution
+- 🔐 **Internet Identity**: Secure blockchain authentication
+- 📊 **Real-time Stats**: Track earnings and contributions
+- 🔗 **Referral System**: Earn rewards for bringing new users
+
+### For Developers
+- ⛓️ **IC Blockchain**: Decentralized data storage
+- 🔄 **Error Recovery**: Comprehensive error handling for all edge cases
+- 📡 **Service Health**: Real-time monitoring and health checks
+- 🛡️ **Production Ready**: No mock data, real canister integration
+- 📈 **Analytics**: Google Analytics integration (GA4)
 
 ## Documentation
 
-- [Deployment Guide](DEPLOYMENT_GUIDE.md)
-- [Business Logic](docs/business)
-- [Technical Documentation](docs/technical)
-- [Extension Features](apps/extension/docs/EXTENSION_FEATURES.md)
+- [📚 Main Documentation](./docs/common/README.md)
+- [🦏 Extension Overview](./docs/common/extension/overview.md)
+- [🚀 Production Deployment](./docs/common/deployment/production.md)
+- [🔧 Troubleshooting](./docs/common/deployment/troubleshooting.md)
+- [📊 Admin Panel Guide](./docs/common/admin/overview.md)
+- [🔌 Services Documentation](./docs/common/services/overview.md)
 
 ## Production Canister IDs
 

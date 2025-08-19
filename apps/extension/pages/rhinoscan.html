@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RhinoScan - DePIN Explorer</title>
+    <link rel="stylesheet" href="../libs/leaflet.css" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif;
+            background: #131217;
+            color: #fff;
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        .rhinoscan-container {
+            padding: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .rhinoscan-header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding: 40px 0;
+            background: linear-gradient(135deg, rgba(182, 146, 246, 0.1) 0%, rgba(124, 58, 237, 0.1) 100%);
+            border-radius: 16px;
+            border: 1px solid rgba(182, 146, 246, 0.2);
+        }
+
+        .rhinoscan-header h1 {
+            font-size: 3rem;
+            font-weight: 700;
+            margin-bottom: 16px;
+            background: linear-gradient(135deg, #B692F6 0%, #7C3AED 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .rhinoscan-header p {
+            color: #9CA3AF;
+            font-size: 1.2rem;
+            font-weight: 300;
+        }
+
+        /* Loading States */
+        .rhinoscan-loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 400px;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .spinner {
+            border: 3px solid rgba(182, 146, 246, 0.3);
+            border-top: 3px solid #B692F6;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .rhinoscan-error {
+            text-align: center;
+            padding: 40px;
+            color: #EF4444;
+            background: rgba(239, 68, 68, 0.1);
+            border-radius: 12px;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .retry-button {
+            margin-top: 20px;
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #B692F6, #7C3AED);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .retry-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(182, 146, 246, 0.4);
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+            margin-bottom: 40px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, rgba(54, 13, 104, 0.8) 0%, rgba(26, 26, 31, 0.8) 100%);
+            padding: 28px;
+            border-radius: 16px;
+            border: 1px solid rgba(182, 146, 246, 0.2);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(182, 146, 246, 0.1), transparent);
+            transition: left 0.8s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 40px rgba(182, 146, 246, 0.2);
+        }
+
+        .stat-card:hover::before {
+            left: 100%;
+        }
+
+        .stat-label {
+            color: #9CA3AF;
+            font-size: 0.9rem;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 500;
+        }
+
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: white;
+            margin-bottom: 8px;
+        }
+
+        .stat-value.active {
+            color: #10B981;
+        }
+
+        .stat-value.gradient {
+            background: linear-gradient(135deg, #B692F6, #7C3AED);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .stat-trend {
+            color: #10B981;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        /* Map Container */
+        .map-container {
+            background: linear-gradient(135deg, rgba(30, 30, 46, 0.8) 0%, rgba(19, 18, 23, 0.8) 100%);
+            border-radius: 16px;
+            overflow: hidden;
+            margin-bottom: 40px;
+            border: 1px solid rgba(182, 146, 246, 0.2);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .map-header {
+            padding: 24px;
+            border-bottom: 1px solid rgba(182, 146, 246, 0.2);
+            background: rgba(182, 146, 246, 0.05);
+        }
+
+        .map-header h2 {
+            font-size: 1.8rem;
+            font-weight: 600;
+            color: white;
+            margin: 0;
+        }
+
+        .map-view {
+            height: 500px;
+            width: 100%;
+        }
+
+        .map-empty-state {
+            height: 500px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: #131217;
+            color: #9CA3AF;
+        }
+
+        .map-empty-state p {
+            font-size: 18px;
+            margin-bottom: 8px;
+            color: #D1D5DB;
+        }
+
+        .map-empty-state span {
+            font-size: 14px;
+            color: #6B7280;
+        }
+
+        /* Leaderboard */
+        .leaderboard-container {
+            background: linear-gradient(135deg, rgba(30, 30, 46, 0.8) 0%, rgba(19, 18, 23, 0.8) 100%);
+            border-radius: 16px;
+            padding: 28px;
+            margin-bottom: 40px;
+            border: 1px solid rgba(182, 146, 246, 0.2);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .leaderboard-container h2 {
+            font-size: 1.8rem;
+            font-weight: 600;
+            color: white;
+            margin-bottom: 24px;
+            text-align: center;
+        }
+
+        .leaderboard {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .leaderboard-item {
+            display: flex;
+            align-items: center;
+            padding: 16px 20px;
+            background: linear-gradient(135deg, rgba(182, 146, 246, 0.1) 0%, rgba(124, 58, 237, 0.05) 100%);
+            border-radius: 12px;
+            border: 1px solid rgba(182, 146, 246, 0.2);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .leaderboard-item::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+            background: linear-gradient(135deg, #B692F6, #7C3AED);
+        }
+
+        .leaderboard-item:hover {
+            transform: translateX(8px);
+            box-shadow: 0 4px 20px rgba(182, 146, 246, 0.2);
+        }
+
+        .leaderboard-rank {
+            color: #B692F6;
+            font-size: 1.1rem;
+            font-weight: 700;
+            width: 50px;
+            text-align: center;
+        }
+
+        .leaderboard-country {
+            flex: 1;
+            color: white;
+            font-weight: 600;
+            margin-left: 16px;
+            font-size: 1.05rem;
+        }
+
+        .leaderboard-count {
+            color: #10B981;
+            font-weight: 700;
+            font-size: 1.2rem;
+        }
+
+        /* Network Insights */
+        .network-insights {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 24px;
+            margin-bottom: 40px;
+        }
+
+        .insight-card {
+            background: linear-gradient(135deg, rgba(182, 146, 246, 0.1) 0%, rgba(124, 58, 237, 0.05) 100%);
+            border-radius: 16px;
+            padding: 24px;
+            border: 1px solid rgba(182, 146, 246, 0.2);
+            backdrop-filter: blur(10px);
+        }
+
+        .insight-card h3 {
+            color: #B692F6;
+            font-size: 1.2rem;
+            margin-bottom: 16px;
+            font-weight: 600;
+        }
+
+        .insight-metric {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding: 8px 0;
+        }
+
+        .metric-label {
+            color: #9CA3AF;
+            font-size: 0.9rem;
+        }
+
+        .metric-value {
+            color: #10B981;
+            font-weight: 600;
+            font-size: 1rem;
+        }
+
+        /* Verification Container */
+        .verification-container {
+            background: linear-gradient(135deg, rgba(30, 30, 46, 0.8) 0%, rgba(19, 18, 23, 0.8) 100%);
+            border-radius: 16px;
+            padding: 28px;
+            border: 1px solid rgba(182, 146, 246, 0.2);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .verification-container h3 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: white;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .verification-links {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 16px;
+        }
+
+        .verification-item {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 20px;
+            background: rgba(182, 146, 246, 0.05);
+            border-radius: 12px;
+            border: 1px solid rgba(182, 146, 246, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        .verification-item:hover {
+            background: rgba(182, 146, 246, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .verification-item span {
+            color: #9CA3AF;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        .verification-item a {
+            color: #B692F6;
+            text-decoration: none;
+            font-family: monospace;
+            font-size: 0.8rem;
+            transition: all 0.3s ease;
+            word-break: break-all;
+            display: block;
+            overflow-wrap: anywhere;
+            width: 100%;
+            white-space: normal;
+        }
+
+        .verification-item a:hover {
+            color: #7C3AED;
+            text-decoration: underline;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .rhinoscan-header h1 {
+                font-size: 2rem;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .map-view {
+                height: 350px;
+            }
+            
+            .stat-value {
+                font-size: 1.8rem;
+            }
+            
+            .leaderboard-item {
+                padding: 12px 16px;
+            }
+        }
+
+        /* User Stats Top Bar */
+        .user-stats-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 24px;
+            background: linear-gradient(135deg, rgba(182, 146, 246, 0.15) 0%, rgba(124, 58, 237, 0.1) 100%);
+            border-radius: 16px;
+            border: 1px solid rgba(182, 146, 246, 0.2);
+            margin-bottom: 24px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        }
+
+        .user-info-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .rhino-icon {
+            font-size: 32px;
+        }
+
+        .user-details {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .principal-display {
+            font-family: monospace;
+            font-size: 13px;
+            color: #B692F6;
+            font-weight: 600;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .user-location {
+            font-size: 12px;
+            color: #9CA3AF;
+        }
+
+        .user-stats-center {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+
+        .stat-pill {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .stat-icon {
+            font-size: 16px;
+        }
+
+        .stat-text {
+            font-size: 14px;
+            color: #D1D5DB;
+        }
+
+        .stat-text strong {
+            color: white;
+            font-weight: 700;
+        }
+
+        .user-actions {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .action-btn {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 10px 16px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .toggle-btn {
+            background: linear-gradient(135deg, #10B981, #059669);
+            color: white;
+        }
+
+        .toggle-btn.active {
+            background: linear-gradient(135deg, #EF4444, #DC2626);
+        }
+
+        .toggle-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
+        }
+
+        .settings-btn {
+            background: rgba(255, 255, 255, 0.1);
+            color: #D1D5DB;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .settings-btn:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: translateY(-2px);
+        }
+
+        .logout-btn {
+            background: rgba(239, 68, 68, 0.1);
+            color: #EF4444;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .logout-btn:hover {
+            background: rgba(239, 68, 68, 0.2);
+            transform: translateY(-2px);
+        }
+
+        /* Settings Modal */
+        .settings-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            backdrop-filter: blur(5px);
+        }
+
+        .settings-content {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: linear-gradient(135deg, rgba(30, 30, 46, 0.95) 0%, rgba(19, 18, 23, 0.95) 100%);
+            border-radius: 16px;
+            padding: 32px;
+            border: 1px solid rgba(182, 146, 246, 0.2);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .settings-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .settings-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: white;
+        }
+
+        .close-btn {
+            background: transparent;
+            border: none;
+            color: #9CA3AF;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 4px;
+        }
+
+        .close-btn:hover {
+            color: white;
+        }
+
+        .settings-section {
+            margin-bottom: 24px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .settings-section h3 {
+            color: #B692F6;
+            font-size: 16px;
+            margin-bottom: 12px;
+            font-weight: 600;
+        }
+
+        .settings-section p {
+            color: #9CA3AF;
+            font-size: 14px;
+            line-height: 1.5;
+            margin-bottom: 16px;
+        }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(182, 146, 246, 0.3);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(182, 146, 246, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <div class="rhinoscan-container">
+        <!-- User Stats Top Bar -->
+        <div id="userStatsBar" class="user-stats-bar" style="display: none;">
+            <div class="user-info-left">
+                <span class="rhino-icon">🦏</span>
+                <div class="user-details">
+                    <div class="principal-display" id="topbarPrincipal">Loading...</div>
+                    <div class="user-location" id="topbarLocation">Fetching location...</div>
+                </div>
+            </div>
+            <div class="user-stats-center">
+                <div class="stat-pill">
+                    <span class="stat-icon">💎</span>
+                    <span class="stat-text"><strong id="topbarPoints">0</strong> pts</span>
+                </div>
+                <div class="stat-pill">
+                    <span class="stat-icon">📄</span>
+                    <span class="stat-text"><strong id="topbarPages">0</strong> pages</span>
+                </div>
+                <div class="stat-pill">
+                    <span class="stat-icon" id="statusIcon">⏸️</span>
+                    <span class="stat-text" id="topbarStatus">Inactive</span>
+                </div>
+            </div>
+            <div class="user-actions">
+                <button id="logoutBtn" class="action-btn logout-btn">🚪 Logout</button>
+            </div>
+        </div>
+
+        <div class="rhinoscan-header" style="padding: 20px 0; margin-bottom: 20px;">
+            <h1 style="font-size: 24px; margin-bottom: 8px;">🦏 RhinoScan</h1>
+            <p style="font-size: 14px;">Network Explorer</p>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loadingState" class="rhinoscan-loading">
+            <div class="spinner"></div>
+            <p>Loading RhinoScan data from blockchain...</p>
+        </div>
+
+        <!-- Error State -->
+        <div id="errorState" class="rhinoscan-error" style="display: none;">
+            <p id="errorMessage">Failed to load data</p>
+            <button class="retry-button" id="retryButton">Retry</button>
+        </div>
+
+        <!-- Main Content -->
+        <div id="mainContent" style="display: none;">
+
+            <!-- Statistics Cards -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Total Nodes</div>
+                    <div class="stat-value gradient" id="totalNodes">0</div>
+                    <div class="stat-trend" id="nodesTrend">⟳ Loading...</div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-label">Active (24h)</div>
+                    <div class="stat-value active" id="activeNodes">0</div>
+                    <div class="stat-trend" id="activeTrend">⟳ Loading...</div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-label">Data Indexed</div>
+                    <div class="stat-value" id="dataIndexed">0 KB</div>
+                    <div class="stat-trend" id="dataTrend">⟳ Loading...</div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-label">Countries</div>
+                    <div class="stat-value gradient" id="countriesCount">0</div>
+                    <div class="stat-trend" id="countriesTrend">⟳ Loading...</div>
+                </div>
+            </div>
+
+            <!-- Network Insights -->
+            <div class="network-insights">
+                <div class="insight-card">
+                    <h3>📊 Network Performance</h3>
+                    <div class="insight-metric">
+                        <span class="metric-label">Network Health</span>
+                        <span class="metric-value" id="networkHealth">Calculating...</span>
+                    </div>
+                    <div class="insight-metric">
+                        <span class="metric-label">Coverage Efficiency</span>
+                        <span class="metric-value" id="coverageEfficiency">Calculating...</span>
+                    </div>
+                    <div class="insight-metric">
+                        <span class="metric-label">Data Quality Score</span>
+                        <span class="metric-value" id="dataQuality">Calculating...</span>
+                    </div>
+                </div>
+
+                <div class="insight-card">
+                    <h3>🌐 Global Distribution</h3>
+                    <div class="insight-metric">
+                        <span class="metric-label">Top Region</span>
+                        <span class="metric-value" id="topRegion">Analyzing...</span>
+                    </div>
+                    <div class="insight-metric">
+                        <span class="metric-label">Avg Nodes/Country</span>
+                        <span class="metric-value" id="avgNodesCountry">Calculating...</span>
+                    </div>
+                    <div class="insight-metric">
+                        <span class="metric-label">Growth Rate</span>
+                        <span class="metric-value" id="growthRate">Analyzing...</span>
+                    </div>
+                </div>
+
+                <div class="insight-card">
+                    <h3>⚡ Activity Metrics</h3>
+                    <div class="insight-metric">
+                        <span class="metric-label">Avg Data/Node</span>
+                        <span class="metric-value" id="avgDataPerNode">Calculating...</span>
+                    </div>
+                    <div class="insight-metric">
+                        <span class="metric-label">Activity Rate</span>
+                        <span class="metric-value" id="activityRate">Calculating...</span>
+                    </div>
+                    <div class="insight-metric">
+                        <span class="metric-label">Network Uptime</span>
+                        <span class="metric-value" id="networkUptime">Calculating...</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Map -->
+            <div class="map-container">
+                <div class="map-header">
+                    <h2>🗺️ Geographic Distribution</h2>
+                </div>
+                <div id="mapContainer">
+                    <div class="map-empty-state">
+                        <p>🌍 Loading node locations...</p>
+                        <span>Real-time data from Internet Computer blockchain</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Country Leaderboard -->
+            <div class="leaderboard-container">
+                <h2>🏆 Top Countries by Nodes</h2>
+                <div class="leaderboard" id="leaderboard">
+                    <!-- Will be populated by JavaScript -->
+                </div>
+            </div>
+
+            <!-- Verification Links -->
+            <div class="verification-container">
+                <h3>🔍 Data Verification</h3>
+                <div class="verification-links">
+                    <div class="verification-item">
+                        <span>Storage Canister:</span>
+                        <a 
+                            href="https://dashboard.internetcomputer.org/canister/hhaip-uiaaa-aaaao-a4khq-cai"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            hhaip-uiaaa-aaaao-a4khq-cai
+                        </a>
+                    </div>
+                    <div class="verification-item">
+                        <span>Consumer Canister:</span>
+                        <a 
+                            href="https://dashboard.internetcomputer.org/canister/t3pjp-kqaaa-aaaao-a4ooq-cai"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            t3pjp-kqaaa-aaaao-a4ooq-cai
+                        </a>
+                    </div>
+                    <div class="verification-item">
+                        <span>Network Explorer:</span>
+                        <a 
+                            href="https://ic.rocks/"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            ic.rocks - Internet Computer Explorer
+                        </a>
+                    </div>
+                    <div class="verification-item">
+                        <span>Data Transparency:</span>
+                        <a 
+                            href="#"
+                            id="dataTransparencyLink"
+                        >
+                            100% On-Chain Verification
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Modal -->
+        <div id="settingsModal" class="settings-modal">
+            <div class="settings-content">
+                <div class="settings-header">
+                    <h2 class="settings-title">⚙️ Settings</h2>
+                    <button class="close-btn" id="closeSettings">✕</button>
+                </div>
+                
+                <div class="settings-section">
+                    <h3>🔍 Extension Status</h3>
+                    <p>Control RhinoSpider scraping functionality</p>
+                    <div style="display: flex; align-items: center; gap: 16px;">
+                        <label style="color: #D1D5DB;">Extension Enabled:</label>
+                        <button id="settingsToggle" class="action-btn toggle-btn">
+                            <span id="settingsToggleIcon">▶️</span>
+                            <span id="settingsToggleText">Start</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <h3>📊 Privacy & Data</h3>
+                    <p>Your data is secured on Internet Computer blockchain. We collect only publicly available web content.</p>
+                    <div style="background: rgba(76, 175, 80, 0.1); padding: 12px; border-radius: 8px; border: 1px solid rgba(76, 175, 80, 0.3);">
+                        <p style="color: #4CAF50; margin: 0; font-size: 14px;">✅ All data stored on-chain • ✅ Anonymous principals • ✅ No personal info collected</p>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <h3>🌐 Network Information</h3>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px;">
+                        <div>
+                            <p style="margin: 0 0 4px 0; font-size: 12px; color: #9CA3AF;">IC Proxy Status</p>
+                            <p style="margin: 0; color: #10B981;" id="settingsIcProxy">● Healthy</p>
+                        </div>
+                        <div>
+                            <p style="margin: 0 0 4px 0; font-size: 12px; color: #9CA3AF;">Search Proxy Status</p>
+                            <p style="margin: 0; color: #10B981;" id="settingsSearchProxy">● Healthy</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <h3>📈 Version & Updates</h3>
+                    <p>RhinoSpider Extension v6.1.0</p>
+                    <div style="font-size: 12px; color: #666; line-height: 1.4;">
+                        <p>✨ Latest features: Enhanced authentication, direct canister access, improved data sync</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="../libs/leaflet.js"></script>
+    <script type="module" src="../rhinoscan-page.js"></script>
+</body>
+</html>
