@@ -1,5 +1,26 @@
 # RhinoSpider Extension Changelog
 
+## Version 7.1.0 (2025-08-27)
+
+### 🔐 Security & Authentication Updates
+- **Internet Identity v2**: Updated all authentication endpoints to use the new Internet Identity v2 URL (`https://identity.internetcomputer.org`)
+- **Admin Panel Update**: Admin frontend updated and deployed with Internet Identity v2 support
+- **Backward Compatibility**: Maintains support for existing user sessions during transition
+
+### 🛠 Technical Improvements
+- Updated authentication URL from `identity.ic0.app` to `identity.internetcomputer.org` across:
+  - Chrome Extension (auth.js, login.js, dashboard.js, rhinoscan-page.js)
+  - Admin Panel (auth.ts)
+  - All popup and content scripts
+- Version bump from 7.0.1 to 7.1.0
+
+### 📦 Deployment
+- Admin frontend canister redeployed to IC network
+- Chrome extension ready for Chrome Web Store update
+- No changes required for backend services or proxies
+
+---
+
 ## Version 5.2.0 (2025-08-12)
 
 ### 🎉 Major Improvements

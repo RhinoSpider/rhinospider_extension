@@ -2,7 +2,7 @@
 
 RhinoSpider is a DePIN (Decentralized Physical Infrastructure Network) platform for distributed web intelligence built on the Internet Computer Protocol (ICP). Users contribute their bandwidth for web data collection while earning points and rewards.
 
-**Current Version**: 5.6.0 (Chrome Extension)
+**Current Version**: 7.1.0 (Chrome Extension)
 
 ## Project Structure
 
@@ -10,7 +10,7 @@ RhinoSpider is a DePIN (Decentralized Physical Infrastructure Network) platform 
 rhinospider/
 ├── apps/
 │   ├── admin/             # Admin dashboard application
-│   ├── extension/         # Chrome extension v5.5.0
+│   ├── extension/         # Chrome extension v7.1.0
 │   ├── backend/           # Backend services
 │   ├── scraper-service/   # Scraper service
 │   └── viewer/            # Content viewer
@@ -37,7 +37,7 @@ rhinospider/
 - 💰 **Points System**: Earn 10 points per KB of data contributed
 - 🔍 **RhinoScan**: AI-powered content discovery
 - 🌍 **Geo-Filtered Content**: Regional content distribution
-- 🔐 **Internet Identity**: Secure blockchain authentication
+- 🔐 **Internet Identity v2**: Updated secure blockchain authentication
 - 📊 **Real-time Stats**: Track earnings and contributions
 - 🔗 **Referral System**: Earn rewards for bringing new users
 

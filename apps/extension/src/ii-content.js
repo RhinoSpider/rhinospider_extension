@@ -89,7 +89,7 @@ async function initializeAuthClient() {
             
             // Start login flow
             await authClient.login({
-                identityProvider: 'https://identity.ic0.app',
+                identityProvider: 'https://identity.internetcomputer.org',
                 onSuccess: async () => {
                     logger.log('Login successful');
                     const identity = authClient.getIdentity();
@@ -126,7 +126,7 @@ async function initializeAuthClient() {
 }
 
 // Initialize when the page loads
-if (window.location.origin === 'https://identity.ic0.app') {
+if (window.location.origin === 'https://identity.internetcomputer.org' || window.location.origin === 'https://identity.ic0.app') {
     logger.log('II content script loaded');
     // Give the page a moment to load
     setTimeout(initializeAuthClient, 500);

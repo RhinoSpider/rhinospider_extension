@@ -7,7 +7,7 @@ import { RhinoScan } from './pages/RhinoScan.jsx';
 import './analytics.js';
 
 // Configuration
-const II_URL = 'https://identity.ic0.app';
+const II_URL = 'https://identity.internetcomputer.org';
 // Local development URL - not used in production
 // const LOCAL_II_CANISTER = 'http://127.0.0.1:4943/?canisterId=rdmx6-jaaaa-aaaaa-aaadq-cai';
 
