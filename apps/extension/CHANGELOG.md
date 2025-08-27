@@ -1,23 +1,40 @@
 # RhinoSpider Extension Changelog
 
-## Version 7.1.0 (2025-08-27)
+## Version 7.2.0 (2025-08-27)
 
-### 🔐 Security & Authentication Updates
-- **Internet Identity v2**: Updated all authentication endpoints to use the new Internet Identity v2 URL (`https://identity.internetcomputer.org`)
-- **Admin Panel Update**: Admin frontend updated and deployed with Internet Identity v2 support
-- **Backward Compatibility**: Maintains support for existing user sessions during transition
+### 🎆 MAJOR UPDATE: Internet Identity 2.0 Integration
+- **Complete Migration to Internet Identity 2.0**: Updated all authentication to use the new `https://id.ai` endpoint
+- **Revolutionary New Features Available**:
+  - No more identity numbers to remember
+  - Google login integration
+  - Multiple accounts per identity
+  - Completely redesigned authentication flow
+  - Enhanced passkey standards
 
-### 🛠 Technical Improvements
-- Updated authentication URL from `identity.ic0.app` to `identity.internetcomputer.org` across:
-  - Chrome Extension (auth.js, login.js, dashboard.js, rhinoscan-page.js)
-  - Admin Panel (auth.ts)
-  - All popup and content scripts
-- Version bump from 7.0.1 to 7.1.0
+### ⚠️ Important User Notice
+- **Users must upgrade their Internet Identity** at https://id.ai to use the new 2.0 flow
+- Existing credentials remain valid on both 1.0 and 2.0
+- No data loss during upgrade process
+- Primary account remains the same as 1.0 identity
+
+### 🛠 Technical Updates
+- Updated all authentication URLs from `identity.internetcomputer.org` to `id.ai`
+- Version bump to 7.2.0 for Internet Identity 2.0 support
+- Updated both Chrome Extension and Admin Panel
+- Maintained backward compatibility for users still on II 1.0
 
 ### 📦 Deployment
-- Admin frontend canister redeployed to IC network
-- Chrome extension ready for Chrome Web Store update
-- No changes required for backend services or proxies
+- Chrome extension v7.2.0 ready for Chrome Web Store
+- Admin panel requires redeployment to IC canister
+- No backend service changes required
+
+---
+
+## Version 7.1.0 (2025-08-27 - Deprecated)
+
+### 🔐 Interim Update (Superseded by 7.2.0)
+- Updated to intermediate v2 URL (`identity.internetcomputer.org`)
+- This version has been immediately superseded by 7.2.0 with full Internet Identity 2.0 support
 
 ---
 

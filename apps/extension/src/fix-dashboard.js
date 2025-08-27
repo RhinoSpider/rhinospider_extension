@@ -7,7 +7,7 @@ import { IDL } from '@dfinity/candid';
 // Constants
 const IC_HOST = process.env.IC_HOST || 'https://icp0.io';
 const CONSUMER_CANISTER_ID = process.env.CONSUMER_CANISTER_ID || 't3pjp-kqaaa-aaaao-a4ooq-cai';
-const II_URL = process.env.II_URL || 'https://identity.internetcomputer.org';
+const II_URL = process.env.II_URL || 'https://id.ai';
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000;
 

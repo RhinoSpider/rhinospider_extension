@@ -95,7 +95,7 @@ async function handleDirectLogin() {
         });
         
         await authClient.login({
-            identityProvider: 'https://identity.internetcomputer.org',
+            identityProvider: 'https://id.ai',
             windowOpenerFeatures: 'toolbar=0,location=0,menubar=0,width=500,height=500,left=100,top=100',
             onSuccess: async () => {
                 const identity = authClient.getIdentity();

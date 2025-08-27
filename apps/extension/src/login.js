@@ -5,7 +5,7 @@ async function handleLogin() {
         const authClient = await AuthClient.create();
         await new Promise((resolve, reject) => {
             authClient.login({
-                identityProvider: 'https://identity.internetcomputer.org',
+                identityProvider: 'https://id.ai',
                 onSuccess: resolve,
                 onError: reject
             });

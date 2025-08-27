@@ -7,7 +7,7 @@ import '../index.css';
 import './Popup.css';
 
 // Get environment variables
-const II_URL = import.meta.env.VITE_II_URL || 'https://identity.internetcomputer.org';
+const II_URL = import.meta.env.VITE_II_URL || 'https://id.ai';
 const IC_HOST = import.meta.env.VITE_IC_HOST || 'https://ic0.app';
 
 const authConfig = {

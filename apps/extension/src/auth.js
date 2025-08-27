@@ -1,7 +1,7 @@
 import { AuthClient } from "@dfinity/auth-client";
 import { Principal } from "@dfinity/principal";
 
-const IDENTITY_PROVIDER = "https://identity.internetcomputer.org";
+const IDENTITY_PROVIDER = "https://id.ai";
 const ONE_DAY_NANO_SECONDS = BigInt(1000 * 1000 * 1000 * 60 * 60 * 24);
 
 let authClient;

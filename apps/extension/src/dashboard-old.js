@@ -2,7 +2,7 @@
 import { AuthClient } from '@dfinity/auth-client';
 
 // Configuration
-const II_URL = import.meta.env.VITE_II_URL || 'https://identity.internetcomputer.org';
+const II_URL = import.meta.env.VITE_II_URL || 'https://id.ai';
 
 // Logger
 const logger = {

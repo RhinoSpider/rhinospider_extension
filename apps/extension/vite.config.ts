@@ -38,7 +38,7 @@ export default defineConfig(({ mode }) => {
       'process.env.ADMIN_CANISTER_ID': JSON.stringify('s6r66-wyaaa-aaaaj-az4sq-cai'),
       'process.env.STORAGE_CANISTER_ID': JSON.stringify('hhaip-uiaaa-aaaao-a4khq-cai'),
       'process.env.AUTH_CANISTER_ID': JSON.stringify('slwpt-xqaaa-aaaaj-az4ra-cai'),
-      'process.env.II_URL': JSON.stringify('https://identity.internetcomputer.org'),
+      'process.env.II_URL': JSON.stringify('https://id.ai'),
       'process.env.IC_HOST': JSON.stringify('https://icp0.io'),
     },
   };
