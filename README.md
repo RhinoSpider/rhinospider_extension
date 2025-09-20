@@ -11,6 +11,7 @@ rhinospider/
 ├── apps/
 │   ├── admin/             # Admin dashboard application
 │   ├── extension/         # Chrome extension v7.2.0
+│   ├── marketplace/       # Enterprise data marketplace
 │   ├── backend/           # Backend services
 │   ├── scraper-service/   # Scraper service
 │   └── viewer/            # Content viewer
@@ -18,11 +19,12 @@ rhinospider/
 │   ├── admin/             # Admin canister
 │   ├── consumer/          # Consumer canister
 │   ├── storage/           # Storage canister
+│   ├── marketplace/       # Marketplace canister
 │   └── auth/              # Authentication canister
 ├── services/              # Backend services
 │   ├── ic-proxy/          # IC Proxy service
 │   └── search-proxy/      # Search proxy service
-└── docs/                  
+└── docs/
     └── common/            # Unified documentation
         ├── extension/     # Extension docs
         ├── admin/         # Admin panel docs
@@ -40,6 +42,13 @@ rhinospider/
 - 🔐 **Internet Identity 2.0**: Next-gen authentication with Google login, no identity numbers, and multi-account support
 - 📊 **Real-time Stats**: Track earnings and contributions
 - 🔗 **Referral System**: Earn rewards for bringing new users
+
+### Enterprise Marketplace
+- 🏪 **Data Marketplace**: Browse and purchase enterprise-grade datasets
+- 📈 **Real Data Integration**: Syncs with admin backend for live scraping topics
+- 💳 **Flexible Purchasing**: Bulk download or API access options
+- 📊 **User Dashboard**: Track purchases, API usage, and spending
+- 👤 **User Profiles**: Company information and usage statistics
 
 ### For Developers
 - ⛓️ **IC Blockchain**: Decentralized data storage
@@ -63,7 +72,14 @@ rhinospider/
 - **Consumer**: `t3pjp-kqaaa-aaaao-a4ooq-cai`
 - **Admin Backend**: `wvset-niaaa-aaaao-a4osa-cai`
 - **Admin Frontend**: `sxsvc-aqaaa-aaaaj-az4ta-cai`
+- **Marketplace Backend**: `y64hu-laaaa-aaaao-a4ptq-cai`
+- **Marketplace Frontend**: `ztsd2-eiaaa-aaaao-a4pua-cai`
 - **Auth**: `rdmx6-jaaaa-aaaaa-aaadq-cai`
+
+## Live Applications
+
+- **Admin Panel**: [https://sxsvc-aqaaa-aaaaj-az4ta-cai.icp0.io/](https://sxsvc-aqaaa-aaaaj-az4ta-cai.icp0.io/)
+- **Enterprise Marketplace**: [https://ztsd2-eiaaa-aaaao-a4pua-cai.icp0.io/](https://ztsd2-eiaaa-aaaao-a4pua-cai.icp0.io/)
 
 ## Development
 
@@ -82,6 +98,10 @@ pnpm run dev
 
 # Run admin dashboard in development mode
 cd apps/admin
+pnpm run dev
+
+# Run marketplace in development mode
+cd apps/marketplace
 pnpm run dev
 
 # Deploy canisters to local network
