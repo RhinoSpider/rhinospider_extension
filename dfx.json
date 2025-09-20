@@ -29,6 +29,19 @@
       "canister_id": {
         "ic": "t3pjp-kqaaa-aaaao-a4ooq-cai"
       }
+    },
+    "marketplace": {
+      "main": "canisters/marketplace/main.mo",
+      "type": "motoko"
+    },
+    "marketplace_assets": {
+      "frontend": {
+        "entrypoint": "apps/marketplace/dist/index.html"
+      },
+      "source": [
+        "apps/marketplace/dist/"
+      ],
+      "type": "assets"
     }
   },
   "defaults": {

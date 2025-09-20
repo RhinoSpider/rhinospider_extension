@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Marketplace API</title>
+</head>
+<body>
+    <h1>Testing Marketplace Canister</h1>
+    <button onclick="testAPI()">Test getAllDatasets</button>
+    <div id="results"></div>
+
+    <script type="module">
+        import { HttpAgent, Actor } from 'https://esm.sh/@dfinity/agent@1.0.1';
+
+        // Import the IDL factory from the built frontend
+        const idlFactory = ({ IDL }) => {
+            const Dataset = IDL.Record({
+                'dataset_id': IDL.Text,
+                'name': IDL.Text,
+                'description': IDL.Text,
+                'region': IDL.Text,
+                'category': IDL.Text,
+                'file_url': IDL.Text,
+                'sample_rows': IDL.Vec(IDL.Text),
+                'price_bulk': IDL.Float64,
+                'price_api': IDL.Float64,
+                'size_gb': IDL.Float64,
+                'row_count': IDL.Nat,
+                'last_update': IDL.Int,
+                'on_chain_hash': IDL.Text,
+                'data_source': IDL.Text,
+                'update_frequency': IDL.Text,
+                'format': IDL.Text,
+                'tags': IDL.Vec(IDL.Text),
+                'provider': IDL.Text,
+                'status': IDL.Text,
+                'preview_available': IDL.Bool,
+                'api_endpoint': IDL.Opt(IDL.Text)
+            });
+
+            return IDL.Service({
+                'getAllDatasets': IDL.Func([], [IDL.Vec(Dataset)], ['query']),
+                'syncWithAdmin': IDL.Func([], [IDL.Text], [])
+            });
+        };
+
+        window.testAPI = async function() {
+            const agent = new HttpAgent({ host: 'https://ic0.app' });
+
+            const actor = Actor.createActor(idlFactory, {
+                agent,
+                canisterId: 'y64hu-laaaa-aaaao-a4ptq-cai'
+            });
+
+            try {
+                console.log('Calling getAllDatasets...');
+                const datasets = await actor.getAllDatasets();
+                console.log('Raw response:', datasets);
+
+                document.getElementById('results').innerHTML = `
+                    <h2>Found ${datasets.length} datasets:</h2>
+                    <pre>${JSON.stringify(datasets, (key, value) =>
+                        typeof value === 'bigint' ? value.toString() : value
+                    , 2)}</pre>
+                `;
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('results').innerHTML = `Error: ${error.message}`;
+            }
+        }
+
+        // Auto-run on load
+        window.addEventListener('load', () => {
+            window.testAPI();
+        });
+    </script>
+</body>
+</html>

@@ -80,6 +80,12 @@ actor class Storage() = this {
             Debug.print("Consumer canister explicitly authorized");
             return true;
         };
+
+        // Explicitly allow the marketplace canister
+        if (Principal.toText(caller) == marketplaceCanisterId) {
+            Debug.print("Marketplace canister explicitly authorized");
+            return true;
+        };
         
         // Check if caller is an authorized canister
         for (id in authorizedCanisterIds.vals()) {
@@ -95,16 +101,19 @@ actor class Storage() = this {
 
     private let adminCanisterId: Text = "wvset-niaaa-aaaao-a4osa-cai"; // New admin backend canister
     private let consumerCanisterId: Text = "t3pjp-kqaaa-aaaao-a4ooq-cai"; // Consumer canister ID
+    private let marketplaceCanisterId: Text = "y64hu-laaaa-aaaao-a4ptq-cai"; // Marketplace canister ID
     
     // Admin principals
-    private let adminPrincipal1: Text = "b6ra7-utydr-wzyka-ifr5h-jndpw-ugopd-q2qkc-oq4ju-7rbey-prkus-mqe"; // Your principal
+    private let adminPrincipal1: Text = "vnsgt-djy2g-igpvh-sevfi-ota4n-dtquw-nz7i6-4glkr-ijmrd-5w3uh-gae"; // Your principal
     private let adminPrincipal2: Text = "m2x6b-rijrs-nmddl-i4o4z-x2ymi-5equa-cgtmd-y5pag-6f6p4-plfjj-vae"; // Atharva's principal
+    private let adminPrincipal3: Text = "p6gaf-qjt3x-6q6ci-ro7nd-aklhp-6hgfo-4dljo-busl6-3ftgp-iliyi-zqe"; // ic-prod principal
 
     private func isAdmin(caller: Principal): Bool {
         let callerText = Principal.toText(caller);
-        callerText == adminCanisterId or 
-        callerText == adminPrincipal1 or 
-        callerText == adminPrincipal2
+        callerText == adminCanisterId or
+        callerText == adminPrincipal1 or
+        callerText == adminPrincipal2 or
+        callerText == adminPrincipal3
     };
 
     // Initialize authorized canisters
@@ -113,6 +122,7 @@ actor class Storage() = this {
         authorizedCanisterIds := [
             Principal.fromText(adminCanisterId), // admin
             Principal.fromText(consumerCanisterId), // consumer canister ID
+            Principal.fromText(marketplaceCanisterId), // marketplace
             Principal.fromText("2vxsx-fae") // anonymous principal used by proxy
         ];
         Debug.print("Initialized authorized canisters list with " # Nat.toText(authorizedCanisterIds.size()) # " entries");

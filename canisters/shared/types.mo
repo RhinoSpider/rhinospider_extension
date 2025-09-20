@@ -1,3 +1,5 @@
+import Time "mo:base/Time";
+
 module {
     // Shared types between all canisters
     public type ScrapingTopic = {
@@ -69,5 +71,11 @@ module {
         region: Text;
         percentageNodes: ?Nat;
         randomizationMode: ?Text;
+    };
+
+    public type ProvenanceRecord = {
+        node_principal: Principal;
+        timestamp: Time.Time;
+        chunk_hash: Text;
     };
 }

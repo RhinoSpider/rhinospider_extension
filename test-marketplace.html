@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Marketplace API</title>
+</head>
+<body>
+    <h1>Marketplace API Test</h1>
+    <div id="results"></div>
+
+    <script type="module">
+        import { Actor, HttpAgent } from 'https://esm.sh/@dfinity/agent';
+
+        // IDL Factory (simplified)
+        const idlFactory = ({ IDL }) => {
+            const Dataset = IDL.Record({
+                dataset_id: IDL.Text,
+                name: IDL.Text,
+                description: IDL.Text,
+                region: IDL.Text,
+                category: IDL.Text,
+                file_url: IDL.Text,
+                sample_rows: IDL.Vec(IDL.Text),
+                price_bulk: IDL.Float64,
+                price_api: IDL.Float64,
+                size_gb: IDL.Float64,
+                row_count: IDL.Nat,
+                last_update: IDL.Int,
+                on_chain_hash: IDL.Text,
+                data_source: IDL.Text,
+                update_frequency: IDL.Text,
+                format: IDL.Text,
+                tags: IDL.Vec(IDL.Text),
+                provider: IDL.Principal,
+                status: IDL.Text,
+                preview_available: IDL.Bool,
+                api_endpoint: IDL.Text,
+            });
+
+            return IDL.Service({
+                getAllDatasets: IDL.Func([], [IDL.Vec(Dataset)], ['query']),
+            });
+        };
+
+        async function testMarketplace() {
+            const agent = new HttpAgent({ host: 'https://ic0.app' });
+
+            const actor = Actor.createActor(idlFactory, {
+                agent,
+                canisterId: 'y64hu-laaaa-aaaao-a4ptq-cai',
+            });
+
+            try {
+                console.log('Fetching datasets...');
+                const datasets = await actor.getAllDatasets();
+                console.log('Datasets:', datasets);
+
+                const results = document.getElementById('results');
+                results.innerHTML = `
+                    <h2>Found ${datasets.length} datasets:</h2>
+                    <ul>
+                        ${datasets.map(d => `
+                            <li>
+                                <strong>${d.name}</strong><br>
+                                Category: ${d.category}<br>
+                                Region: ${d.region}<br>
+                                Size: ${d.size_gb} GB<br>
+                                Price: ${d.price_bulk} ICP (bulk) / ${d.price_api} ICP (API)
+                            </li>
+                        `).join('')}
+                    </ul>
+                `;
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('results').innerHTML = `Error: ${error.message}`;
+            }
+        }
+
+        testMarketplace();
+    </script>
+</body>
+</html>

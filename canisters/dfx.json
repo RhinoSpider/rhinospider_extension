@@ -24,6 +24,16 @@
       "main": "consumer/main.mo",
       "type": "motoko",
       "dependencies": ["storage", "admin"]
+    },
+    "marketplace": {
+      "main": "marketplace/main.mo",
+      "type": "motoko",
+      "dependencies": ["storage", "admin"]
+    },
+    "marketplace_assets": {
+      "type": "assets",
+      "source": ["../apps/marketplace/dist"],
+      "dependencies": ["marketplace"]
     }
   },
   "defaults": {

@@ -1,0 +1,159 @@
+type User = 
+ record {
+   account_tier: text;
+   api_calls_total: nat;
+   company: opt text;
+   company_size: opt text;
+   email: opt text;
+   industry: opt text;
+   kyc_verified: bool;
+   last_login: int;
+   preferred_payment: text;
+   "principal": principal;
+   purchase_count: nat;
+   registered_at: int;
+   total_spent: float64;
+   use_case: opt text;
+ };
+type UsageMetrics = 
+ record {
+   api_calls_month: nat;
+   api_calls_today: nat;
+   data_transferred_gb: float64;
+   dataset_id: text;
+   downloads_count: nat;
+   last_access: int;
+   user_principal: principal;
+ };
+type Result_7 = 
+ variant {
+   err: text;
+   ok;
+ };
+type Result_6 = 
+ variant {
+   err: text;
+   ok: Dataset;
+ };
+type Result_5 = 
+ variant {
+   err: text;
+   ok: vec text;
+ };
+type Result_4 = 
+ variant {
+   err: text;
+   ok: DatasetStats;
+ };
+type Result_3 = 
+ variant {
+   err: text;
+   ok: UsageMetrics;
+ };
+type Result_2 = 
+ variant {
+   err: text;
+   ok: Purchase;
+ };
+type Result_1 = 
+ variant {
+   err: text;
+   ok: User;
+ };
+type Result = 
+ variant {
+   err: text;
+   ok: text;
+ };
+type Purchase = 
+ record {
+   amount: float64;
+   created_at: int;
+   currency: text;
+   dataset_id: text;
+   download_count: nat;
+   download_url: opt text;
+   expires_at: opt int;
+   payment_tx_id: text;
+   purchase_id: text;
+   purchase_type: text;
+   status: text;
+   user_principal: principal;
+ };
+type DatasetStats = 
+ record {
+   api_subscriptions: nat;
+   avg_rating: float64;
+   bulk_downloads: nat;
+   dataset_id: text;
+   total_api_calls: nat;
+   total_purchases: nat;
+   total_revenue: float64;
+   unique_buyers: nat;
+ };
+type Dataset = 
+ record {
+   api_endpoint: opt text;
+   category: text;
+   data_source: text;
+   dataset_id: text;
+   description: text;
+   file_url: text;
+   format: text;
+   last_update: int;
+   name: text;
+   on_chain_hash: text;
+   preview_available: bool;
+   price_api: float64;
+   price_bulk: float64;
+   provider: text;
+   region: text;
+   row_count: nat;
+   sample_rows: vec text;
+   size_gb: float64;
+   status: text;
+   tags: vec text;
+   update_frequency: text;
+ };
+type ApiKey = 
+ record {
+   allowed_ips: vec text;
+   api_key: text;
+   created_at: int;
+   daily_limit: nat;
+   dataset_id: text;
+   expires_at: opt int;
+   is_active: bool;
+   key_id: text;
+   last_reset: int;
+   last_used: opt int;
+   rate_limit_per_minute: nat;
+   request_count: nat;
+   usage_today: nat;
+   user_principal: principal;
+ };
+service : {
+  addAdmin: ("principal": principal) -> (Result_7);
+  createDataset: (dataset: Dataset) -> (Result);
+  getAdmins: () -> (vec principal) query;
+  getAllDatasets: () -> (vec Dataset) query;
+  getDataset: (id: text) -> (Result_6) query;
+  getDatasetData: (dataset_id: text, api_key: text, offset: nat, limit:
+   nat) -> (Result_5);
+  getDatasetStats: (dataset_id: text) -> (Result_4) query;
+  getTopDatasets: (limit: nat) -> (vec Dataset) query;
+  getUserApiKeys: () -> (vec ApiKey);
+  getUserProfile: () -> (Result_1);
+  getUserPurchases: () -> (vec Purchase);
+  getUserUsageMetrics: (dataset_id: text) -> (Result_3);
+  init: () -> ();
+  purchaseDataset: (dataset_id: text, purchase_type: text, payment_tx_id:
+   text, amount: float64, currency: text) -> (Result_2);
+  regenerateApiKey: (key_id: text) -> (Result);
+  registerUser: (email: opt text, company: opt text, company_size: opt text,
+   industry: opt text, use_case: opt text) -> (Result_1);
+  searchDatasets: (keyword: opt text, category: opt text, region: opt text,
+   minPrice: opt float64, maxPrice: opt float64) -> (vec Dataset) query;
+  syncDatasets: () -> (Result);
+  syncWithAdmin: () -> (text);
+}

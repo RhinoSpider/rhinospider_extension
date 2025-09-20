@@ -1,0 +1,29 @@
+{
+  "deployment_status": "SUCCESS",
+  "network": "ic",
+  "timestamp": "2025-09-18T13:45:00Z",
+  "canisters": {
+    "marketplace_backend": {
+      "canister_id": "y64hu-laaaa-aaaao-a4ptq-cai",
+      "status": "deployed",
+      "candid_ui": "https://a4gq6-oaaaa-aaaab-qaa4q-cai.raw.icp0.io/?id=y64hu-laaaa-aaaao-a4ptq-cai"
+    },
+    "marketplace_assets": {
+      "status": "pending_cycles",
+      "note": "Frontend assets canister requires ICP to be converted to cycles for deployment"
+    }
+  },
+  "admins": [
+    "vnsgt-djy2g-igpvh-sevfi-ota4n-dtquw-nz7i6-4glkr-ijmrd-5w3uh-gae",
+    "p6gaf-qjt3x-6q6ci-ro7nd-aklhp-6hgfo-4dljo-busl6-3ftgp-iliyi-zqe"
+  ],
+  "test_data": {
+    "dataset_created": true,
+    "dataset_id": "dataset_1"
+  },
+  "next_steps": [
+    "To deploy frontend assets, add ICP to account: d835693b374b41716ec476a62107b9960da0fac40267c9402a64377d7b9cb28c",
+    "Then run: dfx ledger top-up bfjmy-ryaaa-aaaao-a36qq-cai --amount 1 --network ic",
+    "Finally deploy assets: dfx deploy marketplace_assets --network ic"
+  ]
+}

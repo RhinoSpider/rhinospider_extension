@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Direct API Test</title>
+</head>
+<body>
+    <h1>Testing Marketplace API Directly</h1>
+    <button onclick="testAPI()">Test API</button>
+    <div id="results"></div>
+
+    <script type="module">
+        import { HttpAgent, Actor } from 'https://esm.sh/@dfinity/agent@1.0.1';
+        import { idlFactory } from './apps/marketplace/src/declarations/marketplace/index.js';
+
+        window.testAPI = async function() {
+            const agent = new HttpAgent({ host: 'https://ic0.app' });
+
+            const actor = Actor.createActor(idlFactory, {
+                agent,
+                canisterId: 'y64hu-laaaa-aaaao-a4ptq-cai'
+            });
+
+            try {
+                console.log('Calling getAllDatasets...');
+                const datasets = await actor.getAllDatasets();
+                console.log('Datasets:', datasets);
+
+                document.getElementById('results').innerHTML = `
+                    <h2>Found ${datasets.length} datasets:</h2>
+                    <pre>${JSON.stringify(datasets, null, 2)}</pre>
+                `;
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('results').innerHTML = `Error: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html>
