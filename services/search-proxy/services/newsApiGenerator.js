@@ -5,7 +5,7 @@
 
 const axios = require('axios');
 
-const NEWS_API_KEY = process.env.NEWS_API_KEY || 'dc554b347d5c4d8c9dee6b73b9d624b1';
+const NEWS_API_KEY = process.env.NEWS_API_KEY;
 const NEWS_API_BASE = 'https://newsapi.org/v2';
 
 // Topic to keyword mapping for NewsAPI

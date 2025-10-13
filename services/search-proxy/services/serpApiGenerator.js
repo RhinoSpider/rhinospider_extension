@@ -5,7 +5,7 @@
 
 const axios = require('axios');
 
-const SERP_API_KEY = process.env.SERP_API_KEY || '16f9cb080944d47eacc58e3a8496139dfe3e2a1c0c3e75da315415db28e72a28';
+const SERP_API_KEY = process.env.SERP_API_KEY;
 const SERP_API_BASE = 'https://serpapi.com/search';
 
 // Topic to search query mapping for SerpAPI

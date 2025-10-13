@@ -5,8 +5,8 @@
 
 const axios = require('axios');
 
-const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || 'AIzaSyA98pgJjPSUgYOzZ89vVzypT1GTpYB4RYs';
-const GOOGLE_CSE_ID = process.env.GOOGLE_CSE_ID || ''; // You'll need to create a Custom Search Engine
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
+const GOOGLE_CSE_ID = process.env.GOOGLE_CSE_ID;
 
 // Topic to search query mapping
 const TOPIC_QUERIES = {
