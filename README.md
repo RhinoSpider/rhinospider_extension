@@ -53,7 +53,7 @@ While platforms like GRASS scrape 100TB-1000TB of raw HTML per day, we take a sm
 5. **User Experience**: Clear service health indicators, wallet integration, transparent fees
 6. **Scalability**: Automatic memory management, can handle growth without hitting limits
 
-See [RESPONSE_TO_COMMITTEE.md](RESPONSE_TO_COMMITTEE.md) for detailed comparison with competitors and [DEPLOYMENT_SUMMARY.md](DEPLOYMENT_SUMMARY.md) for technical deployment details.
+See [DEPLOYMENT_SUMMARY.md](DEPLOYMENT_SUMMARY.md) for technical deployment details.
 
 ## Project Structure
 
