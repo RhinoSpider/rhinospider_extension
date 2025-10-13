@@ -332,4 +332,66 @@ actor class Storage() = this {
         let amount = Prim.cyclesAvailable();
         let accepted = Prim.cyclesAccept(amount);
     };
+
+    // clear old scraped data to free up memory
+    // keeps only data from last N days
+    public shared({ caller }) func clearOldScrapedData(daysToKeep: Nat): async Result.Result<Nat, SharedTypes.Error> {
+        if (not isAdmin(caller)) {
+            return #err(#NotAuthorized);
+        };
+
+        let cutoffTime = Time.now() - (Int.abs(daysToKeep) * 24 * 60 * 60 * 1000000000); // convert days to nanoseconds
+        var deletedCount = 0;
+
+        let entriesToDelete = Buffer.Buffer<Text>(100);
+
+        // find old entries
+        for ((id, data) in scrapedData.entries()) {
+            if (data.timestamp < cutoffTime) {
+                entriesToDelete.add(id);
+            };
+        };
+
+        // delete them
+        for (id in entriesToDelete.vals()) {
+            scrapedData.delete(id);
+            deletedCount += 1;
+        };
+
+        Debug.print("Cleared " # Nat.toText(deletedCount) # " old scraped data entries");
+        #ok(deletedCount)
+    };
+
+    // get memory stats
+    public query func getMemoryStats(): async {
+        scrapedDataCount: Nat;
+        topicsCount: Nat;
+        estimatedMemoryUsage: Text;
+    } {
+        let dataCount = scrapedData.size();
+        let topicsCount = topics.size();
+
+        // rough estimate: each scraped data entry is ~50KB on average
+        let estimatedBytes = dataCount * 50000;
+        let estimatedMB = estimatedBytes / 1048576;
+
+        {
+            scrapedDataCount = dataCount;
+            topicsCount = topicsCount;
+            estimatedMemoryUsage = Nat.toText(estimatedMB) # " MB (approx)";
+        }
+    };
+
+    // emergency: clear ALL scraped data (use with caution!)
+    public shared({ caller }) func clearAllScrapedData(): async Result.Result<Nat, SharedTypes.Error> {
+        if (not isAdmin(caller)) {
+            return #err(#NotAuthorized);
+        };
+
+        let count = scrapedData.size();
+        scrapedData := HashMap.HashMap<Text, SharedTypes.ScrapedData>(10, Text.equal, Text.hash);
+
+        Debug.print("EMERGENCY: Cleared ALL scraped data (" # Nat.toText(count) # " entries)");
+        #ok(count)
+    };
 }
