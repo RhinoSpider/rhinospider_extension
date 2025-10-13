@@ -1,10 +1,8 @@
 import { submitScrapedData, awardPoints } from './service-worker-adapter';
-// Scraper module for RhinoSpider extension
-// This module handles the actual scraping functionality
-
+// handles the actual scraping part
 import * as urlSelector from './simplified-url-selector.js';
 
-// Logger utility
+// simple logger
 const logger = {
     log: (msg, data) => {
         console.log(` [Scraper] ${msg}`, data || '');
@@ -17,7 +15,7 @@ const logger = {
     }
 };
 
-// Perform a scrape operation using sample URLs from topics
+// main scraping function
 async function performScrape(topics, submitScrapedData, getIPAddress, measureInternetSpeed, principalId) {
     if (!topics || topics.length === 0) {
         logger.log('No topics available for scraping');
@@ -25,39 +23,38 @@ async function performScrape(topics, submitScrapedData, getIPAddress, measureInt
     }
 
     try {
-        // Filter active topics
+        // only use active topics
         const activeTopics = topics.filter(topic => topic.status === 'active');
         logger.log('Active topics count:', activeTopics.length);
-        
+
         if (activeTopics.length === 0) {
             logger.log('No active topics found');
             return;
         }
-        
+
         logger.log('Selecting topic and URL from sample URLs...');
-        
-        // Select a random topic from active topics
+
+        // pick random topic
         const randomIndex = Math.floor(Math.random() * activeTopics.length);
         const topic = activeTopics[randomIndex];
         logger.log(`Selected topic: ${topic.name}`);
-        
-        // Get a URL from the topic's sample URLs
+
+        // get url from topic's samples
         const url = await urlSelector.selectUrlFromTopic(topic, logger);
-        
+
         if (!url) {
             logger.log('No valid URL found for topic');
             return;
         }
-        
+
         logger.log(`Selected: Topic "${topic.name}" | URL: ${url}`);
-        
-        // Get IP and internet speed before scraping
+
+        // grab IP and speed info
         const [ipAddress, internetSpeed] = await Promise.all([
             getIPAddress(),
             measureInternetSpeed()
         ]);
-        
-        // Prepare metrics
+
         const metrics = {
             ipAddress,
             internetSpeed,
@@ -66,11 +63,11 @@ async function performScrape(topics, submitScrapedData, getIPAddress, measureInt
             duration: null,
             status: 'started'
         };
-        
+
         logger.log(`Scraping with IP: ${ipAddress} | Speed: ${internetSpeed.score}`);
-        
+
         try {
-            // Fetch content
+            // fetch the page
             logger.log(`Fetching content from URL: ${url}`);
             const response = await fetch(url, {
                 method: 'GET',
@@ -78,22 +75,22 @@ async function performScrape(topics, submitScrapedData, getIPAddress, measureInt
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
                 }
             });
-            
+
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
-            
+
             const content = await response.text();
-            
-            // Update metrics
+
+            // update timing
             metrics.endTime = Date.now();
             metrics.duration = metrics.endTime - metrics.startTime;
             metrics.status = 'completed';
             metrics.contentLength = content.length;
-            
+
             logger.log(`Scraped content length: ${content.length} characters`);
-            
-            // Submit the scraped data
+
+            // send it to the backend
             await submitScrapedData({
                 id: `${url.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`,
                 url,

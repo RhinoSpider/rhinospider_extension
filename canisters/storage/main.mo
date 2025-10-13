@@ -20,7 +20,6 @@ import Bool "mo:base/Bool";
 import Prim "mo:⛔";
 import AIHandler "./ai/handler";
 import Types "./types";
-// Use system Cycles directly instead of deprecated ExperimentalCycles
 import TrieMap "mo:base/TrieMap";
 import SharedTypes "../shared/types";
 
@@ -36,7 +35,7 @@ actor class Storage() = this {
         } -> async Types.HttpResponse;
     };
 
-    // Stable variables for upgrades
+    // stable vars survive upgrades
     private stable var stableTopicsV2 : [(Text, SharedTypes.ScrapingTopic)] = [];
     private stable var stableScrapedData : [(Text, SharedTypes.ScrapedData)] = [];
     private stable var stableAIConfig : SharedTypes.AIConfig = {
@@ -50,51 +49,49 @@ actor class Storage() = this {
     };
     private stable var authorizedCanisterIds : [Principal] = [];
 
-    // In-memory data structures
+    // runtime data
     private var topics = HashMap.HashMap<Text, SharedTypes.ScrapingTopic>(10, Text.equal, Text.hash);
     private var scrapedData = HashMap.HashMap<Text, SharedTypes.ScrapedData>(100, Text.equal, Text.hash);
     private var aiConfig = stableAIConfig;
 
-    // Constants
-    private let CYCLES_PER_CALL = 100_000_000_000; // 100B cycles per call
+    private let CYCLES_PER_CALL = 100_000_000_000; // 100B cycles
 
-    // Access control - IMPROVED: More permissive authorization function
+    // check if caller is allowed to access this canister
     private func isAuthorizedCaller(caller: Principal): Bool {
-        // Debug logging for authorization
         Debug.print("Authorization check for: " # Principal.toText(caller));
-        
-        // Allow self-calls
+
+        // self calls are ok
         if (Principal.equal(caller, Principal.fromActor(this))) {
             Debug.print("Self-call authorized");
             return true;
         };
 
-        // FIXED: Allow the anonymous identity (2vxsx-fae) used by the proxy server
+        // allow anonymous identity (proxy server uses this)
         if (Principal.toText(caller) == "2vxsx-fae") {
             Debug.print("Anonymous identity authorized");
             return true;
         };
 
-        // FIXED: Explicitly allow the consumer canister
+        // consumer canister needs access
         if (Principal.toText(caller) == consumerCanisterId) {
             Debug.print("Consumer canister explicitly authorized");
             return true;
         };
 
-        // Explicitly allow the marketplace canister
+        // marketplace too
         if (Principal.toText(caller) == marketplaceCanisterId) {
             Debug.print("Marketplace canister explicitly authorized");
             return true;
         };
-        
-        // Check if caller is an authorized canister
+
+        // check the authorized list
         for (id in authorizedCanisterIds.vals()) {
             if (Principal.equal(caller, id)) {
                 Debug.print("Authorized from list: " # Principal.toText(id));
                 return true;
             };
         };
-        
+
         Debug.print("Authorization failed for: " # Principal.toText(caller));
         false
     };

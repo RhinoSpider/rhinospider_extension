@@ -1,10 +1,7 @@
-// proxy-client.js - Client for communicating with the IC Proxy Server
+// talks to IC proxy server
 import config from './config';
 import connectionHandler from './connection-handler';
 
-/**
- * ProxyClient - Client for communicating with the IC Proxy Server
- */
 class ProxyClient {
   constructor() {
     this.proxyUrl = config.icProxy?.url || 'https://ic-proxy.rhinospider.com';
@@ -13,17 +10,11 @@ class ProxyClient {
     this.initializeDeviceId();
   }
 
-  /**
-   * Initialize device ID
-   */
   async initializeDeviceId() {
     this.deviceId = await this.getOrCreateDeviceId();
   }
 
-  /**
-   * Get or create a device ID
-   * @returns {Promise<string>} Device ID
-   */
+  // get device ID from storage or create new one
   async getOrCreateDeviceId() {
     return new Promise((resolve) => {
       chrome.storage.local.get(['deviceId'], (result) => {
@@ -39,20 +30,15 @@ class ProxyClient {
     });
   }
 
-  /**
-   * Make a request using the robust connection handler
-   * @param {string} endpoint API endpoint
-   * @param {object} options Request options
-   * @returns {Promise<Response>} Fetch response
-   */
+  // make request to proxy with fallback handling
   async makeRequest(endpoint, options = {}) {
     try {
       console.log(`[ProxyClient] Making request to ${endpoint}`);
 
-      // Use the connection handler to make the request with automatic fallback
+      // connection handler has auto-fallback built in
       const response = await connectionHandler.makeRequest('icProxy', endpoint, options);
 
-      // Track the connection attempt if logging is enabled
+      // log if logging is on
       if (globalThis.rhinoSpiderLogging) {
         globalThis.rhinoSpiderLogging.logConnectionAttempt(
           connectionHandler.getBestUrl('icProxy', endpoint),
@@ -62,13 +48,12 @@ class ProxyClient {
 
       return response;
     } catch (error) {
-      // Only log non-network errors to console
-      if (!error.message?.includes('Failed to fetch') && 
+      // don't spam console with network errors
+      if (!error.message?.includes('Failed to fetch') &&
           !error.message?.includes('NetworkError')) {
         console.error('[ProxyClient] Request error:', error);
       }
 
-      // Track the failed attempt if logging is enabled
       if (globalThis.rhinoSpiderLogging) {
         globalThis.rhinoSpiderLogging.logConnectionAttempt(
           connectionHandler.getBestUrl('icProxy', endpoint),

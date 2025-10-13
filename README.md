@@ -1,8 +1,8 @@
 # RhinoSpider
 
-RhinoSpider is a DePIN (Decentralized Physical Infrastructure Network) platform for distributed web intelligence built on the Internet Computer Protocol (ICP). Users contribute their bandwidth for web data collection while earning points and rewards.
+This is a decentralized platform (DePIN) for web data collection built on Internet Computer. Basically, users can contribute their bandwidth to help collect web data and they earn points in return. Think of it as getting rewarded for browsing the web while helping train AI models.
 
-**Current Version**: 7.2.0 (Chrome Extension)
+Current Version: 7.2.0 (Chrome Extension)
 
 ## Project Structure
 
@@ -32,87 +32,89 @@ rhinospider/
         └── deployment/    # Deployment guides
 ```
 
-## Key Features
+## What it does
 
-### For Users
-- 🎯 **Enhanced Popup Interface**: All features in a compact, tabbed popup
-- 💰 **Points System**: Earn 10 points per KB of data contributed
-- 🔍 **RhinoScan**: AI-powered content discovery
-- 🌍 **Geo-Filtered Content**: Regional content distribution
-- 🔐 **Internet Identity 2.0**: Next-gen authentication with Google login, no identity numbers, and multi-account support
-- 📊 **Real-time Stats**: Track earnings and contributions
-- 🔗 **Referral System**: Earn rewards for bringing new users
+For regular users:
+- Popup interface with tabs for everything you need
+- Points system - you get 10 points per KB of data you contribute
+- RhinoScan feature for discovering content with AI
+- Content filtered by region (geo-filtering)
+- Uses Internet Identity 2.0 - works with Google login, no annoying identity numbers
+- See your stats in real-time
+- Referral system so you can earn by inviting friends
 
-### Enterprise Marketplace
-- 🏪 **Data Marketplace**: Browse and purchase enterprise-grade datasets
-- 📈 **Real Data Integration**: Syncs with admin backend for live scraping topics
-- 💳 **Flexible Purchasing**: Bulk download or API access options
-- 📊 **User Dashboard**: Track purchases, API usage, and spending
-- 👤 **User Profiles**: Company information and usage statistics
+Enterprise marketplace (for businesses):
+- Browse and buy datasets
+- All data is real and syncs with our admin backend
+- You can bulk download or use API access
+- Dashboard to track what you bought and how much you're using
+- User profiles for companies
 
-### For Developers
-- ⛓️ **IC Blockchain**: Decentralized data storage
-- 🔄 **Error Recovery**: Comprehensive error handling for all edge cases
-- 📡 **Service Health**: Real-time monitoring and health checks
-- 🛡️ **Production Ready**: No mock data, real canister integration
-- 📈 **Analytics**: Google Analytics integration (GA4)
+Tech stuff:
+- Everything stored on IC blockchain
+- Error handling for pretty much any edge case I could think of
+- Service health monitoring
+- No mock data anywhere, all real canister integration
+- Google Analytics (GA4) built in
 
 ## Documentation
 
-- [📚 Main Documentation](./docs/common/README.md)
-- [🦏 Extension Overview](./docs/common/extension/overview.md)
-- [🚀 Production Deployment](./docs/common/deployment/production.md)
-- [🔧 Troubleshooting](./docs/common/deployment/troubleshooting.md)
-- [📊 Admin Panel Guide](./docs/common/admin/overview.md)
-- [🔌 Services Documentation](./docs/common/services/overview.md)
+Check these out if you need more details:
+- [Main docs](./docs/common/README.md)
+- [Extension overview](./docs/common/extension/overview.md)
+- [Production deployment guide](./docs/common/deployment/production.md)
+- [Troubleshooting](./docs/common/deployment/troubleshooting.md)
+- [Admin panel guide](./docs/common/admin/overview.md)
+- [Services docs](./docs/common/services/overview.md)
 
-## Production Canister IDs
+## Production Canisters
 
-- **Storage**: `hhaip-uiaaa-aaaao-a4khq-cai`
-- **Consumer**: `t3pjp-kqaaa-aaaao-a4ooq-cai`
-- **Admin Backend**: `wvset-niaaa-aaaao-a4osa-cai`
-- **Admin Frontend**: `sxsvc-aqaaa-aaaaj-az4ta-cai`
-- **Marketplace Backend**: `y64hu-laaaa-aaaao-a4ptq-cai`
-- **Marketplace Frontend**: `ztsd2-eiaaa-aaaao-a4pua-cai`
-- **Auth**: `rdmx6-jaaaa-aaaaa-aaadq-cai`
+Here are the production canister IDs if you need them:
+- Storage: `hhaip-uiaaa-aaaao-a4khq-cai`
+- Consumer: `t3pjp-kqaaa-aaaao-a4ooq-cai`
+- Admin Backend: `wvset-niaaa-aaaao-a4osa-cai`
+- Admin Frontend: `sxsvc-aqaaa-aaaaj-az4ta-cai`
+- Marketplace Backend: `y64hu-laaaa-aaaao-a4ptq-cai`
+- Marketplace Frontend: `ztsd2-eiaaa-aaaao-a4pua-cai`
+- Auth: `rdmx6-jaaaa-aaaaa-aaadq-cai`
 
-## Live Applications
+## Live Apps
 
-- **Admin Panel**: [https://sxsvc-aqaaa-aaaaj-az4ta-cai.icp0.io/](https://sxsvc-aqaaa-aaaaj-az4ta-cai.icp0.io/)
-- **Enterprise Marketplace**: [https://ztsd2-eiaaa-aaaao-a4pua-cai.icp0.io/](https://ztsd2-eiaaa-aaaao-a4pua-cai.icp0.io/)
+Admin Panel: https://sxsvc-aqaaa-aaaaj-az4ta-cai.icp0.io/
+Enterprise Marketplace: https://ztsd2-eiaaa-aaaao-a4pua-cai.icp0.io/
 
-## Development
+## Development Setup
 
-For local development setup, see the [Development Guide](docs/technical/development.md).
+If you want to run this locally:
 
 ```bash
-# Install dependencies
+# install everything
 pnpm install
 
-# Build all packages
+# build all packages
 pnpm build
 
-# Run extension in development mode
+# run the extension in dev mode
 cd apps/extension
 pnpm run dev
 
-# Run admin dashboard in development mode
+# or run admin dashboard
 cd apps/admin
 pnpm run dev
 
-# Run marketplace in development mode
+# marketplace dev mode
 cd apps/marketplace
 pnpm run dev
 
-# Deploy canisters to local network
+# deploy to local dfx network
 cd canisters
 dfx deploy --network=local
 ```
 
-## Security & Privacy
+## Privacy
 
-RhinoSpider adheres to strict privacy and security guidelines. For more information, see the [Extension Documentation](docs/technical/extension.md).
+We take privacy seriously. No personal info gets collected, and everything goes through the IC blockchain. See the extension docs for more details.
 
-## Changelog
+## Changes
 
-For a complete list of changes, see the [CHANGELOG.md](CHANGELOG.md).
+Check out [CHANGELOG.md](CHANGELOG.md) for version history.

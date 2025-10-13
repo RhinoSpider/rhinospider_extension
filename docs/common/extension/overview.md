@@ -1,95 +1,84 @@
-# RhinoSpider Chrome Extension
+# RhinoSpider Extension
 
-## Overview
-RhinoSpider is a DePIN (Decentralized Physical Infrastructure Network) Chrome extension that enables users to earn points by contributing their browsing data to train AI models, while maintaining privacy through the Internet Computer blockchain.
+## What is this
 
-## Core Features
+RhinoSpider is a Chrome extension where you can earn points by letting the extension collect web data. The data helps train AI models, and everything stays private because it all runs through Internet Computer blockchain.
 
-### 1. Enhanced Popup Interface
-- **Tabbed Navigation**: Overview, Stats, Profile, Settings
-- **Quick Controls**: One-click toggle for extension activation
-- **Real-time Stats**: Points earned, pages scraped, bandwidth used
-- **Service Health**: Live status of blockchain and search services
+## Main Features
 
-### 2. RhinoScan Search
-- Full-page search interface for discovering content
-- AI-powered topic suggestions
-- Multiple search engine integration
-- Geo-filtered content discovery
+### Popup Interface
+The extension has a popup with different tabs - Overview, Stats, Profile, and Settings. You can turn the extension on/off with one click, see your points and stats in real-time, and check if the blockchain and search services are working properly.
 
-### 3. Points System
-- **Earning Rate**: 10 points per KB of data contributed
-- **Real-time Tracking**: Points synchronized with blockchain
-- **Persistent Storage**: All points stored on IC canister
-- **Automatic Updates**: Stats refresh every 30 seconds
+### RhinoScan
+This is basically a search feature. Opens in a full page, gives you AI-powered topic suggestions, works with multiple search engines, and filters content based on your location.
 
-### 4. Referral System
-- Unique referral codes for each user
-- Points tracking for referred users
-- Copy-to-clipboard functionality
-- Referral analytics in admin panel
+### Points
+You earn 10 points for every KB of data you contribute. Points sync with the blockchain in real-time and everything is stored on the IC canister. Stats update automatically every 30 seconds.
+
+### Referrals
+Each user gets their own referral code. You can see how many points your referrals earned, copy the code easily, and the admin panel has analytics for all this.
 
 ## AI Integration
 
-### Benefits
-- **Quality Training Data**: Real browsing patterns for AI models
-- **Diverse Content**: Multi-source data collection
-- **Geo-Distribution**: Region-specific content for global AI training
-- **Privacy-Preserved**: Data anonymized through blockchain
+Why this is useful for AI:
+- Gets real browsing patterns instead of fake data
+- Collects content from different sources
+- Has region-specific content which helps train global AI models
+- Everything is anonymized through blockchain so privacy is maintained
 
-### Use Cases
-1. **Search Algorithm Training**: Improving search relevance
-2. **Content Understanding**: Better AI comprehension of web content
-3. **Regional Insights**: Understanding local content preferences
-4. **Trend Analysis**: Real-time web trend detection
+What it can be used for:
+1. Training search algorithms to be more relevant
+2. Helping AI understand web content better
+3. Getting insights about local content preferences
+4. Detecting web trends in real-time
 
-## Technical Architecture
+## How it Works (Technical)
 
-### Components
-1. **Service Worker**: Background script managing scraping orchestration
-2. **Content Script**: Page analysis and data extraction
-3. **Popup UI**: React-based interface with state management
-4. **IC Integration**: Direct blockchain communication via agents
+Components:
+1. Service Worker - background script that manages the scraping
+2. Content Script - analyzes pages and extracts data
+3. Popup UI - React interface for the user
+4. IC Integration - talks to the blockchain directly using agents
 
-### Data Flow
+The flow is like this:
 ```
-User Browse → Content Script → Service Worker → IC Proxy → Blockchain
-                                              ↓
-                                        Search Proxy → Content Discovery
+User browses → Content Script → Service Worker → IC Proxy → Blockchain
+                                               ↓
+                                         Search Proxy → finds more content
 ```
 
-### Security Features
-- Internet Identity authentication
-- HTTPS-only connections
-- Content Security Policy compliance
-- No exposed API keys
-- Automatic error recovery
+Security stuff:
+- Uses Internet Identity for auth
+- Only HTTPS connections
+- Content Security Policy is followed
+- API keys are never exposed
+- Auto-recovers from errors
 
-## User Privacy
+## Privacy
 
-### Data Handling
-- No personal information collected
-- URLs anonymized before storage
-- Content hashed for verification
-- User control over data contribution
+What we do with data:
+- No personal info is collected
+- URLs get anonymized before storage
+- Content is hashed for verification
+- User has full control over what gets contributed
 
-### Compliance
+We comply with:
 - Chrome Web Store policies
-- GDPR considerations
-- Transparent data usage
-- User consent required
+- GDPR requirements
+- Everything is transparent about data usage
+- User has to consent
 
 ## Error Handling
 
-### Comprehensive Coverage
+The extension handles a lot of edge cases:
 - Network failures with retry logic
-- Service outages (502/503 errors)
-- Rate limiting with backoff
-- Laptop sleep/wake recovery
-- Chrome restart state restoration
+- Service outages like 502/503 errors
+- Rate limiting with exponential backoff
+- Laptop going to sleep and waking up
+- Chrome restarting
 
-### User Experience
-- User-friendly error messages
-- Automatic recovery attempts
-- Service health indicators
-- Debug mode for troubleshooting
+For users:
+- Error messages are actually readable
+- Tries to recover automatically
+- Shows service health status
+- Has debug mode for when things go wrong

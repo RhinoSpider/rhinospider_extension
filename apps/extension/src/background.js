@@ -1,4 +1,4 @@
-// Background script for RhinoSpider extension
+// background script - handles all the extension logic
 import submissionHelper from './submission-helper';
 import searchProxyClient, { getUrlsForTopics, prefetchUrlsForAllTopics, checkProxyHealth, getUrlForTopic } from './search-proxy-client.js';
 import proxyClient from './proxy-client.js';
@@ -9,19 +9,20 @@ import debugTools from './debug-tools.js';
 import serviceWorkerAdapter from './service-worker-adapter.js';
 import scrapingSettings from './scraping-settings.js';
 
-// Global error handler to suppress known Chrome bugs
+// catch unhandled rejections globally
+// mainly to suppress that annoying Chrome bug about connections
 self.addEventListener('unhandledrejection', (event) => {
-    // Suppress "Could not establish connection" errors - this is a known Chrome bug
-    // that occurs when tabs are created but doesn't affect functionality
+    // this Chrome bug keeps showing up when tabs are created
+    // doesn't actually break anything so just ignore it
     if (event.reason?.message?.includes('Could not establish connection') ||
         event.reason?.message?.includes('Receiving end does not exist')) {
-        event.preventDefault(); // Prevent the error from being logged to console
+        event.preventDefault();
         return;
     }
-    // Let other errors through for debugging
+    // let actual errors through
 });
 
-// Enhanced logging for connection tracking
+// logging helper for tracking connection issues
 const enhancedLogging = {
     connectionAttempts: [],
     certificateErrors: [],
@@ -34,7 +35,7 @@ const enhancedLogging = {
             error: error ? error.toString() : null
         });
 
-        // Keep array at a reasonable size
+        // don't let the array grow forever
         if (this.connectionAttempts.length > 100) {
             this.connectionAttempts.shift();
         }
@@ -50,7 +51,6 @@ const enhancedLogging = {
             error: error.toString()
         });
 
-        // Keep array at a reasonable size
         if (this.certificateErrors.length > 100) {
             this.certificateErrors.shift();
         }
@@ -65,7 +65,7 @@ const enhancedLogging = {
         };
     },
 
-    // Test connections to both HTTPS and HTTP versions of our endpoints
+    // test if our endpoints are alive
     async testConnections() {
         const endpoints = [
             'https://ic-proxy.rhinospider.com/api/health',
