@@ -47,6 +47,11 @@ const TokenConversion = ({ points, walletConnected }) => {
   };
 
   const handleConvert = async () => {
+    // token conversion coming soon - waiting for token launch
+    alert('Token conversion will be available once $RHINO token launches. For now, keep earning points!');
+    return;
+
+    /* Will be enabled when token is ready
     if (!walletConnected) {
       alert('Please connect your wallet first');
       return;
@@ -67,8 +72,7 @@ const TokenConversion = ({ points, walletConnected }) => {
     try {
       const conversion = calculateConversion();
 
-      // TODO: call canister to actually do the conversion
-      // for now just simulate it
+      // call consumer canister to create conversion request
       const conversionRecord = {
         id: Date.now().toString(),
         points: pointsToConvert,
@@ -76,14 +80,13 @@ const TokenConversion = ({ points, walletConnected }) => {
         fee: parseFloat(conversion.fee),
         tokensNet: parseFloat(conversion.net),
         timestamp: Date.now(),
-        status: 'pending' // would be 'completed' after blockchain confirmation
+        status: 'pending'
       };
 
       const updatedHistory = [conversionRecord, ...conversionHistory].slice(0, 10);
       await chrome.storage.local.set({ conversionHistory: updatedHistory });
       setConversionHistory(updatedHistory);
 
-      // clear input
       setConvertAmount('');
 
       alert(`Conversion initiated! You'll receive ${conversion.net} RHINO tokens (${conversion.fee} fee applied).`);
@@ -93,13 +96,27 @@ const TokenConversion = ({ points, walletConnected }) => {
     } finally {
       setIsConverting(false);
     }
+    */
   };
 
   const conversion = calculateConversion();
 
   return (
     <div className="space-y-4">
-      <div className="bg-white/5 rounded-lg p-4">
+      {/* Coming Soon Banner */}
+      <div className="bg-gradient-to-r from-purple-500/20 to-pink-500/20 border border-purple-500/30 rounded-lg p-3">
+        <div className="flex items-center gap-2">
+          <Coins size={16} className="text-purple-400" />
+          <div>
+            <div className="text-sm font-medium text-purple-300">Token Conversion Coming Soon!</div>
+            <div className="text-xs text-gray-400 mt-0.5">
+              $RHINO token launch pending. Keep earning points - they'll be ready to convert!
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white/5 rounded-lg p-4 opacity-60">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <Coins size={16} className="text-yellow-400" />

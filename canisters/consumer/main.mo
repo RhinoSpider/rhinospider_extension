@@ -137,10 +137,18 @@ actor ConsumerBackend {
     private stable var stableUserProfilesV2: [(Principal, UserProfileV2)] = [];
     private stable var stableUserProfilesV3: [(Principal, StableUserProfile)] = [];
     private var userProfiles = HashMap.HashMap<Principal, UserProfile>(10, Principal.equal, Principal.hash);
-    
+
     // Referral system storage
     private stable var stableReferralCodes: [(Text, Principal)] = [];
     private var referralCodes = HashMap.HashMap<Text, Principal>(10, Text.equal, Text.hash);
+
+    // points history tracking for fee calculation
+    private stable var stablePointsHistory: [(Principal, [SharedTypes.PointsRecord])] = [];
+    private var pointsHistory = HashMap.HashMap<Principal, Buffer.Buffer<SharedTypes.PointsRecord>>(10, Principal.equal, Principal.hash);
+
+    // token conversion requests
+    private stable var stableConversionRequests: [(Text, SharedTypes.ConversionRequest)] = [];
+    private var conversionRequests = HashMap.HashMap<Text, SharedTypes.ConversionRequest>(10, Text.equal, Text.hash);
 
     type UserProfile = {
         principal: Principal;
@@ -238,6 +246,16 @@ actor ConsumerBackend {
         // Clear V2 since we're using V3 now
         stableUserProfilesV2 := [];
         stableReferralCodes := Iter.toArray(referralCodes.entries());
+
+        // save points history
+        let pointsHistoryArray = Array.map<(Principal, Buffer.Buffer<SharedTypes.PointsRecord>), (Principal, [SharedTypes.PointsRecord])>(
+            Iter.toArray(pointsHistory.entries()),
+            func ((principal, buffer)) = (principal, Buffer.toArray(buffer))
+        );
+        stablePointsHistory := pointsHistoryArray;
+
+        // save conversion requests
+        stableConversionRequests := Iter.toArray(conversionRequests.entries());
     };
 
     system func postupgrade() {
@@ -315,11 +333,23 @@ actor ConsumerBackend {
         };
         
         referralCodes := HashMap.fromIter<Text, Principal>(stableReferralCodes.vals(), 10, Text.equal, Text.hash);
-        
+
         // Populate referralCodes from existing user profiles
         for ((principal, profile) in userProfiles.entries()) {
             referralCodes.put(profile.referralCode, principal);
         };
+
+        // restore points history
+        for ((principal, records) in stablePointsHistory.vals()) {
+            let buffer = Buffer.Buffer<SharedTypes.PointsRecord>(records.size());
+            for (record in records.vals()) {
+                buffer.add(record);
+            };
+            pointsHistory.put(principal, buffer);
+        };
+
+        // restore conversion requests
+        conversionRequests := HashMap.fromIter<Text, SharedTypes.ConversionRequest>(stableConversionRequests.vals(), 10, Text.equal, Text.hash);
     };
 
     // Authentication - PRODUCTION
@@ -843,7 +873,25 @@ actor ConsumerBackend {
             isActive = true;
         };
         userProfiles.put(userPrincipal, updatedProfile);
-        
+
+        // record points history for fee calculation later
+        if (points > 0) {
+            let pointsRecord: SharedTypes.PointsRecord = {
+                amount = points;
+                earnedAt = Time.now();
+                source = "scraping";
+            };
+            let userHistory = switch (pointsHistory.get(userPrincipal)) {
+                case (?buffer) buffer;
+                case null {
+                    let newBuffer = Buffer.Buffer<SharedTypes.PointsRecord>(10);
+                    pointsHistory.put(userPrincipal, newBuffer);
+                    newBuffer
+                };
+            };
+            userHistory.add(pointsRecord);
+        };
+
         Debug.print("User " # Principal.toText(userPrincipal) # " submitted data, earned " # Nat.toText(points) # " points");
         
         // Award referral bonus to referrer if applicable
@@ -858,6 +906,24 @@ actor ConsumerBackend {
                             pointsFromReferrals = referrerProfile.pointsFromReferrals + referralBonus; // Track referral points
                         };
                         userProfiles.put(referrer, updatedReferrerProfile);
+
+                        // record referral points history
+                        if (referralBonus > 0) {
+                            let pointsRecord: SharedTypes.PointsRecord = {
+                                amount = referralBonus;
+                                earnedAt = Time.now();
+                                source = "referral";
+                            };
+                            let referrerHistory = switch (pointsHistory.get(referrer)) {
+                                case (?buffer) buffer;
+                                case null {
+                                    let newBuffer = Buffer.Buffer<SharedTypes.PointsRecord>(10);
+                                    pointsHistory.put(referrer, newBuffer);
+                                    newBuffer
+                                };
+                            };
+                            referrerHistory.add(pointsRecord);
+                        };
                     };
                     case null {};
                 };
@@ -3133,5 +3199,111 @@ actor ConsumerBackend {
         };
         
         return #ok("Populated " # Nat.toText(count) # " referral codes from existing profiles");
+    };
+
+    // get points history for a user (for fee calculation)
+    public query func getPointsHistory(userId: Principal): async Result.Result<[SharedTypes.PointsRecord], Text> {
+        switch (pointsHistory.get(userId)) {
+            case (?buffer) {
+                #ok(Buffer.toArray(buffer))
+            };
+            case null {
+                #ok([]) // no history yet
+            };
+        };
+    };
+
+    // create conversion request (frontend calls this when user wants to convert)
+    public shared(msg) func createConversionRequest(
+        pointsAmount: Nat,
+        walletAddress: Text
+    ): async Result.Result<SharedTypes.ConversionRequest, Text> {
+        let userId = msg.caller;
+
+        // check if user exists and has enough points
+        switch (userProfiles.get(userId)) {
+            case (?profile) {
+                if (profile.points < pointsAmount) {
+                    return #err("Insufficient points");
+                };
+
+                // calculate conversion (1000 points = 1 token)
+                let tokensGross = pointsAmount / 1000;
+
+                // calculate fee based on points age (5% if within 30 days)
+                let thirtyDaysAgo = Time.now() - (30 * 24 * 60 * 60 * 1000000000); // 30 days in nanoseconds
+                var pointsWithinFeePeriod: Nat = 0;
+
+                // check points history
+                switch (pointsHistory.get(userId)) {
+                    case (?buffer) {
+                        for (record in Buffer.toArray(buffer).vals()) {
+                            if (record.earnedAt > thirtyDaysAgo) {
+                                pointsWithinFeePeriod += record.amount;
+                            };
+                        };
+                    };
+                    case null {};
+                };
+
+                // calculate fee
+                let feePercentage: Float = if (pointsWithinFeePeriod >= pointsAmount) {
+                    0.05 // 5% fee if all points are recent
+                } else {
+                    0.0 // no fee if points are old
+                };
+
+                let tokensFee = Float.toInt(Float.fromInt(tokensGross) * feePercentage);
+                let tokensNet = tokensGross - Int.abs(tokensFee);
+
+                // create request
+                let requestId = Principal.toText(userId) # "-" # Int.toText(Time.now());
+                let request: SharedTypes.ConversionRequest = {
+                    id = requestId;
+                    userId = userId;
+                    pointsAmount = pointsAmount;
+                    tokensGross = tokensGross;
+                    tokensFee = Int.abs(tokensFee);
+                    tokensNet = tokensNet;
+                    requestedAt = Time.now();
+                    status = "pending"; // will be "completed" when token canister processes it
+                    walletAddress = walletAddress;
+                };
+
+                conversionRequests.put(requestId, request);
+
+                // TODO: when token canister exists, deduct points here
+                // for now just create the request
+
+                #ok(request)
+            };
+            case null {
+                #err("User profile not found")
+            };
+        };
+    };
+
+    // get conversion requests for a user
+    public query func getConversionRequests(userId: Principal): async Result.Result<[SharedTypes.ConversionRequest], Text> {
+        let userRequests = Buffer.Buffer<SharedTypes.ConversionRequest>(10);
+
+        for ((id, request) in conversionRequests.entries()) {
+            if (Principal.equal(request.userId, userId)) {
+                userRequests.add(request);
+            };
+        };
+
+        #ok(Buffer.toArray(userRequests))
+    };
+
+    // get all conversion requests (admin only)
+    public query func getAllConversionRequests(): async Result.Result<[SharedTypes.ConversionRequest], Text> {
+        let allRequests = Buffer.Buffer<SharedTypes.ConversionRequest>(conversionRequests.size());
+
+        for ((id, request) in conversionRequests.entries()) {
+            allRequests.add(request);
+        };
+
+        #ok(Buffer.toArray(allRequests))
     };
 }
