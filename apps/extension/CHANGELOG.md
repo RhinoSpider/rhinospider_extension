@@ -1,5 +1,57 @@
 # RhinoSpider Extension Changelog
 
+## Version 7.3.0 (2025-10-13)
+
+### 🎯 New Features
+- **Wallet Integration**: Added Plug wallet connection for ICP
+  - Connect your ICP wallet directly from the extension
+  - View ICP balance
+  - Wallet connection persists across sessions
+  - Automatic redirect to Plug wallet installation if not found
+
+- **Token Conversion UI**: Points to token conversion interface (coming soon)
+  - See conversion rates (1,000 points = 1 RHINO token)
+  - View fee structure (5% if withdrawn within 30 days)
+  - Real-time calculation of gross, fee, and net amounts
+  - Conversion history tracking
+  - "Coming Soon" state with informative banner
+
+### 🔧 Backend Infrastructure
+- **Points Timestamp Tracking**: Consumer canister now records when points are earned
+  - Enables accurate 30-day fee calculation
+  - Tracks both scraping and referral points separately
+  - Points history stored for each user
+
+- **Conversion Request System**: Infrastructure for token conversions
+  - Request creation and tracking
+  - Fee calculation based on points age
+  - Admin dashboard support for conversion monitoring
+  - Ready for token canister integration
+
+### 📝 Documentation Updates
+- Made README and docs more natural and human-written
+- Removed excessive emojis and overly formal language
+- Updated code comments to sound more casual
+- Added response document addressing hackathon committee feedback
+
+### 🎨 UI Improvements
+- Enhanced Profile page with wallet and conversion sections
+- Larger popup (400px) with better scrolling
+- Coming soon banner for token conversion
+- Better visual feedback for wallet connection status
+
+### ⚡ Technical
+- All changes backward compatible
+- No breaking changes to existing functionality
+- Token conversion backend ready (awaiting $RHINO token launch)
+
+### 📦 What's Next
+- $RHINO token launch
+- Enable actual token conversions
+- Admin dashboard for conversion monitoring
+
+---
+
 ## Version 7.2.0 (2025-08-27)
 
 ### 🎆 MAJOR UPDATE: Internet Identity 2.0 Integration
