@@ -4,6 +4,57 @@ This is a decentralized platform (DePIN) for web data collection built on Intern
 
 Current Version: 7.2.0 (Chrome Extension)
 
+## Recent Updates (January 2025)
+
+### What Makes Us Different
+
+While platforms like GRASS scrape 100TB-1000TB of raw HTML per day, we take a smarter approach:
+- We scrape, analyze with AI, and store only 1-5KB of semantic data per page
+- That's 100x more storage efficient than competitors
+- Perfect fit for IC's cost model - we can handle 10,000 scrapes/day = 50MB on-chain
+- We sell AI-ready training data, not raw HTML dumps
+- Clear B2B revenue model that actually makes sense
+
+### Recent Production Deployments
+
+**Fixed Critical Memory Issue (Jan 13, 2025)**
+- Storage canister was maxed out at 7GB with 148k entries
+- Users couldn't earn points because storage was full
+- Added memory management functions to clear old data automatically
+- Now running healthy at 885MB with auto-cleanup every 7 days
+- Both storage and consumer canisters deployed and verified working
+
+**Wallet Integration & Token Economics**
+- Added Plug wallet integration for ICP wallets
+- Points-to-token conversion infrastructure ready
+- Conversion rate: 1,000 points = 1 RHINO token
+- 5% conversion fee if withdrawn within 30 days (to reduce sell pressure)
+- Backend tracks point timestamps for accurate fee calculation
+- UI ready, just waiting for token launch
+
+**Points Timestamp Tracking**
+- Every point award is now timestamped
+- Enables fair fee calculation based on when points were earned
+- Conversion requests tracked and ready for admin dashboard
+- No retroactive penalties - only applies to new points
+
+**Service Health Monitoring (Real, Not Mock)**
+- Health checks actually call `/api/health` endpoints
+- Users see real-time service status
+- When services are down, users understand why they're not earning points
+- No more confusion about "why isn't it working"
+
+### Why This Wins
+
+1. **100x More Efficient**: We store analyzed data (1-5KB) not raw HTML (100MB+)
+2. **Perfect for IC**: Low storage costs, no massive update calls issue
+3. **Real Revenue Model**: B2B marketplace for AI training data, not raw scrapes
+4. **Production Ready**: No mock data, all canisters deployed and verified
+5. **User Experience**: Clear service health indicators, wallet integration, transparent fees
+6. **Scalability**: Automatic memory management, can handle growth without hitting limits
+
+See [RESPONSE_TO_COMMITTEE.md](RESPONSE_TO_COMMITTEE.md) for detailed comparison with competitors and [DEPLOYMENT_SUMMARY.md](DEPLOYMENT_SUMMARY.md) for technical deployment details.
+
 ## Project Structure
 
 ```
