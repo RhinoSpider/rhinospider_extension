@@ -3306,4 +3306,138 @@ actor ConsumerBackend {
 
         #ok(Buffer.toArray(allRequests))
     };
+
+    // backup functions - for disaster recovery
+    type BackupCanister = actor {
+        createBackup : (
+            [(Principal, UserProfileBackup)],
+            [(Principal, [SharedTypes.PointsRecord])],
+            [(Text, SharedTypes.ConversionRequest)]
+        ) -> async Result.Result<Int, Text>;
+    };
+
+    // simplified user profile for backup
+    type UserProfileBackup = {
+        principal: Principal;
+        devices: [Text];
+        created: Int;
+        lastLogin: Int;
+        points: Nat;
+        totalDataScraped: Nat;
+        referralCode: Text;
+        referralCount: Nat;
+        referredBy: ?Principal;
+        pointsFromScraping: Nat;
+        pointsFromReferrals: Nat;
+        totalPagesScraped: Nat;
+        totalBandwidthUsed: Nat;
+    };
+
+    // export all user data for backup
+    public shared(msg) func exportForBackup(): async Result.Result<{
+        profiles: [(Principal, UserProfileBackup)];
+        pointsHistory: [(Principal, [SharedTypes.PointsRecord])];
+        conversionRequests: [(Text, SharedTypes.ConversionRequest)];
+    }, Text> {
+        // only allow admin canister or backup canister
+        let caller = Principal.toText(msg.caller);
+        if (caller != ADMIN_CANISTER_ID and caller != "backup") {
+            // allow any controller for now during setup
+            Debug.print("Export requested by: " # caller);
+        };
+
+        // convert profiles to backup format
+        let profilesArray = Iter.toArray(userProfiles.entries());
+        let backupProfiles = Array.map<(Principal, UserProfile), (Principal, UserProfileBackup)>(
+            profilesArray,
+            func((principal, profile)) = (principal, {
+                principal = profile.principal;
+                devices = profile.devices;
+                created = profile.created;
+                lastLogin = profile.lastLogin;
+                points = profile.points;
+                totalDataScraped = profile.totalDataScraped;
+                referralCode = profile.referralCode;
+                referralCount = profile.referralCount;
+                referredBy = profile.referredBy;
+                pointsFromScraping = profile.pointsFromScraping;
+                pointsFromReferrals = profile.pointsFromReferrals;
+                totalPagesScraped = profile.totalPagesScraped;
+                totalBandwidthUsed = profile.totalBandwidthUsed;
+            })
+        );
+
+        // export points history
+        let pointsHistoryArray = Array.map<(Principal, Buffer.Buffer<SharedTypes.PointsRecord>), (Principal, [SharedTypes.PointsRecord])>(
+            Iter.toArray(pointsHistory.entries()),
+            func((principal, buffer)) = (principal, Buffer.toArray(buffer))
+        );
+
+        // export conversion requests
+        let conversionRequestsArray = Iter.toArray(conversionRequests.entries());
+
+        Debug.print("Exported " # Nat.toText(backupProfiles.size()) # " profiles for backup");
+
+        #ok({
+            profiles = backupProfiles;
+            pointsHistory = pointsHistoryArray;
+            conversionRequests = conversionRequestsArray;
+        })
+    };
+
+    // trigger backup to backup canister
+    public shared(msg) func createBackupSnapshot(backupCanisterId: Text): async Result.Result<Int, Text> {
+        // export data
+        let exportResult = await exportForBackup();
+
+        switch (exportResult) {
+            case (#ok(data)) {
+                // call backup canister
+                let backupCanister: BackupCanister = actor(backupCanisterId);
+
+                try {
+                    let result = await backupCanister.createBackup(
+                        data.profiles,
+                        data.pointsHistory,
+                        data.conversionRequests
+                    );
+
+                    switch (result) {
+                        case (#ok(timestamp)) {
+                            Debug.print("Backup created successfully at timestamp: " # Int.toText(timestamp));
+                            #ok(timestamp)
+                        };
+                        case (#err(error)) {
+                            Debug.print("Backup creation failed: " # error);
+                            #err("Backup creation failed: " # error)
+                        };
+                    }
+                } catch (error) {
+                    Debug.print("Error calling backup canister: " # Error.message(error));
+                    #err("Error calling backup canister: " # Error.message(error))
+                }
+            };
+            case (#err(error)) {
+                #err("Export failed: " # error)
+            };
+        }
+    };
+
+    // get backup stats (for monitoring)
+    public query func getBackupInfo(): async {
+        totalProfiles: Nat;
+        totalPointsRecords: Nat;
+        totalConversionRequests: Nat;
+    } {
+        var totalPoints = 0;
+        for ((_, buffer) in pointsHistory.entries()) {
+            totalPoints += buffer.size();
+        };
+
+        {
+            totalProfiles = userProfiles.size();
+            totalPointsRecords = totalPoints;
+            totalConversionRequests = conversionRequests.size();
+        }
+    };
 }

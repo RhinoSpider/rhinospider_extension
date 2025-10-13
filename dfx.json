@@ -30,6 +30,10 @@
         "ic": "t3pjp-kqaaa-aaaao-a4ooq-cai"
       }
     },
+    "backup": {
+      "main": "canisters/backup/main.mo",
+      "type": "motoko"
+    },
     "marketplace": {
       "main": "canisters/marketplace/main.mo",
       "type": "motoko"
