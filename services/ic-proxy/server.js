@@ -1639,11 +1639,21 @@ app.post('/api/process-with-ai', authenticateApiKey, async (req, res) => {
     }
 
     console.log('[/api/process-with-ai] Processing content with AI');
+    console.log(`[/api/process-with-ai] Provider: ${aiConfig.provider || 'openai'}, Model: ${aiConfig.model}`);
 
-    // Initialize OpenAI client with the provided API key
-    const openai = new OpenAI({
+    // Initialize AI client with the provided API key
+    // Support both OpenAI and OpenRouter
+    const clientConfig = {
       apiKey: aiConfig.apiKey
-    });
+    };
+
+    // If using OpenRouter, set the base URL
+    if (aiConfig.provider === 'openrouter') {
+      clientConfig.baseURL = 'https://openrouter.ai/api/v1';
+      console.log('[/api/process-with-ai] Using OpenRouter API');
+    }
+
+    const openai = new OpenAI(clientConfig);
 
     const enhancements = {};
 

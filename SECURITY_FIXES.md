@@ -63,10 +63,27 @@ For the hackathon submission:
 - AI was planned for future "1-5KB analyzed data" feature
 - Currently just storing raw scraped content
 
-### If You Want To Enable AI Later:
-1. Get OpenAI API key
-2. Update storage canister: `dfx canister call storage updateAIConfig '(record { apiKey = "sk-..."; model = "gpt-4"; ... })'`
-3. IC proxy will automatically use it when scraping
+### How To Enable AI (Two Options):
+
+**Option 1: OpenAI (Paid)**
+1. Get API key from https://platform.openai.com/api-keys
+2. Update storage canister with your API key
+3. Cost: ~$0.002 per 1K tokens (GPT-3.5-turbo)
+
+**Option 2: OpenRouter with FREE Models** ⭐ Recommended!
+1. Get free API key from https://openrouter.ai/keys (no credit card needed)
+2. Update storage canister with OpenRouter key
+3. Use free models like `meta-llama/llama-3.1-8b-instruct:free`
+4. Cost: $0 (completely free!)
+
+**Recommended Free Models on OpenRouter:**
+- `meta-llama/llama-3.1-8b-instruct:free` - Best for our use case
+- `google/gemma-2-9b-it:free` - Good for keyword extraction
+- `mistralai/mistral-7b-instruct:free` - Reliable general purpose
+
+**See [AI_INTEGRATION.md](AI_INTEGRATION.md) for complete setup guide with exact commands.**
+
+The IC proxy now supports both OpenAI and OpenRouter - it automatically detects which provider you're using based on your configuration.
 
 ## What's Safe Now
 

@@ -68,11 +68,15 @@ When services are down, users see red indicators and understand why they're not 
 - Updated code comments to sound natural
 - Removed AI-sounding language
 
-### 6. Response to Committee Feedback ✅
+### 6. Security Fixes ✅
 
-**Created:** `RESPONSE_TO_COMMITTEE.md`
+**Removed Exposed Secrets:**
+- Deleted old scripts with exposed API keys
+- Updated proxy services to use environment variables only
+- No more hardcoded fallback values
+- Created SECURITY_FIXES.md documenting all changes
 
-**Key Points:**
+**Key Points in README:**
 - We're NOT competing with GRASS on volume
 - We store 1-5KB analyzed data vs 100MB+ raw HTML (100x more efficient)
 - Perfect fit for IC storage costs
