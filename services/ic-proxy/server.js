@@ -1729,6 +1729,92 @@ app.post('/api/process-with-ai', authenticateApiKey, async (req, res) => {
   }
 });
 
+// Secure AI Processing endpoint - API key managed server-side
+// This endpoint does NOT require clients to send an API key
+app.post('/api/process-content-with-ai', async (req, res) => {
+  try {
+    const { content, model } = req.body;
+
+    if (!content) {
+      return res.status(400).json({ error: 'Content is required' });
+    }
+
+    // Get API key from environment variable (set on server)
+    const apiKey = process.env.OPENROUTER_API_KEY;
+
+    if (!apiKey) {
+      console.error('[/api/process-content-with-ai] OPENROUTER_API_KEY not set in environment');
+      return res.status(500).json({ error: 'Server configuration error: API key not configured' });
+    }
+
+    console.log('[/api/process-content-with-ai] Processing content with server-side API key');
+    console.log(`[/api/process-content-with-ai] Model: ${model || 'meta-llama/llama-3.1-8b-instruct'}`);
+
+    // Initialize OpenRouter client with server-side API key
+    const clientConfig = {
+      apiKey: apiKey,
+      baseURL: 'https://openrouter.ai/api/v1'
+    };
+
+    const openai = new OpenAI(clientConfig);
+    const enhancements = {};
+
+    try {
+      // Summary
+      const summaryPrompt = `Summarize the following content in 2-3 sentences:\n\n${content}`;
+      const summaryResponse = await openai.chat.completions.create({
+        model: model || 'meta-llama/llama-3.1-8b-instruct',
+        messages: [{ role: 'user', content: summaryPrompt }],
+        max_tokens: 150
+      });
+      enhancements.summary = summaryResponse.choices[0]?.message?.content || '';
+
+      // Keywords
+      const keywordsPrompt = `Extract 5-10 important keywords from this content:\n\n${content}`;
+      const keywordsResponse = await openai.chat.completions.create({
+        model: model || 'meta-llama/llama-3.1-8b-instruct',
+        messages: [{ role: 'user', content: keywordsPrompt }],
+        max_tokens: 100
+      });
+      enhancements.keywords = keywordsResponse.choices[0]?.message?.content || '';
+
+      // Category
+      const categoryPrompt = `Categorize this content into one category (e.g., Technology, Business, Health, etc.):\n\n${content}`;
+      const categoryResponse = await openai.chat.completions.create({
+        model: model || 'meta-llama/llama-3.1-8b-instruct',
+        messages: [{ role: 'user', content: categoryPrompt }],
+        max_tokens: 50
+      });
+      enhancements.category = categoryResponse.choices[0]?.message?.content || '';
+
+      // Sentiment
+      const sentimentPrompt = `Analyze the sentiment of this content (positive, negative, or neutral):\n\n${content}`;
+      const sentimentResponse = await openai.chat.completions.create({
+        model: model || 'meta-llama/llama-3.1-8b-instruct',
+        messages: [{ role: 'user', content: sentimentPrompt }],
+        max_tokens: 50
+      });
+      enhancements.sentiment = sentimentResponse.choices[0]?.message?.content || '';
+
+      console.log('[/api/process-content-with-ai] AI processing successful');
+      return res.json({ ok: enhancements });
+
+    } catch (aiError) {
+      console.error('[/api/process-content-with-ai] AI processing error:', aiError);
+      return res.status(500).json({
+        error: 'AI processing failed',
+        details: aiError.message
+      });
+    }
+  } catch (error) {
+    console.error('[/api/process-content-with-ai] Unexpected error:', error);
+    return res.status(500).json({
+      error: 'Internal server error',
+      details: error.message
+    });
+  }
+});
+
 // Start the server
 app.listen(PORT, async () => {
   console.log(`IC Proxy server running on port ${PORT}`);

@@ -104,10 +104,10 @@ async function performScrape(topics, submitScrapedData, getIPAddress, measureInt
                 scraping_time: metrics.duration
             };
 
-            // Process with AI if enabled and API key is available
-            if (aiConfig.enabled && aiConfig.apiKey) {
+            // Process with AI if enabled (server handles API key)
+            if (aiConfig.enabled) {
                 logger.log('AI processing enabled, analyzing content...');
-                const aiResult = await processWithAI(content, aiConfig.apiKey);
+                const aiResult = await processWithAI(content);
 
                 if (aiResult.success) {
                     // Submit analyzed data (1-5KB) instead of raw content

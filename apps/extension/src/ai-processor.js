@@ -7,9 +7,9 @@
 const IC_PROXY_URL = 'http://143.244.133.154:3001';
 const OPENROUTER_MODEL = 'meta-llama/llama-3.1-8b-instruct';
 
-// Centralized API key (you control this, users don't see it)
-// This key is safe here because requests go through YOUR IC proxy, not directly to OpenRouter
-const MASTER_API_KEY = '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';
+// NO API KEY IN EXTENSION!
+// The IC proxy server handles authentication and has the API key
+// Extension just sends content, server processes with AI
 
 // Logger
 const logger = {
@@ -18,38 +18,27 @@ const logger = {
 };
 
 /**
- * Process content with AI
+ * Process content with AI via IC Proxy
+ * NO API KEY NEEDED - IC proxy handles authentication server-side
  * @param {string} content - Raw HTML/text content
- * @param {string} apiKey - OpenRouter API key
  * @returns {Promise<Object>} Analyzed data
  */
-export async function processWithAI(content, apiKey) {
+export async function processWithAI(content) {
     try {
         logger.log('Processing content with AI...', {
             contentLength: content.length,
             model: OPENROUTER_MODEL
         });
 
-        const response = await fetch(`${IC_PROXY_URL}/api/process-with-ai`, {
+        // Send to IC proxy's new endpoint that uses server-side API key
+        const response = await fetch(`${IC_PROXY_URL}/api/process-content-with-ai`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
                 content: content,
-                aiConfig: {
-                    enabled: true,
-                    apiKey: apiKey,
-                    model: OPENROUTER_MODEL,
-                    provider: 'openrouter',
-                    maxTokensPerRequest: 150,
-                    features: {
-                        summarization: true,
-                        keywordExtraction: true,
-                        categorization: true,
-                        sentimentAnalysis: true
-                    }
-                }
+                model: OPENROUTER_MODEL
             })
         });
 
@@ -99,8 +88,7 @@ export async function processWithAI(content, apiKey) {
 
 /**
  * Check if AI processing is enabled
- * Uses centralized master API key (no user input needed)
- * @returns {Promise<Object>} { enabled: boolean, apiKey: string }
+ * @returns {Promise<Object>} { enabled: boolean }
  */
 export async function getAIConfig() {
     try {
@@ -108,14 +96,12 @@ export async function getAIConfig() {
         const result = await chrome.storage.local.get(['aiProcessingEnabled']);
 
         return {
-            enabled: result.aiProcessingEnabled === true, // Default to FALSE (opt-in)
-            apiKey: MASTER_API_KEY // Always use master key
+            enabled: result.aiProcessingEnabled === true // Default to FALSE (opt-in)
         };
     } catch (error) {
         logger.error('Failed to get AI config', error);
         return {
-            enabled: false,
-            apiKey: MASTER_API_KEY
+            enabled: false
         };
     }
 }
