@@ -1,6 +1,8 @@
 import { submitScrapedData, awardPoints } from './service-worker-adapter';
 // handles the actual scraping part
 import * as urlSelector from './simplified-url-selector.js';
+// AI processing
+import { processWithAI, getAIConfig } from './ai-processor.js';
 
 // simple logger
 const logger = {
@@ -90,17 +92,53 @@ async function performScrape(topics, submitScrapedData, getIPAddress, measureInt
 
             logger.log(`Scraped content length: ${content.length} characters`);
 
-            // send it to the backend
-            await submitScrapedData({
+            // Check if AI processing is enabled
+            const aiConfig = await getAIConfig();
+            let dataToSubmit = {
                 id: `${url.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`,
                 url,
                 topic: topic.id,
-                content: content || '<html><body><p>No content available</p></body></html>',
                 source: 'extension',
                 status: 'completed',
                 principalId,
                 scraping_time: metrics.duration
-            });
+            };
+
+            // Process with AI if enabled and API key is available
+            if (aiConfig.enabled && aiConfig.apiKey) {
+                logger.log('AI processing enabled, analyzing content...');
+                const aiResult = await processWithAI(content, aiConfig.apiKey);
+
+                if (aiResult.success) {
+                    // Submit analyzed data (1-5KB) instead of raw content
+                    dataToSubmit.content = JSON.stringify({
+                        summary: aiResult.summary,
+                        keywords: aiResult.keywords,
+                        category: aiResult.category,
+                        sentiment: aiResult.sentiment
+                    });
+                    dataToSubmit.aiProcessed = true;
+                    dataToSubmit.originalSize = aiResult.originalSize;
+                    dataToSubmit.analyzedSize = aiResult.analyzedSize;
+                    dataToSubmit.compressionRatio = (aiResult.originalSize / aiResult.analyzedSize).toFixed(2) + 'x';
+
+                    logger.log(`✅ AI processing successful! Compression: ${dataToSubmit.compressionRatio} (${aiResult.originalSize} → ${aiResult.analyzedSize} bytes)`);
+                } else {
+                    // AI failed, fall back to raw content
+                    dataToSubmit.content = content;
+                    dataToSubmit.aiProcessed = false;
+                    dataToSubmit.aiError = aiResult.error;
+                    logger.warn('AI processing failed, submitting raw content');
+                }
+            } else {
+                // AI not enabled, submit raw content
+                dataToSubmit.content = content || '<html><body><p>No content available</p></body></html>';
+                dataToSubmit.aiProcessed = false;
+                logger.log('AI processing disabled, submitting raw content');
+            }
+
+            // send it to the backend
+            await submitScrapedData(dataToSubmit);
 
             // Award points for successful scrape
             await awardPoints(principalId, metrics.contentLength);
