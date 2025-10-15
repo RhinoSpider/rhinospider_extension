@@ -102,11 +102,15 @@ curl -X POST "http://143.244.133.154:3001/api/process-with-ai" \
    - Validated response format
    - Checked logs for errors (none!)
 
-## API Key Used
+## API Key Configuration
 
-**OpenRouter API Key**: `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`
+**OpenRouter API Key**: Store in environment variable `OPENROUTER_API_KEY`
 
-**Security Note**: This key is only in production server environment variables and deployment docs. Not exposed to users.
+**Security Note**:
+- ⚠️ NEVER commit API keys to git
+- Store in `.env` file (add to .gitignore)
+- Set as environment variable on production server
+- Use placeholder `sk-or-v1-YOUR-KEY-HERE` in documentation
 
 ## Other Free Models to Try
 

@@ -8,8 +8,10 @@ echo ""
 # Test content
 CONTENT="OpenAI has released GPT-4, a large multimodal model that accepts image and text inputs. The model demonstrates human-level performance on various professional benchmarks and has been trained with human feedback. This advancement represents a significant step in artificial intelligence development."
 
-# Your OpenRouter API key
-API_KEY="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"
+# Your OpenRouter API key (get from https://openrouter.ai/keys)
+# IMPORTANT: Set this environment variable before running:
+# export OPENROUTER_API_KEY="sk-or-v1-YOUR-KEY-HERE"
+API_KEY="${OPENROUTER_API_KEY:-sk-or-v1-YOUR-KEY-HERE}"
 
 # IC Proxy URL (update if different)
 IC_PROXY_URL="http://localhost:3001"
