@@ -96,7 +96,7 @@ export async function getAIConfig() {
         const result = await chrome.storage.local.get(['aiProcessingEnabled']);
 
         return {
-            enabled: result.aiProcessingEnabled === true // Default to FALSE (opt-in)
+            enabled: result.aiProcessingEnabled !== false // Default to TRUE (opt-out)
         };
     } catch (error) {
         logger.error('Failed to get AI config', error);
