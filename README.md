@@ -4,7 +4,7 @@ This is a decentralized platform (DePIN) for web data collection built on Intern
 
 Current Version: 7.2.0 (Chrome Extension)
 
-## Recent Updates (January 2025)
+## Recent Updates (October 2025)
 
 ### What Makes Us Different
 
