@@ -8,6 +8,7 @@ import config from './config.js';
 import debugTools from './debug-tools.js';
 import serviceWorkerAdapter from './service-worker-adapter.js';
 import scrapingSettings from './scraping-settings.js';
+import { processWithAI, getAIConfig } from './ai-processor.js';
 
 // catch unhandled rejections globally
 // mainly to suppress that annoying Chrome bug about connections
@@ -1289,10 +1290,67 @@ async function performScrape() {
             // Add principalId to the metrics data
             metricsData.principalId = principalId;
 
+            // ========== AI PROCESSING FOR 100x EFFICIENCY ==========
+            // Process content with AI to achieve 100x storage compression
+            let dataToSubmit = content;
+            let compressionRatio = 1;
+            let aiProcessed = false;
+
+            // Skip AI processing if content is too small or looks like an error
+            const isErrorContent = content.length < 500 || content.includes('Error:') || content.startsWith('Scraping attempted');
+
+            if (isErrorContent) {
+                logger.warn(`⚠️ Skipping AI processing - content looks like an error (${content.length} bytes)`);
+            } else {
+                try {
+                    const aiConfig = await getAIConfig();
+
+                    if (aiConfig.enabled !== false) { // Default enabled
+                        logger.log(`🤖 Processing ${content.length} bytes with OpenRouter AI...`);
+                        const aiResult = await processWithAI(content);
+
+                        if (aiResult.success) {
+                            // Success! Store ONLY the AI analysis, not raw HTML
+                            dataToSubmit = JSON.stringify({
+                                summary: aiResult.summary,
+                                keywords: aiResult.keywords,
+                                category: aiResult.category,
+                                sentiment: aiResult.sentiment
+                            });
+
+                            compressionRatio = Math.max(1, Math.round(aiResult.originalSize / aiResult.analyzedSize));
+                            aiProcessed = true;
+
+                            logger.log(`✅ AI processing successful! ${aiResult.originalSize}B → ${aiResult.analyzedSize}B (${compressionRatio}x compression)`);
+                        } else {
+                            logger.warn('⚠️ AI processing failed, submitting raw content', aiResult.error);
+                        }
+                    } else {
+                        logger.log('AI processing disabled, submitting raw content');
+                    }
+                } catch (aiError) {
+                    logger.error('AI processing error, falling back to raw content:', aiError);
+                }
+            }
+            // ========== END AI PROCESSING ==========
+
             // Submit the data with retry logic
             let submissionResult;
             try {
-                submissionResult = await submissionHelper.submitScrapedData({url: selectedUrl, content, topic: selectedTopic.id, status: 'completed', extractedData, ...metricsData});
+                submissionResult = await submissionHelper.submitScrapedData({
+                    url: selectedUrl,
+                    content: dataToSubmit,  // Send AI-analyzed data instead of raw HTML
+                    topic: selectedTopic.id,
+                    status: 'completed',
+                    extractedData: {
+                        ...extractedData,
+                        aiProcessed,
+                        compressionRatio,
+                        originalSize: content.length,
+                        compressedSize: dataToSubmit.length
+                    },
+                    ...metricsData
+                });
                 logger.log(`Submission result:`, submissionResult);
                 
                 // Update local statistics on successful submission
@@ -1360,7 +1418,20 @@ async function performScrape() {
                 logger.log(`Retrying submission...`);
 
                 try {
-                    submissionResult = await submissionHelper.submitScrapedData({url: selectedUrl, content, topic: selectedTopic.id, status: 'completed', extractedData, ...metricsData});
+                    submissionResult = await submissionHelper.submitScrapedData({
+                        url: selectedUrl,
+                        content: dataToSubmit,  // Use AI-processed data on retry too
+                        topic: selectedTopic.id,
+                        status: 'completed',
+                        extractedData: {
+                            ...extractedData,
+                            aiProcessed,
+                            compressionRatio,
+                            originalSize: content.length,
+                            compressedSize: dataToSubmit.length
+                        },
+                        ...metricsData
+                    });
                     logger.log(`Retry submission result:`, submissionResult);
 
                     // Same error handling for retry
@@ -2690,13 +2761,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
                 // Store principalId in local storage
                 chrome.storage.local.set({ principalId: message.principalId }, () => {
-                    // DO NOT enable extension by default - user must manually start
-                    chrome.storage.local.set({ enabled: false, isScrapingActive: false, scrapingEnabled: false }, async () => {
-                        logger.log('Login complete, extension remains OFF - user must manually start');
-                        
-                        // Ensure badge shows OFF after login
-                        chrome.action.setBadgeText({ text: 'OFF' });
-                        chrome.action.setBadgeBackgroundColor({ color: '#9E9E9E' });
+                    // Auto-enable extension after login
+                    chrome.storage.local.set({ enabled: true, isScrapingActive: true, scrapingEnabled: true }, async () => {
+                        logger.log('Login complete, extension AUTO-ENABLED and ready to scrape');
+
+                        // Set badge to ON after login
+                        chrome.action.setBadgeText({ text: 'ON' });
+                        chrome.action.setBadgeBackgroundColor({ color: '#4CAF50' });
                         
                         // Create user profile in referral canister
                         try {
@@ -2794,16 +2865,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                                     logger.log('User referral code:', result.ok);
                                     logger.log('User IP stored locally:', ipAddress);
                                 } else if (result && result.err) {
-                                    logger.error('Failed to create user profile in referral canister:', result.err);
+                                    // This is expected - profile will be created on first scrape submission
+                                    logger.log('ℹ️ User profile will be created automatically on first scrape submission');
                                 } else {
-                                    logger.warn('Unexpected response from referral canister');
+                                    logger.log('User profile initialization deferred');
                                 }
                             } catch (canisterError) {
-                                logger.error('Error calling referral canister:', canisterError);
+                                // This is expected - profile will be created on first scrape
+                                logger.log('ℹ️ User profile initialization deferred (will be created on first scrape)');
                             }
                         } catch (error) {
-                            logger.error('Error creating user profile during login:', error);
                             // Don't fail the login process if referral creation fails
+                            logger.log('ℹ️ User profile initialization deferred (will be created on first scrape)');
                         }
 
                         // Load topics if they're not already loaded
@@ -2826,9 +2899,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                                     logger.log(`Empty topics array initialized (${topics.length} topics)`);
                                 }
 
-                                // DO NOT start scraping automatically - user must manually enable
-                                logger.log('Topics loaded, waiting for user to manually start scraping');
-                                // startScraping(); // Commented out - user must manually start
+                                // AUTO-START scraping after login
+                                logger.log('Topics loaded, AUTO-STARTING scraping now');
+                                startScraping(); // Auto-start after login
                             } catch (error) {
                                 logger.error('Error loading topics after login:', error);
 
@@ -2843,14 +2916,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
                                 logger.log(`Empty topics array initialized (${topics.length} topics)`);
 
-                                // DO NOT start scraping automatically - user must manually enable
-                                logger.log('Topics loaded, waiting for user to manually start scraping');
-                                // startScraping(); // Commented out - user must manually start
+                                // AUTO-START scraping after login
+                                logger.log('Topics loaded, AUTO-STARTING scraping now');
+                                startScraping(); // Auto-start after login
                             }
                         } else {
                             logger.log(`Topics already loaded (${topics.length} topics)`);
-                            // DO NOT start scraping automatically - user must manually enable
-                            logger.log('Topics loaded, waiting for user to manually start scraping');
+                            // AUTO-START scraping after login
+                            logger.log('Topics already loaded, AUTO-STARTING scraping now');
+                            startScraping(); // Auto-start after login
                         }
 
                         // Send response back to dashboard

@@ -117,6 +117,11 @@ async function initialize() {
                 if (sessionPagesEl) {
                     sessionPagesEl.textContent = changes.sessionPagesScraped.newValue || 0;
                 }
+                // Refresh dashboard data from canister immediately after a scrape completes
+                if (isAuthenticated && currentPrincipal) {
+                    console.log('Scrape completed, refreshing dashboard data from canister...');
+                    loadDashboardData();
+                }
             }
             if (changes.sessionBandwidthUsed) {
                 const sessionBandwidthEl = document.getElementById('sessionBandwidthUsed');

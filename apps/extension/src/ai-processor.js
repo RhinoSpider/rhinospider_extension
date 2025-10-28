@@ -4,7 +4,7 @@
  * Returns analyzed data (summary, keywords, category, sentiment)
  */
 
-const IC_PROXY_URL = 'http://143.244.133.154:3001';
+const IC_PROXY_URL = 'https://ic-proxy.rhinospider.com';
 const OPENROUTER_MODEL = 'meta-llama/llama-3.1-8b-instruct';
 
 // NO API KEY IN EXTENSION!

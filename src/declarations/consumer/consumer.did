@@ -1,3 +1,19 @@
+type UserProfileBackup = 
+ record {
+   created: int;
+   devices: vec text;
+   lastLogin: int;
+   points: nat;
+   pointsFromReferrals: nat;
+   pointsFromScraping: nat;
+   "principal": principal;
+   referralCode: text;
+   referralCount: nat;
+   referredBy: opt principal;
+   totalBandwidthUsed: nat;
+   totalDataScraped: nat;
+   totalPagesScraped: nat;
+ };
 type UserProfile = 
  record {
    city: opt text;
@@ -12,6 +28,8 @@ type UserProfile =
    latitude: opt float64;
    longitude: opt float64;
    points: nat;
+   pointsFromReferrals: nat;
+   pointsFromScraping: nat;
    preferences: record {
                   notificationsEnabled: bool;
                   theme: text;
@@ -19,10 +37,15 @@ type UserProfile =
    "principal": principal;
    referralCode: text;
    referralCount: nat;
+   referralHistory: vec ReferralUse;
    referredBy: opt principal;
    region: opt text;
    scrapedUrls: vec text;
+   sessionBandwidthUsed: nat;
+   sessionPagesScraped: nat;
+   totalBandwidthUsed: nat;
    totalDataScraped: nat;
+   totalPagesScraped: nat;
  };
 type ScrapingTopic = 
  record {
@@ -75,40 +98,96 @@ type RhinoScanStats =
    totalDataVolumeKB: nat;
    totalNodes: nat;
  };
-type Result_6 = 
+type Result_9 = 
+ variant {
+   err: text;
+   ok: vec ConversionRequest;
+ };
+type Result_8 = 
+ variant {
+   err: text;
+   ok: vec PointsRecord;
+ };
+type Result_7 = 
  variant {
    err: Error;
    ok: UserProfile;
  };
-type Result_5 = 
- variant {
-   err: text;
-   ok: text;
- };
-type Result_4 = 
+type Result_6 = 
  variant {
    err: Error;
    ok: vec ScrapedData;
  };
-type Result_3 = 
+type Result_5 = 
  variant {
    err: Error;
    ok: vec ScrapingTopic;
  };
-type Result_2 = 
+type Result_4 = 
+ variant {
+   err: text;
+   ok: vec ScrapingTopic;
+ };
+type Result_3 = 
  variant {
    err: text;
    ok: UserProfile;
  };
-type Result_1 = 
+type Result_2 = 
  variant {
    err: Error;
+   ok;
+ };
+type Result_12 = 
+ variant {
+   err: text;
+   ok: int;
+ };
+type Result_11 = 
+ variant {
+   err: text;
+   ok: ConversionRequest;
+ };
+type Result_10 = 
+ variant {
+   err: text;
+   ok:
+    record {
+      conversionRequests: vec record {
+                                text;
+                                ConversionRequest;
+                              };
+      pointsHistory: vec record {
+                           principal;
+                           vec PointsRecord;
+                         };
+      profiles: vec record {
+                      principal;
+                      UserProfileBackup;
+                    };
+    };
+ };
+type Result_1 = 
+ variant {
+   err: text;
    ok;
  };
 type Result = 
  variant {
    err: text;
-   ok;
+   ok: text;
+ };
+type ReferralUse = 
+ record {
+   pointsAwarded: nat;
+   timestamp: int;
+   userPrincipal: principal;
+ };
+type PointsRecord = 
+ record {
+   amount: nat;
+   earnedAt: int;
+   source: text;
  };
 type NodeActivity = 
  record {
@@ -149,6 +228,18 @@ type CostLimits =
    maxDailyCost: float64;
    maxMonthlyCost: float64;
  };
+type ConversionRequest = 
+ record {
+   id: text;
+   pointsAmount: nat;
+   requestedAt: int;
+   status: text;
+   tokensFee: nat;
+   tokensGross: nat;
+   tokensNet: nat;
+   userId: principal;
+   walletAddress: text;
+ };
 type AIConfig = 
  record {
    apiKey: text;
@@ -156,7 +247,26 @@ type AIConfig =
    model: text;
  };
 service : {
-  awardPoints: (principalId: principal, points: nat) -> (Result);
+  awardPoints: (principalId: principal, points: nat) -> (Result_1);
+  createBackupSnapshot: (backupCanisterId: text) -> (Result_12);
+  createConversionRequest: (pointsAmount: nat, walletAddress: text) ->
+   (Result_11);
+  exportForBackup: () -> (Result_10);
+  fixAllKazakhstanUsers: () -> (Result);
+  fixExistingUsersData: () -> (Result);
+  fixUserGeolocation: (principalId: principal) -> (Result_1);
+  getAllConversionRequests: () -> (Result_9) query;
+  getAllUsers: () -> (vec record {
+                            principal;
+                            UserProfile;
+                          }) query;
+  getBackupInfo: () ->
+   (record {
+      totalConversionRequests: nat;
+      totalPointsRecords: nat;
+      totalProfiles: nat;
+    }) query;
+  getConversionRequests: (userId: principal) -> (Result_9) query;
   getNodeGeography: () -> (vec GeographicDistribution) query;
   getNodeStatus: ("principal": principal) ->
    (opt
@@ -167,21 +277,36 @@ service : {
        lastActive: int;
        points: nat;
      }) query;
-  getProfile: () -> (Result_6);
-  getReferralCode: () -> (Result_5);
+  getPointsHistory: (userId: principal) -> (Result_8) query;
+  getProfile: () -> (Result_7);
+  getReferralCode: () -> (Result);
   getRhinoScanStats: () -> (RhinoScanStats) query;
-  getScrapedData: (topicIds: vec text) -> (Result_4);
+  getScrapedData: (topicIds: vec text) -> (Result_6);
   getTopContributors: (limit: nat) -> (vec record {
                                              principal;
                                              nat;
                                            }) query;
-  getTopics: () -> (Result_3);
-  getUserData: () -> (Result_2);
+  getTopics: () -> (Result_5);
+  getTopicsForUser: (userPrincipal: principal) -> (Result_4);
+  getUserData: () -> (Result_3);
   getUserScrapedUrls: () -> (vec text);
   hasUserScrapedUrl: (url: text) -> (bool);
-  registerDevice: (deviceId: text) -> (Result_1);
-  submitScrapedData: (data: ScrapedData) -> (Result_1);
-  updatePreferences: (notificationsEnabled: bool, theme: text) -> (Result_1);
-  updateUserLogin: (ipAddress: text) -> (Result);
-  useReferralCode: (code: text) -> (Result);
+  mergeDuplicateUsers: (targetPrincipal: principal) -> (Result);
+  populateReferralCodes: () -> (Result);
+  recalculateAllUsersPoints: () -> (Result);
+  recalculatePointsBreakdown: () -> (Result);
+  refreshAllEmptyLocations: () -> (Result);
+  refreshUserGeolocation: (targetPrincipal: principal) -> (Result);
+  registerDevice: (deviceId: text) -> (Result_2);
+  submitScrapedData: (data: ScrapedData) -> (Result_2);
+  updateAllUsersGeoFromAPI: () -> (Result);
+  updatePreferences: (notificationsEnabled: bool, theme: text) -> (Result_2);
+  updateUserLocationByIP: (ipAddress: text, country: text, region: text,
+   city: text) -> (Result);
+  updateUserLogin: (ipAddress: text) -> (Result_1);
+  updateUserLoginForPrincipal: (principalId: principal, ipAddress: text) ->
+   (Result);
+  useReferralCode: (code: text) -> (Result_1);
+  useReferralCodeForPrincipal: (principalId: principal, code: text) ->
+   (Result);
 }
